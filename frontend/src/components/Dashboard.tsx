@@ -759,7 +759,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
           </div>
 
           {/* Right Area: AI Insights & Map panel — full width on mobile, side column on xl */}
-          <aside id="ai-insights-panel" className="w-full xl:w-ai-panel-width xl:h-full bg-brand-surface-ai border-t xl:border-t-0 xl:border-l border-brand-glass-border flex flex-col shrink-0">
+          <aside id="ai-insights-panel" className="w-full xl:w-[340px] xl:h-full bg-brand-surface-ai border-t xl:border-t-0 xl:border-l border-brand-glass-border flex flex-col shrink-0">
             {/* Header */}
             <div className="p-5 border-b border-brand-glass-border bg-white">
               <div className="flex items-center gap-1.5 text-brand-primary font-bold text-sm mb-1">

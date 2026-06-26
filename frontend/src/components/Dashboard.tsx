@@ -43,7 +43,7 @@ import {
   Area 
 } from 'recharts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AppView, AiInsightAlert } from '../types';
+import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
@@ -159,6 +159,32 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     value: Number(Number(pt.productivity).toFixed(2)),
   }));
 
+  // Executive KPIs (real) for the productivity / SPI / budget / profit tiles.
+  const { data: execResp } = useQuery({
+    queryKey: ['dashboard-exec'],
+    queryFn: () => api.get<any>('/dashboards/executive'),
+  });
+  const kpis = execResp?.data?.kpis;
+  const execFinance = execResp?.data?.finance;
+
+  // Real notifications power the AI Insights panel (replaces mock alerts).
+  const { data: notifResp } = useQuery({
+    queryKey: ['dashboard-notifs'],
+    queryFn: () => api.get<any[]>('/notifications?pageSize=8'),
+    refetchInterval: 20_000,
+  });
+  const sevToBadge = (s: string): 'critical' | 'warning' | 'optimal' =>
+    s === 'CRITICAL' || s === 'HIGH' ? 'critical' : s === 'MEDIUM' ? 'warning' : 'optimal';
+  const alerts = (notifResp?.data ?? []).map((n: any) => ({
+    id: n.id,
+    type: String(n.type).replace(/_/g, ' '),
+    site: new Date(n.createdAt).toLocaleDateString(),
+    title: n.title,
+    description: n.message,
+    severity: sevToBadge(n.severity),
+    actionLabel: n.isRead ? undefined : 'Mark as Reviewed',
+  }));
+
   const createProject = useMutation({
     mutationFn: (input: { code: string; name: string; location: string; status: string }) =>
       api.post<ApiProject>('/projects', input),
@@ -171,35 +197,6 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     },
     onError: (err) => setCreateError(err instanceof Error ? err.message : 'Failed to create project'),
   });
-
-  const [alerts, setAlerts] = useState<AiInsightAlert[]>([
-    {
-      id: 'a1',
-      type: 'Critical Delay',
-      site: 'Site C',
-      title: 'Logistics Bottleneck Detected',
-      description: 'Structural steel delivery is 4 days behind. AI predicts 12% margin slippage if not addressed by Friday.',
-      severity: 'critical',
-      actionLabel: 'View Recommendation'
-    },
-    {
-      id: 'a2',
-      type: 'Cost Variance',
-      site: 'Site A',
-      title: 'Concrete Yield Optimization',
-      description: 'Actual concrete usage is 4.2% above theoretical. AI suggests batch plant calibration audit.',
-      severity: 'warning',
-      actionLabel: 'Mark as Reviewed'
-    },
-    {
-      id: 'a3',
-      type: 'Efficiency Gain',
-      site: 'Site D',
-      title: 'Weather Window identified',
-      description: 'Unseasonably dry week forecasted. Opportunity to accelerate roofing phase by 3 days.',
-      severity: 'optimal'
-    }
-  ]);
 
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,7 +243,11 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   };
 
   const handleRemoveAlert = (id: string) => {
-    setAlerts(prev => prev.filter(a => a.id !== id));
+    // Mark the underlying notification as read.
+    api.put(`/notifications/${id}/read`).finally(() => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-notifs'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+    });
   };
 
   return (
@@ -489,12 +490,10 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">1.08</span>
-                  <span className="text-brand-status-critical text-xs font-bold flex items-center">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> -0.04
-                  </span>
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold">out/lh</span>
                 </div>
-                <p className="text-[10px] text-brand-on-surface-variant mt-3 italic leading-tight">Trend slowing due to weather delays in Northern site.</p>
+                <p className="text-[10px] text-brand-on-surface-variant mt-3 italic leading-tight">Actual output per labor hour across production entries.</p>
               </div>
 
               {/* Schedule Card */}
@@ -506,7 +505,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">0.96</span>
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? Number(kpis.spi).toFixed(2) : '—'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold">Target: 1.00</span>
                 </div>
                 <div className="mt-4 flex gap-1">
@@ -526,10 +525,12 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">92.1%</span>
-                  <span className="text-brand-on-surface-variant text-xs font-semibold">$4.2M left</span>
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : '—'}</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold">
+                    {execFinance ? `${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
+                  </span>
                 </div>
-                <p className="text-[10px] text-brand-status-critical mt-3 font-bold">Projected 5% overrun in Material Costs.</p>
+                <p className="text-[10px] text-brand-on-surface-variant mt-3 font-bold">Actual cost vs total budget across the portfolio.</p>
               </div>
             </div>
 

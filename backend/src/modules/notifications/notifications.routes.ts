@@ -1,8 +1,10 @@
 import { Router, Request } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
-import { NotFound } from '../../lib/errors';
-import { authenticate, requirePermission } from '../../middleware/auth';
+import { NotFound, BadRequest } from '../../lib/errors';
+import { authenticate, requirePermission, requireRole } from '../../middleware/auth';
+import { sendMail, verifyEmail, isEmailConfigured } from '../../lib/email';
 
 const router = Router();
 router.use(authenticate);
@@ -72,6 +74,26 @@ router.put(
   asyncHandler(async (req, res) => {
     await prisma.notification.updateMany({ where: { ...scope(req), isRead: false }, data: { isRead: true } });
     return ok(res, { ok: true });
+  }),
+);
+
+// EMAIL CHANNEL STATUS + TEST (admin only) — verifies SMTP and sends a test mail.
+const testSchema = z.object({ to: z.string().email().optional() });
+router.post(
+  '/test-email',
+  requireRole('SYSTEM_ADMIN'),
+  asyncHandler(async (req, res) => {
+    if (!isEmailConfigured()) throw BadRequest('SMTP is not configured (set SMTP_HOST/SMTP_USER/SMTP_PASS).');
+    const { to } = testSchema.parse(req.body ?? {});
+    const verified = await verifyEmail();
+    if (!verified.ok) throw BadRequest(`SMTP verify failed: ${verified.error}`);
+    const result = await sendMail({
+      to: to ?? req.user!.email,
+      subject: 'INSPECTA BUILDOS — test email',
+      text: 'This is a test email confirming the INSPECTA BUILDOS email channel is working.',
+    });
+    if (!result.ok) throw BadRequest(`Send failed: ${result.error}`);
+    return ok(res, { sent: true, messageId: result.messageId });
   }),
 );
 

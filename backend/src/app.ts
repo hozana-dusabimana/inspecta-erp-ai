@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { notFoundHandler, errorHandler } from './middleware/error';
 
@@ -28,15 +29,40 @@ import profitabilityRoutes from './modules/profitability/profitability.routes';
 import fieldopsRoutes from './modules/fieldops/fieldops.routes';
 import approvalsRoutes from './modules/approvals/approvals.routes';
 import portfolioRoutes from './modules/portfolio/portfolio.routes';
+import publicRoutes from './modules/public/public.routes';
 
 export function createApp() {
   const app = express();
+
+  // Behind nginx (+ Cloudflare). Trust one proxy hop for correct client IPs.
+  app.set('trust proxy', 1);
 
   app.use(helmet());
   app.use(cors({ origin: env.corsOrigin.split(',').map((s) => s.trim()), credentials: true }));
   app.use(express.json({ limit: '4mb' }));
   if (!env.isProd) app.use(morgan('dev'));
 
+  // ── Rate limiting (Module 21) — key by the real client IP (Cloudflare header) ──
+  const clientKey = (req: express.Request) =>
+    (req.headers['cf-connecting-ip'] as string) || req.ip || 'unknown';
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: clientKey,
+    message: { success: false, error: 'Too many requests, please slow down.' },
+  });
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30, // brute-force protection on login/refresh/register
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: clientKey,
+    message: { success: false, error: 'Too many authentication attempts, try again later.' },
+  });
+
+  // Health stays unlimited (used by CI/monitoring).
   app.get('/api/health', (_req, res) => {
     res.json({
       success: true,
@@ -48,8 +74,11 @@ export function createApp() {
     });
   });
 
+  app.use('/api', apiLimiter);
+  app.use('/api/public', publicRoutes); // public, unauthenticated (own stricter limiter)
+
   // Core
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/clients', clientsRoutes);
   app.use('/api/projects', projectsRoutes);

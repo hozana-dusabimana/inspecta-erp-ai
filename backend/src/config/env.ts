@@ -47,6 +47,16 @@ export const env = {
     bucket: process.env.SUPABASE_BUCKET ?? 'documents',
   },
 
+  smtp: {
+    host: process.env.SMTP_HOST ?? '',
+    port: Number(process.env.SMTP_PORT ?? 587),
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+    from: process.env.EMAIL_FROM ?? 'INSPECTA BUILDOS <no-reply@inspecta.ai>',
+    // Where org-wide alerts are also sent (e.g. a monitored inbox).
+    fallbackTo: process.env.NOTIFY_FALLBACK_EMAIL ?? '',
+  },
+
   seed: {
     adminEmail: process.env.SEED_ADMIN_EMAIL ?? 'admin@inspecta.ai',
     adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345',

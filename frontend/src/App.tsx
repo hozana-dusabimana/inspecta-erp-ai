@@ -15,6 +15,7 @@ import { AppView, ChatMessage, DailyProductionEntry } from './types';
 import { useAuth } from './lib/auth';
 import { useRealtime } from './lib/realtime';
 import { useOnlineStatus } from './lib/useOnlineStatus';
+import { api } from './lib/api';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
@@ -73,13 +74,23 @@ export default function App() {
     setCurrentView(AppView.LANDING);
   };
 
-  const handleDemoSubmit = (e: React.FormEvent) => {
+  const handleDemoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsDemoSubmitting(true);
-    setTimeout(() => {
-      setIsDemoSubmitting(false);
+    try {
+      // Real, unauthenticated demo-request endpoint (emails the team, rate-limited).
+      await api.post('/public/demo-request', {
+        name: demoName,
+        email: demoEmail,
+        company: demoCompany,
+      });
       setDemoBookedSuccess(true);
-    }, 1200);
+    } catch {
+      // Still acknowledge to the user; the request is best-effort.
+      setDemoBookedSuccess(true);
+    } finally {
+      setIsDemoSubmitting(false);
+    }
   };
 
   const resetDemoState = () => {
@@ -265,7 +276,7 @@ export default function App() {
                   </div>
                   <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Demo Scheduled</h3>
                   <p className="text-brand-on-surface-variant text-xs leading-relaxed max-w-xs mx-auto mb-6">
-                    Thank you {demoName || 'Alex'}! We have reserved a live pilot sandbox slot for <strong>{demoCompany || 'your company'}</strong>. A calendar invite was forwarded to <strong>{demoEmail}</strong>.
+                    Thank you {demoName || 'there'}! Your demo request for <strong>{demoCompany || 'your company'}</strong> has been sent to our team. We'll reach out at <strong>{demoEmail}</strong> shortly.
                   </p>
                   <button 
                     id="btn-demo-done"

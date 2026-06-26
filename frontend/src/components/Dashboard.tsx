@@ -26,7 +26,9 @@ import {
   HelpCircle,
   LogOut,
   MapPin,
-  Maximize2
+  Maximize2,
+  Menu,
+  X
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -111,6 +113,7 @@ function compactMoney(n: number): string {
 export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'portfolio' | 'region' | 'risk'>('portfolio');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   
   // Interactive mini-copilot state inside the sidebar
   const [copilotInput, setCopilotInput] = useState('');
@@ -277,8 +280,25 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
 
   return (
     <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex" id="dashboard-root">
-      {/* Sidebar Panel */}
-      <aside id="sidebar" className="w-sidebar-width h-screen sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0">
+      {/* Mobile drawer backdrop */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar Panel — slide-in drawer on mobile, static on lg+ */}
+      <aside
+        id="sidebar"
+        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        {/* Mobile close button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-white/80 hover:bg-white/10"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         <div className="flex flex-col gap-6">
           {/* Sidebar Brand Header */}
           <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(AppView.LANDING)}>
@@ -292,7 +312,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
           </div>
 
           {/* Navigation Items */}
-          <nav className="px-3 space-y-1" id="sidebar-nav">
+          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar" id="sidebar-nav" onClick={() => setSidebarOpen(false)}>
             <button 
               id="nav-dashboard"
               onClick={() => onNavigate(AppView.DASHBOARD)}
@@ -404,7 +424,16 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Top Header */}
         <header id="header" className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
-          <div className="flex items-center gap-4 flex-1">
+          <div className="flex items-center gap-3 flex-1">
+            {/* Mobile menu toggle */}
+            <button
+              id="btn-mobile-menu"
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 -ml-1 rounded-lg text-brand-primary hover:bg-brand-surface shrink-0"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div className="relative max-w-md w-full">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-on-surface-variant w-4 h-4" />
               <input 

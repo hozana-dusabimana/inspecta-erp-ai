@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   HardHat, Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, Bell, Search, LogOut, ShoppingCart, ShieldAlert, FileText, BarChart3, Settings,
-  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2,
+  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
@@ -57,6 +57,7 @@ interface Props {
 
 export default function ErpLayout({ active, title, subtitle, onNavigate, onLogout, actions, children }: Props) {
   const { user, hasPermission } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
 
   const { data: unread } = useQuery({
     queryKey: ['notifications-unread'],
@@ -67,8 +68,22 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
 
   return (
     <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex" id="erp-root">
-      {/* Sidebar */}
-      <aside className="w-sidebar-width h-screen sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0">
+      {/* Mobile drawer backdrop */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar — slide-in drawer on mobile, static on lg+ */}
+      <aside
+        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-white/80 hover:bg-white/10"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
         <div className="flex flex-col gap-6">
           <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(AppView.DASHBOARD)}>
             <div className="w-10 h-10 rounded-xl bg-brand-secondary-container flex items-center justify-center shadow-lg shadow-brand-secondary-container/20">
@@ -80,7 +95,7 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
             </div>
           </div>
 
-          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]">
+          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]" onClick={() => setSidebarOpen(false)}>
             {NAV.filter((n) => !n.perm || hasPermission(n.perm)).map((n) => {
               const Icon = n.icon;
               const isActive = n.view === active;
@@ -118,7 +133,14 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         <header className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
-          <div className="flex items-center gap-4 flex-1">
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 -ml-1 rounded-lg text-brand-primary hover:bg-brand-surface shrink-0"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div className="relative max-w-md w-full hidden md:block">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-on-surface-variant w-4 h-4" />
               <input

@@ -38,7 +38,10 @@ export function createApp() {
   if (!env.isProd) app.use(morgan('dev'));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok', service: 'inspecta-buildos-backend' } });
+    res.json({
+      success: true,
+      data: { status: 'ok', service: 'inspecta-buildos-backend', build: 'ci-verify-001' },
+    });
   });
 
   // Core

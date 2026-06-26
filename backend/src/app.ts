@@ -55,10 +55,11 @@ export function createApp() {
   });
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 30, // brute-force protection on login/refresh/register
+    max: 30, // brute-force protection: counts only FAILED auth attempts
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: clientKey,
+    skipSuccessfulRequests: true, // successful logins don't count toward the limit
     message: { success: false, error: 'Too many authentication attempts, try again later.' },
   });
 

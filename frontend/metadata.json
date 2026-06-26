@@ -1,0 +1,6 @@
+{
+  "name": "Inspecta AI",
+  "description": "Next-gen construction ERP and decision intelligence platform for maximizing project productivity and profitability.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

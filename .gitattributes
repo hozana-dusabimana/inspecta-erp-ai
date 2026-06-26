@@ -1,0 +1,6 @@
+# Normalize line endings: LF in the repo for cross-platform + Linux deploy scripts.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.svg text

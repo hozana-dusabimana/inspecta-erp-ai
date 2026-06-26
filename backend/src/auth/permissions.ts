@@ -1,0 +1,152 @@
+import { Role } from '@prisma/client';
+
+/**
+ * Permission matrix. Permissions are "resource:action" strings.
+ * SYSTEM_ADMIN implicitly has every permission (handled in `can`).
+ * Single source of truth for RBAC across every API module.
+ */
+export type Permission =
+  | 'user:read'
+  | 'user:write'
+  | 'client:read'
+  | 'client:write'
+  | 'project:read'
+  | 'project:write'
+  | 'contract:read'
+  | 'contract:write'
+  | 'planning:read'
+  | 'planning:write'
+  | 'production:read'
+  | 'production:write'
+  | 'finance:read'
+  | 'finance:write'
+  | 'inventory:read'
+  | 'inventory:write'
+  | 'procurement:read'
+  | 'procurement:write'
+  | 'qaqc:read'
+  | 'qaqc:write'
+  | 'hse:read'
+  | 'hse:write'
+  | 'risk:read'
+  | 'risk:write'
+  | 'document:read'
+  | 'document:write'
+  | 'scheduling:read'
+  | 'scheduling:write'
+  | 'profitability:read'
+  | 'fieldops:read'
+  | 'fieldops:write'
+  | 'approval:read'
+  | 'approval:write'
+  | 'portfolio:read'
+  | 'notification:read'
+  | 'report:read'
+  | 'dashboard:read'
+  | 'audit:read'
+  | 'ai:use';
+
+const ALL: Permission[] = [
+  'user:read', 'user:write',
+  'client:read', 'client:write',
+  'project:read', 'project:write',
+  'contract:read', 'contract:write',
+  'planning:read', 'planning:write',
+  'production:read', 'production:write',
+  'finance:read', 'finance:write',
+  'inventory:read', 'inventory:write',
+  'procurement:read', 'procurement:write',
+  'qaqc:read', 'qaqc:write',
+  'hse:read', 'hse:write',
+  'risk:read', 'risk:write',
+  'document:read', 'document:write',
+  'scheduling:read', 'scheduling:write',
+  'profitability:read',
+  'fieldops:read', 'fieldops:write',
+  'approval:read', 'approval:write',
+  'portfolio:read',
+  'notification:read',
+  'report:read',
+  'dashboard:read',
+  'audit:read',
+  'ai:use',
+];
+
+// Everyone authenticated can read dashboards, notifications, documents, portfolio, AI.
+const COMMON: Permission[] = [
+  'project:read', 'dashboard:read', 'notification:read', 'document:read', 'report:read',
+  'portfolio:read', 'scheduling:read', 'fieldops:read', 'approval:read', 'ai:use',
+];
+
+const matrix: Record<Role, Permission[]> = {
+  SYSTEM_ADMIN: ALL,
+
+  PROJECT_MANAGER: [
+    ...COMMON,
+    'user:read',
+    'client:read', 'client:write',
+    'project:write',
+    'contract:read', 'contract:write',
+    'planning:read', 'planning:write',
+    'production:read', 'production:write',
+    'finance:read', 'finance:write',
+    'inventory:read',
+    'procurement:read', 'procurement:write',
+    'qaqc:read', 'qaqc:write',
+    'hse:read', 'hse:write',
+    'risk:read', 'risk:write',
+    'document:write',
+    'scheduling:write',
+    'profitability:read',
+    'fieldops:write',
+    'approval:write',
+    'audit:read',
+  ],
+
+  SITE_ENGINEER: [
+    ...COMMON,
+    'client:read',
+    'contract:read',
+    'planning:read',
+    'production:read', 'production:write',
+    'inventory:read',
+    'qaqc:read', 'qaqc:write',
+    'hse:read', 'hse:write',
+    'risk:read', 'risk:write',
+    'document:write',
+    'scheduling:write',
+    'fieldops:write',
+  ],
+
+  QUANTITY_SURVEYOR: [
+    ...COMMON,
+    'client:read',
+    'project:write',
+    'contract:read', 'contract:write',
+    'planning:read', 'planning:write',
+    'production:read',
+    'finance:read', 'finance:write',
+    'inventory:read',
+    'procurement:read', 'procurement:write',
+    'qaqc:read',
+    'risk:read',
+    'document:write',
+    'profitability:read',
+    'approval:write',
+  ],
+
+  STOREKEEPER: [
+    ...COMMON,
+    'inventory:read', 'inventory:write',
+    'procurement:read', 'procurement:write',
+  ],
+};
+
+export function permissionsFor(role: Role): Permission[] {
+  return role === 'SYSTEM_ADMIN' ? ALL : matrix[role] ?? [];
+}
+
+export function can(role: Role, permission: Permission): boolean {
+  if (role === 'SYSTEM_ADMIN') return true;
+  return (matrix[role] ?? []).includes(permission);
+}

@@ -1,0 +1,74 @@
+name: Backend CI/CD
+
+# Runs only when backend code (or this workflow) changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx tsc --noEmit
+      - run: npx jest --ci --passWithNoTests
+
+  deploy:
+    name: Deploy to server
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package backend (no node_modules)
+        run: tar czf /tmp/backend.tgz -C backend --exclude=node_modules --exclude=dist --exclude=.env .
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Ship & redeploy (exec channel; SFTP is disabled on host)
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          sshpass -e ssh $OPTS "$USER@$HOST" "mkdir -p /home/inspectaapi/app"
+          sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/backend.tgz" < /tmp/backend.tgz
+          sshpass -e ssh $OPTS "$USER@$HOST" '
+            set -e
+            cd /home/inspectaapi/app
+            find . -maxdepth 1 -mindepth 1 ! -name .env -exec rm -rf {} +
+            tar xzf /tmp/backend.tgz -C .
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f >/dev/null 2>&1 || true
+          '
+
+      - name: Health check
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          sleep 8
+          sshpass -e ssh $OPTS "$USER@$HOST" 'curl -fsS -m 10 http://127.0.0.1:5010/api/health'

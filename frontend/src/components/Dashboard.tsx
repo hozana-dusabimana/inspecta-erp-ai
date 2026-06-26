@@ -1,0 +1,930 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  HardHat, 
+  Search, 
+  Bell, 
+  Sparkles, 
+  Bot, 
+  TrendingUp, 
+  Layers, 
+  Calendar, 
+  Zap, 
+  DollarSign, 
+  Warehouse, 
+  CheckSquare, 
+  HeartPulse, 
+  BarChart3, 
+  Settings, 
+  Plus, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  AlertCircle, 
+  AlertTriangle,
+  Smile,
+  Send,
+  HelpCircle,
+  LogOut,
+  MapPin,
+  Maximize2
+} from 'lucide-react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  AreaChart, 
+  Area 
+} from 'recharts';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AppView, AiInsightAlert } from '../types';
+import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
+
+interface DashboardProps {
+  onNavigate: (view: AppView) => void;
+  onLogout: () => void;
+}
+
+// Shape returned by GET /api/projects
+interface ApiProject {
+  id: string;
+  code: string;
+  name: string;
+  location: string | null;
+  progressPct: number;
+  status: string;
+  health: string;
+  budget: string | number;
+  client?: { id: string; name: string } | null;
+}
+
+interface PortfolioSummary {
+  totalProjects: number;
+  activeProjects: number;
+  completedProjects: number;
+  totalBudget: number;
+  avgProgressPct: number;
+  healthBreakdown: { OPTIMAL: number; WARNING: number; CRITICAL: number };
+}
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+function roleLabel(role?: string): string {
+  if (!role) return 'User';
+  return role
+    .toLowerCase()
+    .split('_')
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  LABOR: '#00286a', MATERIAL: '#ff8a00', EQUIPMENT: '#b2c5ff',
+  SUBCONTRACTOR: '#7c9cff', OVERHEAD: '#c4c6d3', OTHER: '#9aa0b4',
+};
+
+export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
+  const [activeTab, setActiveTab] = useState<'portfolio' | 'region' | 'risk'>('portfolio');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Interactive mini-copilot state inside the sidebar
+  const [copilotInput, setCopilotInput] = useState('');
+  const [copilotMessages, setCopilotMessages] = useState<Array<{sender: 'user' | 'ai', text: string}>>([
+    { sender: 'ai', text: "Hello Alex. Structural steel at Site C is delayed. Type here or open the Copilot Workspace to investigate." }
+  ]);
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectLocation, setNewProjectLocation] = useState('Chicago, IL');
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // ── Real project portfolio (Module 1) ──────────────────────────
+  const { data: projectsResp } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api.get<ApiProject[]>('/projects'),
+  });
+  const projectsList = projectsResp?.data ?? [];
+
+  const { data: summaryResp } = useQuery({
+    queryKey: ['projects-summary'],
+    queryFn: () => api.get<PortfolioSummary>('/projects/summary'),
+  });
+  const summary = summaryResp?.data;
+
+  // Real chart data (replaces the previous mock series).
+  const { data: financeResp } = useQuery({
+    queryKey: ['finance-summary', 'all'],
+    queryFn: () => api.get<any>('/finance/summary'),
+  });
+  const { data: prodResp } = useQuery({
+    queryKey: ['production-summary', 'all'],
+    queryFn: () => api.get<any>('/production/summary/metrics'),
+  });
+
+  // Cost breakdown pie from real cost-by-category.
+  const costData = (financeResp?.data?.costByCategory ?? []).map((c: any) => ({
+    name: c.category.charAt(0) + c.category.slice(1).toLowerCase(),
+    value: Number(c.amount),
+    color: CATEGORY_COLORS[c.category] ?? '#9aa0b4',
+  }));
+
+  // S-curve: cumulative planned vs actual from production entries.
+  let cumP = 0;
+  let cumA = 0;
+  const sCurveData = (prodResp?.data?.series ?? []).map((pt: any, i: number) => {
+    cumP += Number(pt.planned);
+    cumA += Number(pt.actual);
+    return { name: `D${i + 1}`, Planned: Number(cumP.toFixed(1)), Actual: Number(cumA.toFixed(1)) };
+  });
+
+  // Productivity trend per entry.
+  const productivityTrendData = (prodResp?.data?.series ?? []).map((pt: any, i: number) => ({
+    name: `E${i + 1}`,
+    value: Number(Number(pt.productivity).toFixed(2)),
+  }));
+
+  const createProject = useMutation({
+    mutationFn: (input: { code: string; name: string; location: string; status: string }) =>
+      api.post<ApiProject>('/projects', input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects-summary'] });
+      setNewProjectName('');
+      setIsNewProjectOpen(false);
+      setCreateError(null);
+    },
+    onError: (err) => setCreateError(err instanceof Error ? err.message : 'Failed to create project'),
+  });
+
+  const [alerts, setAlerts] = useState<AiInsightAlert[]>([
+    {
+      id: 'a1',
+      type: 'Critical Delay',
+      site: 'Site C',
+      title: 'Logistics Bottleneck Detected',
+      description: 'Structural steel delivery is 4 days behind. AI predicts 12% margin slippage if not addressed by Friday.',
+      severity: 'critical',
+      actionLabel: 'View Recommendation'
+    },
+    {
+      id: 'a2',
+      type: 'Cost Variance',
+      site: 'Site A',
+      title: 'Concrete Yield Optimization',
+      description: 'Actual concrete usage is 4.2% above theoretical. AI suggests batch plant calibration audit.',
+      severity: 'warning',
+      actionLabel: 'Mark as Reviewed'
+    },
+    {
+      id: 'a3',
+      type: 'Efficiency Gain',
+      site: 'Site D',
+      title: 'Weather Window identified',
+      description: 'Unseasonably dry week forecasted. Opportunity to accelerate roofing phase by 3 days.',
+      severity: 'optimal'
+    }
+  ]);
+
+  const handleCreateProject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectName) return;
+    // Derive a project code from the name (backend requires a unique code).
+    const code =
+      newProjectName
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 10) || 'PRJ';
+    createProject.mutate({
+      code: `${code}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
+      name: newProjectName,
+      location: newProjectLocation,
+      status: 'PLANNING',
+    });
+  };
+
+  const handleCopilotSend = async () => {
+    if (!copilotInput.trim()) return;
+    const userMsg = copilotInput;
+    setCopilotMessages((prev) => [...prev, { sender: 'user', text: userMsg }]);
+    setCopilotInput('');
+    setCopilotMessages((prev) => [...prev, { sender: 'ai', text: 'Analyzing your live project data…' }]);
+
+    try {
+      const res = await api.post<{ text: string; confidence: number }>('/ai/chat', { prompt: userMsg });
+      setCopilotMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { sender: 'ai', text: res.data.text };
+        return next;
+      });
+    } catch (err) {
+      setCopilotMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          sender: 'ai',
+          text: err instanceof Error ? `Copilot error: ${err.message}` : 'Copilot is unavailable right now.',
+        };
+        return next;
+      });
+    }
+  };
+
+  const handleRemoveAlert = (id: string) => {
+    setAlerts(prev => prev.filter(a => a.id !== id));
+  };
+
+  return (
+    <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex" id="dashboard-root">
+      {/* Sidebar Panel */}
+      <aside id="sidebar" className="w-sidebar-width h-screen sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0">
+        <div className="flex flex-col gap-6">
+          {/* Sidebar Brand Header */}
+          <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(AppView.LANDING)}>
+            <div className="w-10 h-10 rounded-xl bg-brand-secondary-container flex items-center justify-center shadow-lg shadow-brand-secondary-container/20">
+              <HardHat className="text-white w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-lg font-bold text-white leading-none">Inspecta AI</h1>
+              <p className="text-brand-on-primary-container text-[10px] uppercase font-bold tracking-widest mt-1">Construction ERP</p>
+            </div>
+          </div>
+
+          {/* Navigation Items */}
+          <nav className="px-3 space-y-1" id="sidebar-nav">
+            <button 
+              id="nav-dashboard"
+              onClick={() => onNavigate(AppView.DASHBOARD)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-white rounded-lg border-l-4 border-brand-secondary-container bg-white/10 transition-all font-semibold text-xs text-left"
+            >
+              <Layers className="w-4 h-4 text-brand-secondary-container" />
+              <span>Dashboard</span>
+            </button>
+            
+            <button 
+              id="nav-projects"
+              onClick={() => {}}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <HardHat className="w-4 h-4" />
+              <span>Projects ({projectsList.length})</span>
+            </button>
+
+            <button
+              id="nav-planning"
+              onClick={() => onNavigate(AppView.PLANNING)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Planning Suite</span>
+            </button>
+
+            <button 
+              id="nav-production"
+              onClick={() => onNavigate(AppView.DAILY_ENTRY)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left group"
+            >
+              <Zap className="w-4 h-4 group-hover:text-brand-secondary-container transition-colors" />
+              <span className="flex-1">Production Entry</span>
+              <span className="bg-brand-secondary-container text-white px-2 py-0.5 rounded-full text-[9px] font-bold">New</span>
+            </button>
+
+            <button
+              id="nav-finance"
+              onClick={() => onNavigate(AppView.FINANCE)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <DollarSign className="w-4 h-4" />
+              <span>Finance Modules</span>
+            </button>
+
+            <button
+              id="nav-inventory"
+              onClick={() => onNavigate(AppView.INVENTORY)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <Warehouse className="w-4 h-4" />
+              <span>Inventory Control</span>
+            </button>
+
+            <button
+              id="nav-compliance"
+              onClick={() => onNavigate(AppView.QAQC)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <CheckSquare className="w-4 h-4" />
+              <span>QA/QC Audit</span>
+            </button>
+
+            <button
+              id="nav-hse"
+              onClick={() => onNavigate(AppView.HSE)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
+            >
+              <HeartPulse className="w-4 h-4" />
+              <span>HSE Operations</span>
+            </button>
+
+            <button 
+              id="nav-copilot"
+              onClick={() => onNavigate(AppView.COPILOT)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left font-bold"
+            >
+              <Bot className="w-4 h-4 text-brand-on-primary-container" />
+              <span>AI Copilot Workspace</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* Sidebar Footer Operations */}
+        <div className="px-4 py-2 space-y-3">
+          <button 
+            id="btn-sidebar-new-project"
+            onClick={() => setIsNewProjectOpen(true)}
+            className="w-full bg-brand-secondary-container text-white py-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 hover:opacity-95 transition-opacity cursor-pointer shadow-lg shadow-brand-secondary-container/10"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Project</span>
+          </button>
+          
+          <div className="h-[1px] bg-brand-on-primary-container/20 my-2" />
+          
+          <div className="flex items-center justify-between text-brand-on-primary-container/70 text-xs px-2">
+            <button className="flex items-center gap-2 hover:text-white transition-all text-[11px] font-bold" onClick={onLogout}>
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
+            <span className="text-[9px] font-mono opacity-60">V3.14-AI</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Panel Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        {/* Top Header */}
+        <header id="header" className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="relative max-w-md w-full">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-on-surface-variant w-4 h-4" />
+              <input 
+                id="search-input"
+                type="text"
+                placeholder="Search projects, documents, or insights..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-brand-surface border-none rounded-lg focus:ring-2 focus:ring-brand-primary/10 text-xs outline-none font-medium"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button 
+              id="header-ask-ai"
+              onClick={() => onNavigate(AppView.COPILOT)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary/5 text-brand-primary font-bold text-xs hover:bg-brand-primary/10 transition-all border border-brand-primary/10 cursor-pointer"
+            >
+              <Bot className="w-4 h-4 text-brand-secondary-container" />
+              <span>Ask AI Assistant</span>
+            </button>
+            
+            <button id="header-notifications" className="p-2 rounded-full hover:bg-brand-surface transition-colors relative">
+              <Bell className="w-4.5 h-4.5 text-brand-on-surface-variant" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-status-critical rounded-full animate-pulse"></span>
+            </button>
+            
+            <div className="h-6 w-[1px] bg-brand-outline-variant/30"></div>
+            
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-bold text-brand-on-surface">{user?.fullName ?? 'User'}</p>
+                <p className="text-[9px] text-brand-on-surface-variant uppercase font-bold tracking-widest">{roleLabel(user?.role)}</p>
+              </div>
+              <div className="w-10 h-10 rounded-full border-2 border-brand-primary-container/20 bg-brand-surface-container overflow-hidden">
+                <div className="w-full h-full bg-brand-primary flex items-center justify-center text-white font-bold text-sm">
+                  {user ? initials(user.fullName) : '··'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Dashboard Canvas Wrapper */}
+        <main className="flex-1 flex overflow-hidden">
+          {/* Left Area: General Charts & KPI grids */}
+          <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar space-y-6">
+            {/* Header Title Banner */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <h2 className="font-display text-2xl font-extrabold text-brand-primary">Executive Overview</h2>
+                <p className="text-brand-on-surface-variant text-xs mt-1">Portfolio performance across active construction sites.</p>
+              </div>
+              
+              <div className="flex gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10">
+                <button 
+                  id="tab-portfolio"
+                  onClick={() => setActiveTab('portfolio')}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'portfolio' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                >
+                  Portfolio
+                </button>
+                <button 
+                  id="tab-region"
+                  onClick={() => setActiveTab('region')}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'region' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                >
+                  By Region
+                </button>
+                <button 
+                  id="tab-risk"
+                  onClick={() => setActiveTab('risk')}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'risk' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                >
+                  Risk Priority
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Progress Card */}
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Project Progress</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> GREEN
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{(summary?.avgProgressPct ?? 0).toFixed(1)}%</span>
+                  <span className="text-brand-on-surface-variant text-xs font-bold flex items-center">
+                    {summary ? `${summary.activeProjects} active` : '—'}
+                  </span>
+                </div>
+                <div className="mt-4 h-1.5 w-full bg-brand-surface-container rounded-full overflow-hidden">
+                  <div className="h-full bg-brand-primary rounded-full" style={{ width: `${summary?.avgProgressPct ?? 0}%` }}></div>
+                </div>
+              </div>
+
+              {/* Productivity Card */}
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Productivity Index</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[9px] font-bold border border-amber-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> YELLOW
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">1.08</span>
+                  <span className="text-brand-status-critical text-xs font-bold flex items-center">
+                    <ArrowDownRight className="w-3.5 h-3.5" /> -0.04
+                  </span>
+                </div>
+                <p className="text-[10px] text-brand-on-surface-variant mt-3 italic leading-tight">Trend slowing due to weather delays in Northern site.</p>
+              </div>
+
+              {/* Schedule Card */}
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Schedule SPI</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ON TRACK
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">0.96</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold">Target: 1.00</span>
+                </div>
+                <div className="mt-4 flex gap-1">
+                  <div className="h-1 flex-1 bg-emerald-600 rounded-full"></div>
+                  <div className="h-1 flex-1 bg-emerald-600 rounded-full"></div>
+                  <div className="h-1 flex-1 bg-brand-outline-variant/30 rounded-full"></div>
+                  <div className="h-1 flex-1 bg-brand-outline-variant/30 rounded-full"></div>
+                </div>
+              </div>
+
+              {/* Budget Card */}
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Budget Util.</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[9px] font-bold border border-red-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-status-critical"></span> CRITICAL
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-3xl font-extrabold text-brand-primary">92.1%</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold">$4.2M left</span>
+                </div>
+                <p className="text-[10px] text-brand-status-critical mt-3 font-bold">Projected 5% overrun in Material Costs.</p>
+              </div>
+            </div>
+
+            {/* Secondary KPI Mini-Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
+                <div>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Forecast Profit</p>
+                  <p className="font-mono font-bold text-base text-brand-primary">$12.4M</p>
+                </div>
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
+                  <TrendingUp className="w-4.5 h-4.5" />
+                </div>
+              </div>
+
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
+                <div>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Cash Position</p>
+                  <p className="font-mono font-bold text-base text-brand-primary">$8.1M</p>
+                </div>
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
+                  <DollarSign className="w-4.5 h-4.5" />
+                </div>
+              </div>
+
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
+                <div>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Safety Score</p>
+                  <p className="font-mono font-bold text-base text-brand-primary">98.2</p>
+                </div>
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-emerald-600">
+                  <HeartPulse className="w-4.5 h-4.5" />
+                </div>
+              </div>
+
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
+                <div>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Open NCRs</p>
+                  <p className="font-mono font-bold text-base text-brand-status-critical">14</p>
+                </div>
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-status-critical">
+                  <AlertTriangle className="w-4.5 h-4.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Bento Grid Analytics charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Progress S-Curve chart */}
+              <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="font-bold text-brand-primary text-sm">S-Curve: Planned vs Actual Progress</h3>
+                    <p className="text-brand-on-surface-variant text-[11px]">Cumulative completion index tracking vs baseline plan.</p>
+                  </div>
+                  <span className="text-[10px] bg-brand-surface px-2.5 py-1 rounded border font-semibold text-brand-on-surface-variant">Last 6 Months</span>
+                </div>
+                
+                <div className="h-60 w-full mt-4" id="s-curve-chart-container">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={sCurveData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
+                      <Line type="monotone" dataKey="Actual" stroke="#00286a" strokeWidth={3} activeDot={{ r: 6 }} name="Actual Progress %" />
+                      <Line type="monotone" dataKey="Planned" stroke="#cbd5e1" strokeDasharray="5 5" strokeWidth={2} name="Planned Baseline %" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Cost Breakdown Donut Chart */}
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
+                <div>
+                  <h3 className="font-bold text-brand-primary text-sm">Cost Breakdown</h3>
+                  <p className="text-brand-on-surface-variant text-[11px]">Direct expenses divided by categories.</p>
+                </div>
+
+                <div className="h-44 w-full flex items-center justify-center relative mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={costData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {costData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Absolute Center Text */}
+                  <div className="absolute text-center">
+                    <p className="text-xs font-semibold text-brand-on-surface-variant">Total Spend</p>
+                    <p className="text-lg font-mono font-extrabold text-brand-primary">$18.2M</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-brand-outline-variant/15">
+                  {costData.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[11px] font-medium text-brand-on-surface-variant">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span>{item.name}: {item.value}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Productivity Area Chart */}
+              <div className="lg:col-span-3 bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+                <div>
+                  <h3 className="font-bold text-brand-primary text-sm">Productivity Trend Analysis</h3>
+                  <p className="text-brand-on-surface-variant text-[11px]">Weekly normalized labor units per volume logged.</p>
+                </div>
+                
+                <div className="h-44 w-full mt-4" id="prod-trend-chart-container">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={productivityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ff8a00" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#ff8a00" stopOpacity={0.01}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} domain={[0.8, 1.3]} />
+                      <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
+                      <Area type="monotone" dataKey="value" stroke="#ff8a00" strokeWidth={2.5} fillOpacity={1} fill="url(#colorProd)" name="Productivity Index" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            {/* Project List Subsection */}
+            <section className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-brand-primary text-sm">Active Project Portfolio</h3>
+                <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{projectsList.length} total</span>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-brand-outline-variant/20 text-brand-on-surface-variant font-bold">
+                      <th className="pb-3 pl-2">Project Name</th>
+                      <th className="pb-3">Location</th>
+                      <th className="pb-3">WBS Progress</th>
+                      <th className="pb-3">Crews</th>
+                      <th className="pb-3">Yield Rate</th>
+                      <th className="pb-3 pr-2 text-right">Cost Variance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectsList.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-brand-on-surface-variant">
+                          No projects yet. Use “New Project” to provision one.
+                        </td>
+                      </tr>
+                    )}
+                    {projectsList.map((proj) => (
+                      <tr key={proj.id} className="border-b border-brand-outline-variant/10 hover:bg-brand-surface/35 transition-all">
+                        <td className="py-3 pl-2 font-bold text-brand-primary">{proj.name}</td>
+                        <td className="py-3 text-brand-on-surface-variant">{proj.location ?? '—'}</td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-24 bg-brand-surface-container rounded-full overflow-hidden">
+                              <div className="h-full bg-brand-primary" style={{ width: `${proj.progressPct}%` }} />
+                            </div>
+                            <span className="font-mono font-bold">{proj.progressPct}%</span>
+                          </div>
+                        </td>
+                        {/* Crews / Yield / Cost variance are populated by Production (M2)
+                            and Finance (M3) — shown as pending until those modules land. */}
+                        <td className="py-3 font-semibold text-brand-on-surface-variant/50">—</td>
+                        <td className="py-3">
+                          <span className={`font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            proj.health === 'CRITICAL' ? 'bg-red-50 text-red-700' :
+                            proj.health === 'WARNING' ? 'bg-amber-50 text-amber-700' :
+                            'bg-emerald-50 text-emerald-700'
+                          }`}>{proj.health}</span>
+                        </td>
+                        <td className="py-3 pr-2 text-right font-mono font-bold text-brand-on-surface-variant/50">—</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          {/* Right Area: AI Insights & Map panel */}
+          <aside id="ai-insights-panel" className="w-ai-panel-width h-full bg-brand-surface-ai border-l border-brand-glass-border flex flex-col hidden xl:flex shrink-0">
+            {/* Header */}
+            <div className="p-5 border-b border-brand-glass-border bg-white">
+              <div className="flex items-center gap-1.5 text-brand-primary font-bold text-sm mb-1">
+                <Sparkles className="w-4 h-4 text-brand-secondary-container" />
+                <span>AI Assistant Insights</span>
+              </div>
+              <p className="text-[10px] text-brand-on-surface-variant font-medium">Intelligent portfolio audits refreshed 2m ago.</p>
+            </div>
+
+            {/* Alerts List */}
+            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
+              <AnimatePresence>
+                {alerts.map((alert) => (
+                  <motion.div 
+                    key={alert.id}
+                    initial={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                    className={`glass-panel p-4 rounded-xl relative overflow-hidden group hover:shadow-md transition-all border-l-4 ${
+                      alert.severity === 'critical' ? 'border-brand-status-critical bg-white' :
+                      alert.severity === 'warning' ? 'border-brand-status-warning bg-white' :
+                      'border-emerald-500 bg-white'
+                    }`}
+                  >
+                    <div className="ai-shimmer absolute inset-0 opacity-10 pointer-events-none"></div>
+                    
+                    <div className="flex justify-between items-start mb-2">
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                        alert.severity === 'critical' ? 'bg-red-50 text-red-700' :
+                        alert.severity === 'warning' ? 'bg-amber-50 text-amber-700' :
+                        'bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {alert.type}
+                      </span>
+                      <span className="text-[9px] font-bold text-brand-on-surface-variant">{alert.site}</span>
+                    </div>
+
+                    <h4 className="font-bold text-xs text-brand-primary">{alert.title}</h4>
+                    <p className="text-[11px] text-brand-on-surface-variant mt-1.5 leading-relaxed">{alert.description}</p>
+                    
+                    {alert.actionLabel && (
+                      <div className="mt-3 flex gap-2">
+                        <button 
+                          id={`alert-btn-${alert.id}`}
+                          onClick={() => {
+                            if (alert.severity === 'critical') {
+                              onNavigate(AppView.COPILOT);
+                            } else {
+                              handleRemoveAlert(alert.id);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded text-[10px] font-bold shadow-sm cursor-pointer ${
+                            alert.severity === 'critical' 
+                              ? 'bg-brand-primary text-white hover:bg-brand-primary-container' 
+                              : 'bg-brand-surface text-brand-primary hover:bg-brand-surface-container-high'
+                          }`}
+                        >
+                          {alert.actionLabel}
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {/* Static Construction Portfolio map mockup */}
+              <div className="pt-4">
+                <h4 className="text-[10px] font-extrabold text-brand-on-surface-variant uppercase tracking-wider mb-2">Portfolio Geography</h4>
+                <div className="aspect-square bg-brand-surface-container-high rounded-xl overflow-hidden relative border border-brand-outline-variant/30 flex items-center justify-center">
+                  {/* Grid Lines mockup */}
+                  <div className="absolute inset-0 opacity-15" style={{
+                    backgroundImage: 'linear-gradient(to right, #00286a 1px, transparent 1px), linear-gradient(to bottom, #00286a 1px, transparent 1px)',
+                    backgroundSize: '20px 20px'
+                  }}></div>
+                  <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-brand-on-surface-variant/35 tracking-wider select-none">
+                    CHICAGO URBAN SECTOR MAP
+                  </div>
+                  
+                  {/* Custom Map Pins */}
+                  <div className="absolute top-[28%] left-[35%] flex flex-col items-center group cursor-pointer z-10">
+                    <MapPin className="w-5 h-5 text-emerald-500 fill-emerald-100 filter drop-shadow-md" />
+                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site A - OK</span>
+                  </div>
+                  <div className="absolute top-[55%] left-[62%] flex flex-col items-center group cursor-pointer z-10">
+                    <MapPin className="w-5 h-5 text-brand-status-critical fill-red-100 filter drop-shadow-md animate-bounce" />
+                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site C - Delay</span>
+                  </div>
+                  <div className="absolute top-[72%] left-[45%] flex flex-col items-center group cursor-pointer z-10">
+                    <MapPin className="w-5 h-5 text-brand-status-warning fill-amber-100 filter drop-shadow-md" />
+                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site B - Caution</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sidebar quick copilot chatter */}
+            <div className="p-4 bg-white border-t border-brand-glass-border">
+              <div className="h-32 overflow-y-auto custom-scrollbar mb-2 space-y-2 text-[10px]">
+                {copilotMessages.map((msg, i) => (
+                  <div key={i} className={`p-2 rounded-lg max-w-[90%] leading-relaxed ${msg.sender === 'user' ? 'bg-brand-primary text-white ml-auto' : 'bg-brand-surface-ai text-brand-on-surface-variant'}`}>
+                    <p>{msg.text}</p>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="relative">
+                <input 
+                  id="sidebar-copilot-input"
+                  type="text" 
+                  placeholder="Ask copilot..." 
+                  value={copilotInput}
+                  onChange={(e) => setCopilotInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCopilotSend()}
+                  className="w-full bg-brand-surface border-none rounded-lg py-2 pl-3 pr-8 text-xs outline-none focus:ring-1 focus:ring-brand-primary font-medium text-brand-on-surface"
+                />
+                <button 
+                  id="sidebar-copilot-send"
+                  onClick={handleCopilotSend}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-brand-primary hover:text-brand-secondary-container transition-colors cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </aside>
+        </main>
+      </div>
+
+      {/* New Project Dialog Modal */}
+      <AnimatePresence>
+        {isNewProjectOpen && (
+          <div className="fixed inset-0 z-50 bg-brand-on-background/40 backdrop-blur-sm flex items-center justify-center px-4" id="new-project-modal">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
+            >
+              <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Provision Enterprise Project</h3>
+              <p className="text-brand-on-surface-variant text-xs mb-4">Set up a new physical node under Inspecta AI supervision.</p>
+              
+              <form onSubmit={handleCreateProject} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">PROJECT NAME</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. Skyline Tower B"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary transition-all font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">GEOGRAPHIC REGION</label>
+                  <select 
+                    value={newProjectLocation}
+                    onChange={(e) => setNewProjectLocation(e.target.value)}
+                    className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary transition-all font-semibold text-brand-primary"
+                  >
+                    <option value="Chicago, IL">Chicago, IL (Headquarters)</option>
+                    <option value="Austin, TX">Austin, TX (South Regional)</option>
+                    <option value="New York, NY">New York, NY (East Coast)</option>
+                    <option value="San Francisco, CA">San Francisco, CA (West Coast)</option>
+                  </select>
+                </div>
+
+                {createError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+                    {createError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 justify-end pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewProjectOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-brand-on-surface-variant hover:bg-brand-surface rounded-lg transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={createProject.isPending}
+                    className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container transition-all disabled:opacity-60"
+                  >
+                    {createProject.isPending ? 'Provisioning…' : 'Provision Project'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

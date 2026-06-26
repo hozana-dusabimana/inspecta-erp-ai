@@ -1,0 +1,19 @@
+{
+  "name": "INSPECTA BUILDOS",
+  "short_name": "BuildOS",
+  "description": "AI-Powered Construction Productivity & Profitability ERP",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8f9ff",
+  "theme_color": "#00286a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

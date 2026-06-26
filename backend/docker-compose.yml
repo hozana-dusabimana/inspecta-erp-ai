@@ -1,0 +1,54 @@
+# INSPECTA BUILDOS — `docker compose up` runs the backend against the
+# bundled Docker Postgres (DATABASE_URL is overridden to the `db` service).
+# Run from the backend/ folder:  docker compose up --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: inspecta-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inspecta_buildos
+    ports:
+      - '5432:5432'
+    volumes:
+      - inspecta_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d inspecta_buildos']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inspecta-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # Docker Postgres connection (overrides any local DATABASE_URL):
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/inspecta_buildos?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-docker-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-docker-refresh-secret-change-me}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.ai}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
+    ports:
+      - '4000:4000'
+
+volumes:
+  inspecta_pgdata:

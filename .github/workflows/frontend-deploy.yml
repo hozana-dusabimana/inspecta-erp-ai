@@ -1,0 +1,63 @@
+name: Frontend CI/CD
+
+# Runs only when frontend code (or this workflow) changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & typecheck
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Build (production API URL)
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://api-inspecta.isiri.rw/api
+        run: npx vite build
+
+      - name: Package static bundle
+        run: tar czf /tmp/frontend.tgz -C frontend/dist .
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Ship to static site root (exec channel; SFTP is disabled on host)
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/frontend.tgz" < /tmp/frontend.tgz
+          sshpass -e ssh $OPTS "$USER@$HOST" '
+            set -e
+            D=/home/inspecta/htdocs/inspecta.isiri.rw
+            rm -rf "$D"/*
+            tar xzf /tmp/frontend.tgz -C "$D"
+            chown -R inspecta:inspecta "$D"
+          '
+
+      - name: Smoke check
+        run: curl -fsS -m 15 -o /dev/null -w "inspecta.isiri.rw HTTP %{http_code}\n" https://inspecta.isiri.rw/

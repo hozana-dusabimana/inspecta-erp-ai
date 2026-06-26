@@ -34,6 +34,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
+      BUILD_VERSION: ${BUILD_VERSION:-dev}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://inspecta.isiri.rw}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-inspecta_buildos}?schema=public
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set in .env}

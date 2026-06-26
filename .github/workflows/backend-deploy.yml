@@ -54,6 +54,8 @@ jobs:
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           sshpass -e ssh $OPTS "$USER@$HOST" "mkdir -p /home/inspectaapi/app"
           sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/backend.tgz" < /tmp/backend.tgz
+          # Stamp the deployed commit SHA into .env so compose injects it at runtime.
+          sshpass -e ssh $OPTS "$USER@$HOST" "cd /home/inspectaapi/app && touch .env && sed -i '/^BUILD_VERSION=/d' .env && echo 'BUILD_VERSION=${{ github.sha }}' >> .env"
           sshpass -e ssh $OPTS "$USER@$HOST" '
             set -e
             cd /home/inspectaapi/app

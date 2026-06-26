@@ -31,10 +31,11 @@ jobs:
           npm ci
           npx tsc --noEmit
 
-      - name: Build (production API URL)
+      - name: Build (production API URL + commit stamp)
         working-directory: frontend
         env:
           VITE_API_URL: https://api-inspecta.isiri.rw/api
+          VITE_BUILD: ${{ github.sha }}
         run: npx vite build
 
       - name: Package static bundle

@@ -40,7 +40,11 @@ export function createApp() {
   app.get('/api/health', (_req, res) => {
     res.json({
       success: true,
-      data: { status: 'ok', service: 'inspecta-buildos-backend', build: 'ci-verify-002' },
+      data: {
+        status: 'ok',
+        service: 'inspecta-buildos-backend',
+        build: process.env.BUILD_VERSION || 'dev',
+      },
     });
   });
 

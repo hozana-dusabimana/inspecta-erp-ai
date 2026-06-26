@@ -158,18 +158,18 @@ export async function ask(
     },
   ];
 
-  const provider = providerName ? getProvider(providerName) : anyConfiguredProvider();
-
-  // Honest offline mode: no key configured -> deterministic answer from real data, no fabrication.
-  if (!provider || !provider.isConfigured()) {
+  // Deterministic real-data answer — used when no provider is configured AND as a
+  // graceful fallback when the live provider errors (e.g. free-tier upstream 429).
+  const offlineAnswer = (note?: string): CopilotAnswer => {
     const p = context.portfolio;
+    const f = context.finance;
     const text =
-      `AI provider is not configured, so here is a direct read from your live data (no AI inference):\n\n` +
+      (note ? `${note}\n\n` : '') +
+      `Direct read from your live data (no AI inference):\n\n` +
       `• Projects: ${p.totalProjects} total — ${p.activeProjects} active, ${p.completedProjects} completed.\n` +
       `• Average progress across the portfolio: ${p.avgProgressPct}%.\n` +
-      `• Total budget under management: ${p.totalBudget.toLocaleString()} (base currency).\n` +
+      `• Budget: ${f.budget.toLocaleString()} · Actual cost: ${f.actualCost.toLocaleString()} · Variance: ${f.costVariance.toLocaleString()}.\n` +
       `• Health: ${p.healthBreakdown.OPTIMAL} optimal, ${p.healthBreakdown.WARNING} warning, ${p.healthBreakdown.CRITICAL} critical.\n\n` +
-      `Set OPENROUTER_API_KEY (free), ANTHROPIC_API_KEY, or GEMINI_API_KEY in the backend .env to enable full AI reasoning.\n\n` +
       `Confidence: ${p.totalProjects > 0 ? 70 : 20}%`;
     return {
       text,
@@ -179,15 +179,33 @@ export async function ask(
       groundedOn: { projects: context.projects.length, generatedAt: isoNow },
       offline: true,
     };
-  }
-
-  const completion = await provider.complete(messages);
-  return {
-    text: completion.text,
-    confidence: extractConfidence(completion.text),
-    provider: completion.provider,
-    model: completion.model,
-    groundedOn: { projects: context.projects.length, generatedAt: isoNow },
-    offline: false,
   };
+
+  const provider = providerName ? getProvider(providerName) : anyConfiguredProvider();
+  if (!provider || !provider.isConfigured()) return offlineAnswer();
+
+  // Try the live provider with one retry on transient errors, then degrade gracefully.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const completion = await provider.complete(messages);
+      if (!completion.text?.trim()) throw new Error('empty completion');
+      return {
+        text: completion.text,
+        confidence: extractConfidence(completion.text),
+        provider: completion.provider,
+        model: completion.model,
+        groundedOn: { projects: context.projects.length, generatedAt: isoNow },
+        offline: false,
+      };
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.warn('AI provider unavailable, using data fallback:', lastErr instanceof Error ? lastErr.message : lastErr);
+  return offlineAnswer(
+    `(Live AI is busy right now — likely free-tier rate limiting. Showing a verified data read instead.)`,
+  );
 }

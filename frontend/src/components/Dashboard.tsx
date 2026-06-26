@@ -115,7 +115,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   // Interactive mini-copilot state inside the sidebar
   const [copilotInput, setCopilotInput] = useState('');
   const [copilotMessages, setCopilotMessages] = useState<Array<{sender: 'user' | 'ai', text: string}>>([
-    { sender: 'ai', text: "Hello Alex. Structural steel at Site C is delayed. Type here or open the Copilot Workspace to investigate." }
+    { sender: 'ai', text: "Hi — I'm Inspecta Copilot. Ask me anything about your live project data, or open the Copilot Workspace." }
   ]);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -154,6 +154,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     value: Number(c.amount),
     color: CATEGORY_COLORS[c.category] ?? '#9aa0b4',
   }));
+  const costTotal = costData.reduce((s: number, c: any) => s + c.value, 0);
 
   // S-curve: cumulative planned vs actual from production entries.
   let cumP = 0;
@@ -449,9 +450,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
         </header>
 
         {/* Dashboard Canvas Wrapper */}
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex-1 flex flex-col xl:flex-row xl:overflow-hidden">
           {/* Left Area: General Charts & KPI grids */}
-          <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar space-y-6">
+          <div className="flex-1 p-6 md:p-8 xl:overflow-y-auto custom-scrollbar space-y-6 min-w-0">
             {/* Header Title Banner */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div>
@@ -655,15 +656,18 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   {/* Absolute Center Text */}
                   <div className="absolute text-center">
                     <p className="text-xs font-semibold text-brand-on-surface-variant">Total Spend</p>
-                    <p className="text-lg font-mono font-extrabold text-brand-primary">$18.2M</p>
+                    <p className="text-lg font-mono font-extrabold text-brand-primary">{compactMoney(costTotal)}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-brand-outline-variant/15">
-                  {costData.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 text-[11px] font-medium text-brand-on-surface-variant">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span>{item.name}: {item.value}%</span>
+                  {costData.length === 0 && (
+                    <span className="text-[11px] text-brand-on-surface-variant col-span-2">No cost entries yet.</span>
+                  )}
+                  {costData.map((item: { name: string; value: number; color: string }, idx: number) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[11px] font-medium text-brand-on-surface-variant min-w-0">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="truncate">{item.name}: {costTotal > 0 ? Math.round((item.value / costTotal) * 100) : 0}%</span>
                     </div>
                   ))}
                 </div>
@@ -754,19 +758,22 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </section>
           </div>
 
-          {/* Right Area: AI Insights & Map panel */}
-          <aside id="ai-insights-panel" className="w-ai-panel-width h-full bg-brand-surface-ai border-l border-brand-glass-border flex flex-col hidden xl:flex shrink-0">
+          {/* Right Area: AI Insights & Map panel — full width on mobile, side column on xl */}
+          <aside id="ai-insights-panel" className="w-full xl:w-ai-panel-width xl:h-full bg-brand-surface-ai border-t xl:border-t-0 xl:border-l border-brand-glass-border flex flex-col shrink-0">
             {/* Header */}
             <div className="p-5 border-b border-brand-glass-border bg-white">
               <div className="flex items-center gap-1.5 text-brand-primary font-bold text-sm mb-1">
                 <Sparkles className="w-4 h-4 text-brand-secondary-container" />
                 <span>AI Assistant Insights</span>
               </div>
-              <p className="text-[10px] text-brand-on-surface-variant font-medium">Intelligent portfolio audits refreshed 2m ago.</p>
+              <p className="text-[10px] text-brand-on-surface-variant font-medium">Live insights from your project data ({alerts.length} active).</p>
             </div>
 
             {/* Alerts List */}
-            <div className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
+            <div className="xl:flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4 max-h-[26rem] xl:max-h-none">
+              {alerts.length === 0 && (
+                <p className="text-[11px] text-brand-on-surface-variant text-center py-6">No active insights right now.</p>
+              )}
               <AnimatePresence>
                 {alerts.map((alert) => (
                   <motion.div 
@@ -820,32 +827,32 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 ))}
               </AnimatePresence>
 
-              {/* Static Construction Portfolio map mockup */}
+              {/* Portfolio Geography — real projects grouped by location + health */}
               <div className="pt-4">
                 <h4 className="text-[10px] font-extrabold text-brand-on-surface-variant uppercase tracking-wider mb-2">Portfolio Geography</h4>
-                <div className="aspect-square bg-brand-surface-container-high rounded-xl overflow-hidden relative border border-brand-outline-variant/30 flex items-center justify-center">
-                  {/* Grid Lines mockup */}
-                  <div className="absolute inset-0 opacity-15" style={{
-                    backgroundImage: 'linear-gradient(to right, #00286a 1px, transparent 1px), linear-gradient(to bottom, #00286a 1px, transparent 1px)',
-                    backgroundSize: '20px 20px'
-                  }}></div>
-                  <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-brand-on-surface-variant/35 tracking-wider select-none">
-                    CHICAGO URBAN SECTOR MAP
-                  </div>
-                  
-                  {/* Custom Map Pins */}
-                  <div className="absolute top-[28%] left-[35%] flex flex-col items-center group cursor-pointer z-10">
-                    <MapPin className="w-5 h-5 text-emerald-500 fill-emerald-100 filter drop-shadow-md" />
-                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site A - OK</span>
-                  </div>
-                  <div className="absolute top-[55%] left-[62%] flex flex-col items-center group cursor-pointer z-10">
-                    <MapPin className="w-5 h-5 text-brand-status-critical fill-red-100 filter drop-shadow-md animate-bounce" />
-                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site C - Delay</span>
-                  </div>
-                  <div className="absolute top-[72%] left-[45%] flex flex-col items-center group cursor-pointer z-10">
-                    <MapPin className="w-5 h-5 text-brand-status-warning fill-amber-100 filter drop-shadow-md" />
-                    <span className="absolute -top-6 bg-brand-primary text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Site B - Caution</span>
-                  </div>
+                <div className="space-y-2">
+                  {projectsList.length === 0 && (
+                    <p className="text-[11px] text-brand-on-surface-variant px-1">No projects to map yet.</p>
+                  )}
+                  {projectsList.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => onNavigate(AppView.PORTFOLIO)}
+                      className="w-full flex items-center justify-between gap-2 bg-white rounded-lg px-3 py-2 border border-brand-outline-variant/30 hover:shadow-sm transition-all text-left min-w-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MapPin className={`w-4 h-4 shrink-0 ${
+                          p.health === 'CRITICAL' ? 'text-brand-status-critical' :
+                          p.health === 'WARNING' ? 'text-brand-status-warning' : 'text-emerald-500'
+                        }`} />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-brand-primary truncate">{p.name}</p>
+                          <p className="text-[10px] text-brand-on-surface-variant truncate">{p.location ?? 'No location set'}</p>
+                        </div>
+                      </div>
+                      <span className="font-mono text-[10px] font-bold text-brand-on-surface-variant shrink-0">{p.progressPct}%</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

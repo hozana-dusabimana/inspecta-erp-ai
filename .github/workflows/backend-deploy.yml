@@ -48,8 +48,8 @@ jobs:
       - name: Ship & redeploy (exec channel; SFTP is disabled on host)
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
-          HOST: ${{ secrets.SSH_HOST }}
-          USER: ${{ secrets.SSH_USER }}
+          HOST: 176.126.87.142
+          USER: root
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           sshpass -e ssh $OPTS "$USER@$HOST" "mkdir -p /home/inspectaapi/app"
@@ -66,8 +66,8 @@ jobs:
       - name: Health check
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
-          HOST: ${{ secrets.SSH_HOST }}
-          USER: ${{ secrets.SSH_USER }}
+          HOST: 176.126.87.142
+          USER: root
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           sleep 8

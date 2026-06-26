@@ -46,8 +46,8 @@ jobs:
       - name: Ship to static site root (exec channel; SFTP is disabled on host)
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
-          HOST: ${{ secrets.SSH_HOST }}
-          USER: ${{ secrets.SSH_USER }}
+          HOST: 176.126.87.142
+          USER: root
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
           sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/frontend.tgz" < /tmp/frontend.tgz

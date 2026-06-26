@@ -410,8 +410,15 @@ done
 
 **Release approved by:** ____________________  **Date:** __________
 
-> Known, documented limitations (not defects): AI runs in offline mode until an API
-> key is configured; PWA offline is app-shell + cached reads (no offline write queue);
-> QR is reference-code based (no camera scanning); CPM models finish-to-start
-> dependencies. A few executive-dashboard tiles (productivity index, SPI, budget util)
-> are static pending their historical-series wiring; all module data is real.
+> Known, documented limitations (not defects):
+> - **AI**: live via OpenRouter; the **free** model is rate-limited upstream, so the
+>   Copilot gracefully falls back to a verified real-data answer when the free tier is
+>   busy. Add OpenRouter credits or an `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` for
+>   always-live reasoning.
+> - **PWA offline**: app-shell + cached reads (no offline write queue / background sync).
+> - **QR**: reference-code based (no camera scanning).
+> - **CPM**: finish-to-start dependencies only.
+>
+> Resolved since first release: email notifications (Module 9), rate limiting (Module 21),
+> all dashboard tiles + AI-insights alerts now read real data, and the "Book Demo" form
+> posts to a real endpoint. No mock data remains.

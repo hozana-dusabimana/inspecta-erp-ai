@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Bot, 
-  Calendar, 
-  Check, 
-  Clock, 
-  HardHat, 
-  Mail, 
-  Sparkles, 
-  User, 
-  X 
+import {
+  Bot,
+  Calendar,
+  Check,
+  Clock,
+  HardHat,
+  Mail,
+  Sparkles,
+  User,
+  X
 } from 'lucide-react';
 import { AppView, ChatMessage, DailyProductionEntry } from './types';
 import { useAuth } from './lib/auth';
@@ -43,7 +43,7 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);
-  
+
   // Demo Booking state
   const [demoName, setDemoName] = useState('');
   const [demoEmail, setDemoEmail] = useState('');
@@ -130,28 +130,28 @@ export default function App() {
           className="min-h-screen"
         >
           {currentView === AppView.LANDING && (
-            <LandingPage 
-              onNavigate={setCurrentView} 
-              onBookDemo={() => setIsDemoModalOpen(true)} 
+            <LandingPage
+              onNavigate={setCurrentView}
+              onBookDemo={() => setIsDemoModalOpen(true)}
             />
           )}
 
           {currentView === AppView.LOGIN && (
-            <LoginPage 
+            <LoginPage
               onLoginSuccess={handleLoginSuccess}
               onNavigate={setCurrentView}
             />
           )}
 
           {currentView === AppView.DASHBOARD && (
-            <Dashboard 
+            <Dashboard
               onNavigate={setCurrentView}
               onLogout={handleLogout}
             />
           )}
 
           {currentView === AppView.DAILY_ENTRY && (
-            <DailyEntry 
+            <DailyEntry
               onNavigate={setCurrentView}
               onSubmitSuccess={handleDailyEntrySubmit}
             />
@@ -195,13 +195,13 @@ export default function App() {
       <AnimatePresence>
         {isDemoModalOpen && (
           <div className="fixed inset-0 z-50 bg-brand-on-surface/50 backdrop-blur-md flex items-center justify-center px-4" id="demo-scheduler-modal">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30"
             >
-              <button 
+              <button
                 id="btn-close-demo"
                 onClick={resetDemoState}
                 className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface"
@@ -222,7 +222,7 @@ export default function App() {
                   <form onSubmit={handleDemoSubmit} className="space-y-4" id="demo-form">
                     <div className="space-y-1">
                       <label className="font-sans text-[10px] font-bold text-brand-on-surface-variant block" htmlFor="demo-name-input">FULL NAME</label>
-                      <input 
+                      <input
                         id="demo-name-input"
                         type="text"
                         required
@@ -235,7 +235,7 @@ export default function App() {
 
                     <div className="space-y-1">
                       <label className="font-sans text-[10px] font-bold text-brand-on-surface-variant block" htmlFor="demo-email-input">CORPORATE EMAIL</label>
-                      <input 
+                      <input
                         id="demo-email-input"
                         type="email"
                         required
@@ -248,7 +248,7 @@ export default function App() {
 
                     <div className="space-y-1">
                       <label className="font-sans text-[10px] font-bold text-brand-on-surface-variant block" htmlFor="demo-company-input">CONSTRUCTION FIRM</label>
-                      <input 
+                      <input
                         id="demo-company-input"
                         type="text"
                         required
@@ -259,7 +259,7 @@ export default function App() {
                       />
                     </div>
 
-                    <button 
+                    <button
                       id="btn-demo-submit-form"
                       type="submit"
                       disabled={isDemoSubmitting}
@@ -278,7 +278,7 @@ export default function App() {
                   <p className="text-brand-on-surface-variant text-xs leading-relaxed max-w-xs mx-auto mb-6">
                     Thank you {demoName || 'there'}! Your demo request for <strong>{demoCompany || 'your company'}</strong> has been sent to our team. We'll reach out at <strong>{demoEmail}</strong> shortly.
                   </p>
-                  <button 
+                  <button
                     id="btn-demo-done"
                     onClick={resetDemoState}
                     className="px-6 py-2.5 bg-brand-primary text-white font-bold text-xs rounded-lg hover:bg-brand-primary-container transition-all cursor-pointer"

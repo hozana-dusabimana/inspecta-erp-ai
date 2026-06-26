@@ -7,12 +7,13 @@ The system replaces mock data with a real, production-grade backend (PostgreSQL 
 Prisma + JWT/RBAC) and an AI Copilot grounded strictly on live project data.
 
 > **Repository layout (enforced):** everything lives in `backend/` or `frontend/`.
-> The only root-level files are this `README.md` and `run.ps1`.
+> The only root-level files are this `README.md`, `run.ps1`, and `run.sh`.
 
 ```
 inspecta-erp-ai/
 ├── README.md          # this file
 ├── run.ps1            # one-command launcher (local or docker)
+├── run.sh             # Linux/WSL launcher (local or docker)
 ├── backend/           # Node + Express + TypeScript + Prisma API
 └── frontend/          # React 19 + Vite + Tailwind (Stitch design, wired to the API)
 ```
@@ -26,9 +27,16 @@ inspecta-erp-ai/
 - One of: a local PostgreSQL 14+ **or** Docker Desktop
 
 ### Option A — Local Postgres (`npm start`)
+Windows PowerShell:
 ```powershell
 ./run.ps1
 ```
+
+Linux/WSL:
+```bash
+./run.sh
+```
+
 This installs deps, copies `.env` files, then for the backend runs
 `prisma generate → db push → seed → API`, and starts the frontend.
 
@@ -41,12 +49,19 @@ npm install && npm run dev           # http://localhost:3000
 ```
 
 ### Option B — Docker Postgres (`docker compose up`)
+Windows PowerShell:
 ```powershell
 ./run.ps1 -Docker
 ```
+
+Linux/WSL:
+```bash
+./run.sh --docker
+```
+
 Manually:
 ```bash
-cd backend && docker compose up --build   # bundles Postgres + backend
+cd backend && docker-compose up --build   # or: docker compose up --build
 cd frontend && npm install && npm run dev
 ```
 In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you do

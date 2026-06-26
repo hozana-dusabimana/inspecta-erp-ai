@@ -97,6 +97,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   SUBCONTRACTOR: '#7c9cff', OVERHEAD: '#c4c6d3', OTHER: '#9aa0b4',
 };
 
+// Compact currency for the KPI mini-grid (e.g. 1450000 -> "$1.5M").
+function compactMoney(n: number): string {
+  const v = Number(n || 0);
+  const a = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(1)}K`;
+  return `${sign}$${a.toFixed(0)}`;
+}
+
 export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const [activeTab, setActiveTab] = useState<'portfolio' | 'region' | 'risk'>('portfolio');
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,6 +177,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   });
   const kpis = execResp?.data?.kpis;
   const execFinance = execResp?.data?.finance;
+  const compliance = execResp?.data?.compliance;
+  // Safety score derived from real incident count (100 minus a penalty per incident).
+  const safetyScore = compliance ? Math.max(0, 100 - Number(compliance.incidents) * 5).toFixed(1) : '—';
 
   // Real notifications power the AI Insights panel (replaces mock alerts).
   const { data: notifResp } = useQuery({
@@ -461,17 +475,17 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
 
             {/* KPI Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-5">
               {/* Progress Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Project Progress</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all min-w-0">
+                <div className="flex justify-between items-start gap-2 mb-4 min-w-0">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Project Progress</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> GREEN
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{(summary?.avgProgressPct ?? 0).toFixed(1)}%</span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{(summary?.avgProgressPct ?? 0).toFixed(1)}%</span>
                   <span className="text-brand-on-surface-variant text-xs font-bold flex items-center">
                     {summary ? `${summary.activeProjects} active` : '—'}
                   </span>
@@ -482,31 +496,31 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Productivity Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Productivity Index</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[9px] font-bold border border-amber-200">
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+                <div className="flex justify-between items-start gap-2 mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Productivity Index</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-amber-50 text-amber-700 text-[9px] font-bold border border-amber-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> YELLOW
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
-                  <span className="text-brand-on-surface-variant text-xs font-semibold">out/lh</span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">out/lh</span>
                 </div>
                 <p className="text-[10px] text-brand-on-surface-variant mt-3 italic leading-tight">Actual output per labor hour across production entries.</p>
               </div>
 
               {/* Schedule Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Schedule SPI</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+                <div className="flex justify-between items-start gap-2 mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Schedule SPI</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ON TRACK
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? Number(kpis.spi).toFixed(2) : '—'}</span>
-                  <span className="text-brand-on-surface-variant text-xs font-semibold">Target: 1.00</span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? Number(kpis.spi).toFixed(2) : '—'}</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">Target: 1.00</span>
                 </div>
                 <div className="mt-4 flex gap-1">
                   <div className="h-1 flex-1 bg-emerald-600 rounded-full"></div>
@@ -517,16 +531,16 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Budget Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all">
-                <div className="flex justify-between items-start mb-4">
-                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Budget Util.</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[9px] font-bold border border-red-200">
+              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+                <div className="flex justify-between items-start gap-2 mb-4">
+                  <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Budget Util.</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-red-50 text-red-700 text-[9px] font-bold border border-red-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-status-critical"></span> CRITICAL
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="font-mono text-3xl font-extrabold text-brand-primary">{kpis ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : '—'}</span>
-                  <span className="text-brand-on-surface-variant text-xs font-semibold">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : '—'}</span>
+                  <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">
                     {execFinance ? `${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
                   </span>
                 </div>
@@ -535,43 +549,43 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
 
             {/* Secondary KPI Mini-Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Forecast Profit</p>
-                  <p className="font-mono font-bold text-base text-brand-primary">$12.4M</p>
+            <div className="grid grid-cols-2 2xl:grid-cols-4 gap-4">
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
+                <div className="min-w-0">
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Forecast Profit</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance ? compactMoney(execFinance.forecastProfit) : '—'}</p>
                 </div>
-                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <TrendingUp className="w-4.5 h-4.5" />
                 </div>
               </div>
 
-              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Cash Position</p>
-                  <p className="font-mono font-bold text-base text-brand-primary">$8.1M</p>
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
+                <div className="min-w-0">
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Cash Received</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance ? compactMoney(execFinance.received) : '—'}</p>
                 </div>
-                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <DollarSign className="w-4.5 h-4.5" />
                 </div>
               </div>
 
-              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Safety Score</p>
-                  <p className="font-mono font-bold text-base text-brand-primary">98.2</p>
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
+                <div className="min-w-0">
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Safety Score</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate">{safetyScore}</p>
                 </div>
-                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-emerald-600">
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-emerald-600 shrink-0">
                   <HeartPulse className="w-4.5 h-4.5" />
                 </div>
               </div>
 
-              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center shadow-sm">
-                <div>
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Open NCRs</p>
-                  <p className="font-mono font-bold text-base text-brand-status-critical">14</p>
+              <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
+                <div className="min-w-0">
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Open NCRs</p>
+                  <p className="font-mono font-bold text-base text-brand-status-critical truncate">{compliance ? compliance.openNcrs : '—'}</p>
                 </div>
-                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-status-critical">
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-status-critical shrink-0">
                   <AlertTriangle className="w-4.5 h-4.5" />
                 </div>
               </div>

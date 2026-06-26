@@ -59,5 +59,11 @@ jobs:
             chown -R inspecta:inspecta "$D"
           '
 
-      - name: Smoke check
-        run: curl -fsS -m 15 -o /dev/null -w "inspecta.isiri.rw HTTP %{http_code}\n" https://inspecta.isiri.rw/
+      - name: Smoke check (retry)
+        run: |
+          for i in $(seq 1 6); do
+            code=$(curl -s -m 15 -o /dev/null -w "%{http_code}" "https://inspecta.isiri.rw/?cb=$RANDOM")
+            if [ "$code" = "200" ]; then echo "✅ inspecta.isiri.rw HTTP 200"; exit 0; fi
+            echo "got HTTP $code, retrying... ($i)"; sleep 5
+          done
+          echo "❌ frontend smoke check failed"; exit 1

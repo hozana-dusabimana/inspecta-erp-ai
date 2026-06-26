@@ -63,12 +63,24 @@ jobs:
             docker image prune -f >/dev/null 2>&1 || true
           '
 
-      - name: Health check
+      - name: Health check (retry until the API is listening)
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}
           HOST: 176.126.87.142
           USER: root
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          sleep 8
-          sshpass -e ssh $OPTS "$USER@$HOST" 'curl -fsS -m 10 http://127.0.0.1:5010/api/health'
+          # The container runs prisma db push + seed before Node listens, so the
+          # port can accept-then-reset for ~15s. Poll for up to ~2 minutes.
+          for i in $(seq 1 24); do
+            if sshpass -e ssh $OPTS "$USER@$HOST" 'curl -fsS -m 5 http://127.0.0.1:5010/api/health' ; then
+              echo ""
+              echo "✅ backend healthy after $((i*5))s"
+              exit 0
+            fi
+            echo "waiting for backend to come up... (attempt $i)"
+            sleep 5
+          done
+          echo "❌ backend did not become healthy in time; recent logs:"
+          sshpass -e ssh $OPTS "$USER@$HOST" 'docker logs --tail 30 inspecta-prod-backend 2>&1' || true
+          exit 1

@@ -203,15 +203,26 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     actionLabel: n.isRead ? undefined : 'Mark as Reviewed',
   }));
 
-  // "Portfolio / By Region / Risk Priority" tabs reorder the portfolio table.
+  // "Portfolio / By Region / Risk Priority" tabs scope the project set + the
+  // Project Progress KPI. Risk Priority filters to at-risk (non-optimal) projects.
   const healthRank: Record<string, number> = { CRITICAL: 0, WARNING: 1, OPTIMAL: 2 };
-  const displayedProjects = [...projectsList].sort((a, b) => {
+  const scoped = activeTab === 'risk' ? projectsList.filter((p) => p.health !== 'OPTIMAL') : [...projectsList];
+  const displayedProjects = scoped.sort((a, b) => {
     if (activeTab === 'region') return (a.location ?? '').localeCompare(b.location ?? '');
     if (activeTab === 'risk')
       return (healthRank[a.health] ?? 3) - (healthRank[b.health] ?? 3) || a.progressPct - b.progressPct;
     return 0; // Portfolio = default (most-recent) order
   });
-  const viewLabel = activeTab === 'region' ? 'by region' : activeTab === 'risk' ? 'by risk priority' : 'all projects';
+  const viewLabel = activeTab === 'region' ? 'by region' : activeTab === 'risk' ? 'at risk' : 'all projects';
+  // Project Progress KPI recomputes from the scoped set so the tabs change the number.
+  const scopedAvgProgress = displayedProjects.length
+    ? displayedProjects.reduce((s, p) => s + p.progressPct, 0) / displayedProjects.length
+    : 0;
+  const regionCount = new Set(projectsList.map((p) => p.location || 'Unspecified')).size;
+  const progressSubtext =
+    activeTab === 'region' ? `${regionCount} regions`
+    : activeTab === 'risk' ? `${displayedProjects.length} at risk`
+    : `${summary?.activeProjects ?? 0} active`;
 
   const createProject = useMutation({
     mutationFn: (input: { code: string; name: string; location: string; status: string }) =>
@@ -525,13 +536,13 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   </span>
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{(summary?.avgProgressPct ?? 0).toFixed(1)}%</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{scopedAvgProgress.toFixed(1)}%</span>
                   <span className="text-brand-on-surface-variant text-xs font-bold flex items-center">
-                    {summary ? `${summary.activeProjects} active` : '—'}
+                    {progressSubtext}
                   </span>
                 </div>
                 <div className="mt-4 h-1.5 w-full bg-brand-surface-container rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-primary rounded-full" style={{ width: `${summary?.avgProgressPct ?? 0}%` }}></div>
+                  <div className="h-full bg-brand-primary rounded-full transition-all" style={{ width: `${scopedAvgProgress}%` }}></div>
                 </div>
               </div>
 
@@ -733,7 +744,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             <section className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-brand-primary text-sm">Active Project Portfolio</h3>
-                <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{projectsList.length} total · {viewLabel}</span>
+                <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{displayedProjects.length} of {projectsList.length} · {viewLabel}</span>
               </div>
               
               <div className="overflow-x-auto">
@@ -752,7 +763,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     {displayedProjects.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-6 text-center text-brand-on-surface-variant">
-                          No projects yet. Use “New Project” to provision one.
+                          {activeTab === 'risk'
+                            ? 'No at-risk projects — all are healthy. 🎉'
+                            : 'No projects yet. Use “New Project” to provision one.'}
                         </td>
                       </tr>
                     )}

@@ -27,6 +27,7 @@ import ReportsPage from './components/ReportsPage';
 import ProfitabilityPage from './components/ProfitabilityPage';
 import PortfolioPage from './components/PortfolioPage';
 import ApprovalsPage from './components/ApprovalsPage';
+import AdminPage from './components/AdminPage';
 import { MODULES } from './modules';
 
 export default function App() {
@@ -183,6 +184,10 @@ export default function App() {
 
           {currentView === AppView.APPROVALS && (
             <ApprovalsPage onNavigate={setCurrentView} onLogout={handleLogout} />
+          )}
+
+          {currentView === AppView.ADMIN && (
+            <AdminPage onNavigate={setCurrentView} onLogout={handleLogout} />
           )}
 
           {MODULES[currentView] && (

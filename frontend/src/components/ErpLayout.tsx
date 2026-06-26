@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   HardHat, Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, Bell, Search, LogOut, ShoppingCart, ShieldAlert, FileText, BarChart3, Settings,
-  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X,
+  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X, ShieldCheck,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
@@ -35,6 +35,8 @@ const NAV: NavItem[] = [
   { id: 'nav-documents', label: 'Documents', icon: FileText, view: AppView.DOCUMENTS, perm: 'document:read' },
   { id: 'nav-reports', label: 'Reports', icon: BarChart3, view: AppView.REPORTS, perm: 'report:read' },
   { id: 'nav-copilot', label: 'AI Copilot', icon: Bot, view: AppView.COPILOT, perm: 'ai:use' },
+  // Admin-only: only SYSTEM_ADMIN holds 'user:write'.
+  { id: 'nav-admin', label: 'Administration', icon: ShieldCheck, view: AppView.ADMIN, perm: 'user:write' },
 ];
 
 function initials(name: string) {

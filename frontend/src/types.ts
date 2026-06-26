@@ -21,6 +21,7 @@ export enum AppView {
   FIELDOPS = 'FIELDOPS',
   APPROVALS = 'APPROVALS',
   PORTFOLIO = 'PORTFOLIO',
+  ADMIN = 'ADMIN',
 }
 
 export interface ChatMessage {

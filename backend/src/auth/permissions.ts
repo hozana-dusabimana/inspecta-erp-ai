@@ -146,6 +146,17 @@ export function permissionsFor(role: Role): Permission[] {
   return role === 'SYSTEM_ADMIN' ? ALL : matrix[role] ?? [];
 }
 
+/** The full permission catalog (used by the roles/admin endpoint). */
+export const allPermissions: Permission[] = ALL;
+
+/** Every role paired with its granted permissions — drives the admin RBAC viewer. */
+export function roleMatrix(): { role: Role; permissions: Permission[] }[] {
+  return (Object.values(Role) as Role[]).map((role) => ({
+    role,
+    permissions: permissionsFor(role),
+  }));
+}
+
 export function can(role: Role, permission: Permission): boolean {
   if (role === 'SYSTEM_ADMIN') return true;
   return (matrix[role] ?? []).includes(permission);

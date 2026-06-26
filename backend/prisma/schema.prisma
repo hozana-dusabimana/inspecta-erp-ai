@@ -154,6 +154,15 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  // Company settings (managed by SYSTEM_ADMIN via /api/organization)
+  legalName String?
+  industry  String?
+  country   String?
+  timezone  String?
+  currency  String?
+  phone     String?
+  address   String?
+  logoUrl   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

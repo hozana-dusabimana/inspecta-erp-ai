@@ -8,6 +8,8 @@ import { notFoundHandler, errorHandler } from './middleware/error';
 
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
+import rolesRoutes from './modules/roles/roles.routes';
+import organizationRoutes from './modules/organization/organization.routes';
 import clientsRoutes from './modules/clients/clients.routes';
 import projectsRoutes from './modules/projects/projects.routes';
 import auditRoutes from './modules/audit/audit.routes';
@@ -81,6 +83,8 @@ export function createApp() {
   // Core
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/users', usersRoutes);
+  app.use('/api/roles', rolesRoutes);
+  app.use('/api/organization', organizationRoutes);
   app.use('/api/clients', clientsRoutes);
   app.use('/api/projects', projectsRoutes);
   app.use('/api/audit', auditRoutes);

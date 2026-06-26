@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { NotFound, Conflict } from '../../lib/errors';
+import { NotFound, Conflict, BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { hashPassword } from '../../lib/password';
 import { auditFromRequest } from '../../auth/audit';
@@ -86,6 +86,14 @@ router.put(
     });
     if (!existing) throw NotFound('User not found');
 
+    // Guard against an admin locking themselves out of their own account.
+    if (existing.id === req.user!.id) {
+      if (body.isActive === false) throw BadRequest('You cannot deactivate your own account');
+      if (body.role && body.role !== existing.role) {
+        throw BadRequest('You cannot change your own role');
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id: existing.id },
       data: body,
@@ -96,6 +104,35 @@ router.put(
       newValues: body,
     });
     return ok(res, user);
+  }),
+);
+
+const resetPasswordSchema = z.object({
+  password: z.string().min(8),
+});
+
+// RESET a user's password (admin only)
+router.post(
+  '/:id/reset-password',
+  requirePermission('user:write'),
+  asyncHandler(async (req, res) => {
+    const body = resetPasswordSchema.parse(req.body);
+    const existing = await prisma.user.findFirst({
+      where: { id: req.params.id, organizationId: req.user!.orgId },
+      select: selectPublic,
+    });
+    if (!existing) throw NotFound('User not found');
+
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { passwordHash: await hashPassword(body.password) },
+    });
+    // Invalidate any active sessions for the affected user.
+    await prisma.refreshToken.deleteMany({ where: { userId: existing.id } });
+    await auditFromRequest(req, 'UPDATE', 'user', existing.id, {
+      newValues: { passwordReset: true },
+    });
+    return ok(res, { id: existing.id });
   }),
 );
 

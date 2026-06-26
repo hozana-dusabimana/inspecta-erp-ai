@@ -199,6 +199,16 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     actionLabel: n.isRead ? undefined : 'Mark as Reviewed',
   }));
 
+  // "Portfolio / By Region / Risk Priority" tabs reorder the portfolio table.
+  const healthRank: Record<string, number> = { CRITICAL: 0, WARNING: 1, OPTIMAL: 2 };
+  const displayedProjects = [...projectsList].sort((a, b) => {
+    if (activeTab === 'region') return (a.location ?? '').localeCompare(b.location ?? '');
+    if (activeTab === 'risk')
+      return (healthRank[a.health] ?? 3) - (healthRank[b.health] ?? 3) || a.progressPct - b.progressPct;
+    return 0; // Portfolio = default (most-recent) order
+  });
+  const viewLabel = activeTab === 'region' ? 'by region' : activeTab === 'risk' ? 'by risk priority' : 'all projects';
+
   const createProject = useMutation({
     mutationFn: (input: { code: string; name: string; location: string; status: string }) =>
       api.post<ApiProject>('/projects', input),
@@ -690,7 +700,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             <section className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-brand-primary text-sm">Active Project Portfolio</h3>
-                <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{projectsList.length} total</span>
+                <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{projectsList.length} total · {viewLabel}</span>
               </div>
               
               <div className="overflow-x-auto">
@@ -706,14 +716,14 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {projectsList.length === 0 && (
+                    {displayedProjects.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-6 text-center text-brand-on-surface-variant">
                           No projects yet. Use “New Project” to provision one.
                         </td>
                       </tr>
                     )}
-                    {projectsList.map((proj) => (
+                    {displayedProjects.map((proj) => (
                       <tr key={proj.id} className="border-b border-brand-outline-variant/10 hover:bg-brand-surface/35 transition-all">
                         <td className="py-3 pl-2 font-bold text-brand-primary">{proj.name}</td>
                         <td className="py-3 text-brand-on-surface-variant">{proj.location ?? '—'}</td>

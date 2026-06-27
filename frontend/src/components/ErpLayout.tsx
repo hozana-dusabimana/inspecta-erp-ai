@@ -8,6 +8,7 @@ import {
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import ThemeToggle from './ThemeToggle';
 
 export interface NavItem {
   id: string;
@@ -79,7 +80,7 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
 
       {/* Sidebar — slide-in drawer on mobile, static on lg+ */}
       <aside
-        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-nav border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <button
           onClick={() => setSidebarOpen(false)}
@@ -136,7 +137,7 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        <header className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
+        <header className="h-16 w-full sticky top-0 z-40 bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -163,6 +164,8 @@ export default function ErpLayout({ active, title, subtitle, onNavigate, onLogou
               <Bot className="w-4 h-4 text-brand-secondary-container" />
               <span className="hidden sm:inline">Ask AI</span>
             </button>
+
+            <ThemeToggle />
 
             <button
               onClick={() => onNavigate(AppView.NOTIFICATIONS)}

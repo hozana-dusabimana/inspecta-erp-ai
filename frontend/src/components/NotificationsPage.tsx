@@ -57,7 +57,7 @@ export default function NotificationsPage({ onNavigate, onLogout }: { onNavigate
     >
       <div className="space-y-3 max-w-3xl">
         {rows.length === 0 && (
-          <div className="bg-white rounded-xl border border-brand-outline-variant/20 p-10 text-center text-brand-on-surface-variant text-sm flex flex-col items-center gap-2">
+          <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 p-10 text-center text-brand-on-surface-variant text-sm flex flex-col items-center gap-2">
             <Bell className="w-8 h-8 opacity-40" /> No notifications yet.
           </div>
         )}
@@ -66,7 +66,7 @@ export default function NotificationsPage({ onNavigate, onLogout }: { onNavigate
           return (
             <div
               key={n.id}
-              className={`bg-white rounded-xl border p-4 flex gap-3 items-start ${
+              className={`bg-brand-surface-container-lowest rounded-xl border p-4 flex gap-3 items-start ${
                 n.isRead ? 'border-brand-outline-variant/20 opacity-70' : 'border-l-4 border-brand-secondary-container shadow-sm'
               }`}
             >

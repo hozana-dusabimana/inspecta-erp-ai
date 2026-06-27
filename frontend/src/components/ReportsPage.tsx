@@ -26,7 +26,7 @@ export default function ReportsPage({ onNavigate, onLogout }: { onNavigate: (v: 
   };
 
   const Card = ({ icon: Icon, title, desc, action, disabled }: { icon: React.ComponentType<{ className?: string }>; title: string; desc: string; action: () => void; disabled?: boolean }) => (
-    <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 flex flex-col gap-3">
+    <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 flex flex-col gap-3">
       <div className="w-10 h-10 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
         <Icon className="w-5 h-5" />
       </div>
@@ -61,7 +61,7 @@ export default function ReportsPage({ onNavigate, onLogout }: { onNavigate: (v: 
           disabled={busy === 'csv'}
           action={() => run('csv', () => api.download('/reports/projects.csv', 'projects.csv'))}
         />
-        <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 flex flex-col gap-3">
+        <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 flex flex-col gap-3">
           <div className="w-10 h-10 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary">
             <FileText className="w-5 h-5" />
           </div>

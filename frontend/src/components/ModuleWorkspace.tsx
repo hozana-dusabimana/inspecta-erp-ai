@@ -52,7 +52,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
     <select
       value={projectId}
       onChange={(e) => setProjectId(e.target.value)}
-      className="h-10 bg-white border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary min-w-[220px]"
+      className="h-10 bg-brand-surface-container-lowest border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary min-w-[220px]"
     >
       <option value="">All projects (read-only)</option>
       {(projects?.data ?? []).map((p) => (
@@ -79,7 +79,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               key={t.key}
               onClick={() => setActiveTab(t.key)}
               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
-                current?.key === t.key ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'
+                current?.key === t.key ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'
               }`}
             >
               {t.label}

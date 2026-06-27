@@ -9,6 +9,8 @@
   --color-brand-primary: #00286a;
   --color-brand-primary-container: #0f3d91;
   --color-brand-on-primary-container: #8eadff;
+  /* Sidebar/nav surface — kept dark in BOTH themes (decoupled from primary). */
+  --color-brand-nav: #00286a;
   --color-brand-secondary: #914c00;
   --color-brand-secondary-container: #ff8a00;
   --color-brand-on-secondary-container: #613100;
@@ -31,11 +33,50 @@
   --color-brand-surface-ai: #f8fafc;
 }
 
+/* ─────────────────────────── Dark theme ───────────────────────────
+   Token override only: every `*-brand-*` utility resolves to these vars,
+   so flipping them re-themes the whole app. `html.dark` outranks `:root`.
+   `brand-primary` becomes a brighter blue so heading/button text stays
+   readable on dark surfaces; the sidebar uses `brand-nav` (stays dark). */
+html.dark {
+  --color-brand-primary: #4d7ce6;
+  --color-brand-primary-container: #6f97ee;
+  --color-brand-on-primary-container: #a9c5ff;
+  --color-brand-nav: #0c1626;
+  --color-brand-secondary: #ffb060;
+  --color-brand-secondary-container: #ff8a00;
+  --color-brand-on-secondary-container: #ffce9a;
+  --color-brand-tertiary: #0c5a26;
+  --color-brand-on-tertiary-container: #62df7d;
+  --color-brand-tertiary-fixed-dim: #62df7d;
+  --color-brand-surface: #0a1018;
+  --color-brand-surface-dim: #060a12;
+  --color-brand-surface-container: #121c2b;
+  --color-brand-surface-container-low: #0e1622;
+  --color-brand-surface-container-lowest: #131e2e;
+  --color-brand-surface-container-high: #1a2638;
+  --color-brand-surface-container-highest: #213047;
+  --color-brand-on-surface: #e7edf6;
+  --color-brand-on-surface-variant: #9fabbd;
+  --color-brand-outline: #5d6878;
+  --color-brand-outline-variant: #2a3650;
+  --color-brand-status-critical: #f87171;
+  --color-brand-status-warning: #fbbf24;
+  --color-brand-surface-ai: #0e1622;
+}
+
+/* Page background follows the surface token (covers areas outside #root). */
+body { background-color: var(--color-brand-surface); }
+
 /* Custom styles and helper classes */
 .glass-panel {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(15, 61, 145, 0.08);
+}
+html.dark .glass-panel {
+  background: rgba(19, 30, 46, 0.7);
+  border-color: rgba(111, 151, 238, 0.14);
 }
 
 .ai-shimmer {
@@ -63,5 +104,11 @@
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 

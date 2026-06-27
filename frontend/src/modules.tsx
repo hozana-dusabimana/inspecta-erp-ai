@@ -15,7 +15,7 @@ const SEVERITY = opt(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 function StatCard({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
   const color = tone === 'bad' ? 'text-red-600' : tone === 'warn' ? 'text-amber-600' : 'text-brand-primary';
   return (
-    <div className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+    <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
       <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}</p>
       <p className={`font-mono text-xl font-extrabold mt-1 ${color}`}>{value}</p>
     </div>
@@ -76,7 +76,7 @@ function CpmPanel({ projectId }: { projectId?: string }) {
         <StatCard label="Critical Path" value={s.criticalPath.join(' → ') || '—'} tone={s.criticalPath.length ? 'warn' : 'good'} />
       </div>
       {s.activities.length > 0 && (
-        <div className="bg-white rounded-xl border border-brand-outline-variant/20 overflow-x-auto">
+        <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-brand-outline-variant/20 text-brand-on-surface-variant font-bold text-left">

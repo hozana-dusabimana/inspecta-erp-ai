@@ -93,7 +93,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                 <button 
                   id="btn-demo-hero"
                   onClick={onBookDemo}
-                  className="px-6 py-4 rounded-xl border-2 border-brand-primary/10 bg-white/50 backdrop-blur-sm text-brand-primary font-semibold text-sm hover:bg-white transition-all cursor-pointer"
+                  className="px-6 py-4 rounded-xl border-2 border-brand-primary/10 bg-brand-surface-container-lowest/50 backdrop-blur-sm text-brand-primary font-semibold text-sm hover:bg-brand-surface-container-lowest transition-all cursor-pointer"
                 >
                   Book Demo Tour
                 </button>
@@ -128,11 +128,11 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-brand-outline-variant/20 p-3 bg-white/40">
+                      <div className="rounded-xl border border-brand-outline-variant/20 p-3 bg-brand-surface-container-lowest/40">
                         <div className="font-sans text-[11px] text-brand-on-surface-variant font-semibold">Active Crews</div>
                         <div className="font-mono text-lg font-bold text-brand-on-surface">12</div>
                       </div>
-                      <div className="rounded-xl border border-brand-outline-variant/20 p-3 bg-white/40">
+                      <div className="rounded-xl border border-brand-outline-variant/20 p-3 bg-brand-surface-container-lowest/40">
                         <div className="font-sans text-[11px] text-brand-on-surface-variant font-semibold">Cost Variance</div>
                         <div className="font-mono text-lg font-bold text-brand-status-critical">+$14.2k</div>
                       </div>
@@ -144,7 +144,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                       <Bot className="w-4 h-4" />
                       <span className="font-sans text-xs font-bold">AI Assistant</span>
                     </div>
-                    <div className="text-[10px] leading-relaxed text-brand-on-surface-variant bg-white p-2 rounded shadow-sm border border-brand-glass-border">
+                    <div className="text-[10px] leading-relaxed text-brand-on-surface-variant bg-brand-surface-container-lowest p-2 rounded shadow-sm border border-brand-glass-border">
                       "Excavation is 15% behind schedule. Recommend reallocating Crew C from Zone 4."
                     </div>
                     <div className="h-6 rounded bg-brand-secondary-container/10 flex items-center justify-between px-2">
@@ -178,7 +178,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
               {/* Planning Card */}
-              <div className="md:col-span-8 group relative overflow-hidden rounded-2xl bg-white border border-brand-outline-variant/30 hover:shadow-xl transition-all p-8 flex flex-col justify-between min-h-[260px]">
+              <div className="md:col-span-8 group relative overflow-hidden rounded-2xl bg-brand-surface-container-lowest border border-brand-outline-variant/30 hover:shadow-xl transition-all p-8 flex flex-col justify-between min-h-[260px]">
                 <div className="max-w-md">
                   <div className="w-12 h-12 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary mb-6">
                     <Calendar className="w-6 h-6" />
@@ -212,7 +212,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
               </div>
 
               {/* Finance Card */}
-              <div className="md:col-span-4 glass-panel rounded-2xl p-8 border-brand-secondary-container/20 flex flex-col justify-between min-h-[260px] bg-white">
+              <div className="md:col-span-4 glass-panel rounded-2xl p-8 border-brand-secondary-container/20 flex flex-col justify-between min-h-[260px] bg-brand-surface-container-lowest">
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-brand-secondary-container/10 flex items-center justify-center text-brand-secondary-container mb-6">
                     <DollarSign className="w-6 h-6" />
@@ -234,7 +234,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
               </div>
 
               {/* Compliance Card */}
-              <div className="md:col-span-8 rounded-2xl bg-white border border-brand-outline-variant/30 p-8 flex flex-col md:flex-row gap-8 items-center min-h-[260px]">
+              <div className="md:col-span-8 rounded-2xl bg-brand-surface-container-lowest border border-brand-outline-variant/30 p-8 flex flex-col md:flex-row gap-8 items-center min-h-[260px]">
                 <div className="flex-1">
                   <div className="w-12 h-12 rounded-xl bg-brand-tertiary-fixed-dim/20 flex items-center justify-center text-brand-tertiary mb-6">
                     <ShieldCheck className="w-6 h-6" />
@@ -247,7 +247,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                 <div className="flex-none w-36 h-36 rounded-xl bg-brand-surface-container-high relative flex items-center justify-center border border-brand-outline-variant/20">
                   <ShieldCheck className="text-4xl text-brand-primary/30" />
                   <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
-                  <div className="absolute bottom-2 left-2 text-[9px] font-mono text-brand-on-surface-variant bg-white px-2 py-0.5 rounded shadow">
+                  <div className="absolute bottom-2 left-2 text-[9px] font-mono text-brand-on-surface-variant bg-brand-surface-container-lowest px-2 py-0.5 rounded shadow">
                     ISO-9001
                   </div>
                 </div>
@@ -265,7 +265,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
               <div className="relative z-10 space-y-6">
                 {/* Chat Bubble 1 */}
                 <div className="flex justify-start">
-                  <div className="bg-white p-4 rounded-2xl rounded-bl-none shadow-md border border-brand-outline-variant/20 max-w-sm">
+                  <div className="bg-brand-surface-container-lowest p-4 rounded-2xl rounded-bl-none shadow-md border border-brand-outline-variant/20 max-w-sm">
                     <p className="text-brand-on-surface font-sans text-sm italic">
                       "Why is excavation productivity below target in Section 2?"
                     </p>
@@ -274,7 +274,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
 
                 {/* AI Response */}
                 <div className="flex justify-end">
-                  <div className="glass-panel p-5 rounded-2xl rounded-br-none shadow-xl border-brand-secondary-container/20 max-w-md bg-white">
+                  <div className="glass-panel p-5 rounded-2xl rounded-br-none shadow-xl border-brand-secondary-container/20 max-w-md bg-brand-surface-container-lowest">
                     <div className="flex items-center gap-2 mb-3 text-brand-secondary-container">
                       <Bot className="w-4 h-4" />
                       <span className="font-sans text-xs font-bold">Inspecta Copilot</span>
@@ -323,7 +323,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
 
             <div className="grid md:grid-cols-3 gap-8 items-stretch">
               {/* Starter */}
-              <div className="bg-white p-8 rounded-2xl border border-brand-outline-variant/30 flex flex-col justify-between hover:shadow-lg transition-all">
+              <div className="bg-brand-surface-container-lowest p-8 rounded-2xl border border-brand-outline-variant/30 flex flex-col justify-between hover:shadow-lg transition-all">
                 <div>
                   <div className="mb-6">
                     <h3 className="font-display text-lg font-bold text-brand-primary mb-1">Starter</h3>
@@ -355,7 +355,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
               </div>
 
               {/* Professional */}
-              <div className="bg-white p-8 rounded-2xl border-2 border-brand-secondary-container shadow-xl relative flex flex-col justify-between scale-105 z-10 hover:shadow-2xl transition-all">
+              <div className="bg-brand-surface-container-lowest p-8 rounded-2xl border-2 border-brand-secondary-container shadow-xl relative flex flex-col justify-between scale-105 z-10 hover:shadow-2xl transition-all">
                 <div className="absolute top-0 right-8 transform -translate-y-1/2 bg-brand-secondary-container text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
                   Popular
                 </div>
@@ -414,7 +414,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                 <button 
                   id="btn-ent-contact"
                   onClick={onBookDemo}
-                  className="w-full py-3 rounded-xl bg-white text-brand-primary font-bold text-xs hover:bg-brand-surface-container-high transition-all cursor-pointer"
+                  className="w-full py-3 rounded-xl bg-brand-surface-container-lowest text-brand-primary font-bold text-xs hover:bg-brand-surface-container-high transition-all cursor-pointer"
                 >
                   Contact Sales
                 </button>
@@ -442,7 +442,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
       </main>
 
       {/* Footer */}
-      <footer className="w-full py-12 bg-white border-t border-brand-outline-variant">
+      <footer className="w-full py-12 bg-brand-surface-container-lowest border-t border-brand-outline-variant">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex flex-col items-center md:items-start gap-2">
             <span className="font-display text-xl font-bold text-brand-primary">Inspecta AI</span>

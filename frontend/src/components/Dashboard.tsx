@@ -49,6 +49,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { NAV } from './ErpLayout';
+import ThemeToggle from './ThemeToggle';
 
 interface DashboardProps {
   onNavigate: (view: AppView) => void;
@@ -300,7 +301,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
       {/* Sidebar Panel — slide-in drawer on mobile, static on lg+ */}
       <aside
         id="sidebar"
-        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-primary border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-nav border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* Mobile close button */}
         <button
@@ -373,7 +374,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
       {/* Main Panel Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Top Header */}
-        <header id="header" className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
+        <header id="header" className="h-16 w-full sticky top-0 z-40 bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
           <div className="flex items-center gap-3 flex-1">
             {/* Mobile menu toggle */}
             <button
@@ -406,7 +407,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <Bot className="w-4 h-4 text-brand-secondary-container" />
               <span>Ask AI Assistant</span>
             </button>
-            
+
+            <ThemeToggle />
+
             <button id="header-notifications" className="p-2 rounded-full hover:bg-brand-surface transition-colors relative">
               <Bell className="w-4.5 h-4.5 text-brand-on-surface-variant" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-status-critical rounded-full animate-pulse"></span>
@@ -443,21 +446,21 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 <button 
                   id="tab-portfolio"
                   onClick={() => setActiveTab('portfolio')}
-                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'portfolio' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'portfolio' ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
                 >
                   Portfolio
                 </button>
                 <button 
                   id="tab-region"
                   onClick={() => setActiveTab('region')}
-                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'region' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'region' ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
                 >
                   By Region
                 </button>
                 <button 
                   id="tab-risk"
                   onClick={() => setActiveTab('risk')}
-                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'risk' ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
+                  className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'risk' ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
                 >
                   Risk Priority
                 </button>
@@ -467,7 +470,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             {/* KPI Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-5">
               {/* Progress Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all min-w-0">
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all min-w-0">
                 <div className="flex justify-between items-start gap-2 mb-4 min-w-0">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Project Progress</span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
@@ -486,7 +489,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Productivity Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Productivity Index</span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-amber-50 text-amber-700 text-[9px] font-bold border border-amber-200">
@@ -501,7 +504,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Schedule Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Schedule SPI</span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
@@ -521,7 +524,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Budget Card */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Budget Util.</span>
                   <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-red-50 text-red-700 text-[9px] font-bold border border-red-200">
@@ -584,7 +587,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             {/* Bento Grid Analytics charts */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Progress S-Curve chart */}
-              <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
+              <div className="lg:col-span-2 bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-center mb-4">
                   <div>
                     <h3 className="font-bold text-brand-primary text-sm">S-Curve: Planned vs Actual Progress</h3>
@@ -608,7 +611,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Cost Breakdown Donut Chart */}
-              <div className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm flex flex-col justify-between">
                 <div>
                   <h3 className="font-bold text-brand-primary text-sm">Cost Breakdown</h3>
                   <p className="text-brand-on-surface-variant text-[11px]">Direct expenses divided by categories.</p>
@@ -653,7 +656,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
 
               {/* Productivity Area Chart */}
-              <div className="lg:col-span-3 bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+              <div className="lg:col-span-3 bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
                 <div>
                   <h3 className="font-bold text-brand-primary text-sm">Productivity Trend Analysis</h3>
                   <p className="text-brand-on-surface-variant text-[11px]">Weekly normalized labor units per volume logged.</p>
@@ -680,7 +683,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
 
             {/* Project List Subsection */}
-            <section className="bg-white p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+            <section className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-brand-primary text-sm">Active Project Portfolio</h3>
                 <span className="text-[10px] text-brand-on-surface-variant font-bold uppercase">{displayedProjects.length} of {projectsList.length} · {viewLabel}</span>
@@ -742,7 +745,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
           {/* Right Area: AI Insights & Map panel — full width on mobile, side column on xl */}
           <aside id="ai-insights-panel" className="w-full xl:w-[340px] xl:h-full bg-brand-surface-ai border-t xl:border-t-0 xl:border-l border-brand-glass-border flex flex-col shrink-0">
             {/* Header */}
-            <div className="p-5 border-b border-brand-glass-border bg-white">
+            <div className="p-5 border-b border-brand-glass-border bg-brand-surface-container-lowest">
               <div className="flex items-center gap-1.5 text-brand-primary font-bold text-sm mb-1">
                 <Sparkles className="w-4 h-4 text-brand-secondary-container" />
                 <span>AI Assistant Insights</span>
@@ -762,9 +765,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     initial={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
                     className={`glass-panel p-4 rounded-xl relative overflow-hidden group hover:shadow-md transition-all border-l-4 ${
-                      alert.severity === 'critical' ? 'border-brand-status-critical bg-white' :
-                      alert.severity === 'warning' ? 'border-brand-status-warning bg-white' :
-                      'border-emerald-500 bg-white'
+                      alert.severity === 'critical' ? 'border-brand-status-critical bg-brand-surface-container-lowest' :
+                      alert.severity === 'warning' ? 'border-brand-status-warning bg-brand-surface-container-lowest' :
+                      'border-emerald-500 bg-brand-surface-container-lowest'
                     }`}
                   >
                     <div className="ai-shimmer absolute inset-0 opacity-10 pointer-events-none"></div>
@@ -819,7 +822,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     <button
                       key={p.id}
                       onClick={() => onNavigate(AppView.PORTFOLIO)}
-                      className="w-full flex items-center justify-between gap-2 bg-white rounded-lg px-3 py-2 border border-brand-outline-variant/30 hover:shadow-sm transition-all text-left min-w-0"
+                      className="w-full flex items-center justify-between gap-2 bg-brand-surface-container-lowest rounded-lg px-3 py-2 border border-brand-outline-variant/30 hover:shadow-sm transition-all text-left min-w-0"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <MapPin className={`w-4 h-4 shrink-0 ${
@@ -839,7 +842,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
 
             {/* Sidebar quick copilot chatter */}
-            <div className="p-4 bg-white border-t border-brand-glass-border">
+            <div className="p-4 bg-brand-surface-container-lowest border-t border-brand-glass-border">
               <div className="h-32 overflow-y-auto custom-scrollbar mb-2 space-y-2 text-[10px]">
                 {copilotMessages.map((msg, i) => (
                   <div key={i} className={`p-2 rounded-lg max-w-[90%] leading-relaxed ${msg.sender === 'user' ? 'bg-brand-primary text-white ml-auto' : 'bg-brand-surface-ai text-brand-on-surface-variant'}`}>
@@ -879,7 +882,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
+              className="bg-brand-surface-container-lowest w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
             >
               <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Provision Enterprise Project</h3>
               <p className="text-brand-on-surface-variant text-xs mb-4">Set up a new physical node under Inspecta AI supervision.</p>

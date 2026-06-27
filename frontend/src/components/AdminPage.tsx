@@ -74,7 +74,7 @@ const labelCls = 'font-sans text-[10px] font-bold text-brand-on-surface-variant 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 bg-brand-on-surface/50 backdrop-blur-md flex items-center justify-center px-4">
-      <div className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30">
+      <div className="bg-brand-surface-container-lowest max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30">
         <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
           <X className="w-5 h-5" />
         </button>
@@ -116,7 +116,7 @@ function UsersTab() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-x-auto">
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
@@ -282,7 +282,7 @@ function RolesTab() {
       {isLoading && <p className="text-brand-on-surface-variant text-xs">Loading roles…</p>}
       <div className="grid gap-4 md:grid-cols-2">
         {roles.map((r) => (
-          <div key={r.role} className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-4">
+          <div key={r.role} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
               <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${ROLE_TONE[r.role]}`}>{roleLabel(r.role)}</span>
               <span className="text-[10px] font-bold text-brand-on-surface-variant">{r.permissions.length} permissions</span>
@@ -342,7 +342,7 @@ function CompanyTab() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
-      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="lg:col-span-2 bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="lg:col-span-2 bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
           {SETTING_FIELDS.map((f) => (
             <div key={f.name}>
@@ -364,7 +364,7 @@ function CompanyTab() {
         </div>
       </form>
 
-      <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
         <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">Total Users</p>
         <p className="font-mono text-3xl font-extrabold text-brand-primary mb-4">{org.totalUsers}</p>
         <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-2">By Role</p>
@@ -401,7 +401,7 @@ export default function AdminPage({ onNavigate, onLogout }: Props) {
       onLogout={onLogout}
     >
       {!hasPermission('user:write') ? (
-        <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-8 text-center text-brand-on-surface-variant text-sm">
+        <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-8 text-center text-brand-on-surface-variant text-sm">
           You need System Administrator access to manage this organization.
         </div>
       ) : (
@@ -414,7 +414,7 @@ export default function AdminPage({ onNavigate, onLogout }: Props) {
                   key={t.key}
                   onClick={() => setTab(t.key)}
                   className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
-                    tab === t.key ? 'bg-white shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'
+                    tab === t.key ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" /> {t.label}

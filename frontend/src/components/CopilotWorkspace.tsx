@@ -157,7 +157,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   return (
     <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden" id="copilot-workspace-root">
       {/* Top Header */}
-      <header className="h-16 w-full bg-white/90 backdrop-blur-md flex justify-between items-center px-6 border-b border-brand-outline-variant/10 shadow-sm shrink-0">
+      <header className="h-16 w-full bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 border-b border-brand-outline-variant/10 shadow-sm shrink-0">
         <div className="flex items-center gap-3">
           <button 
             id="btn-copilot-back"
@@ -215,7 +215,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               <div className={`max-w-[85%] rounded-2xl p-4 relative ${
                 msg.sender === 'user' 
                   ? 'bg-brand-primary text-white rounded-tr-none shadow-md' 
-                  : 'bg-white text-brand-on-surface rounded-tl-none border border-brand-outline-variant/20 shadow-sm'
+                  : 'bg-brand-surface-container-lowest text-brand-on-surface rounded-tl-none border border-brand-outline-variant/20 shadow-sm'
               }`}>
                 {msg.sender === 'assistant' && (
                   <div className="ai-shimmer absolute inset-0 opacity-5 pointer-events-none rounded-2xl"></div>
@@ -288,7 +288,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               <div className="w-8 h-8 rounded-full bg-brand-primary-container/10 border border-brand-primary/10 flex items-center justify-center text-brand-primary shrink-0">
                 <Bot className="w-4.5 h-4.5" />
               </div>
-              <div className="bg-white text-brand-on-surface rounded-2xl rounded-tl-none border border-brand-outline-variant/20 shadow-sm p-4 flex items-center gap-3">
+              <div className="bg-brand-surface-container-lowest text-brand-on-surface rounded-2xl rounded-tl-none border border-brand-outline-variant/20 shadow-sm p-4 flex items-center gap-3">
                 <div className="flex gap-1">
                   <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"></span>
                   <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>
@@ -328,7 +328,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       </main>
 
       {/* Floating Prompt Suggestion Chips & Bottom Chat Input */}
-      <footer className="bg-white border-t border-brand-outline-variant/10 p-4 shrink-0">
+      <footer className="bg-brand-surface-container-lowest border-t border-brand-outline-variant/10 p-4 shrink-0">
         <div className="max-w-2xl mx-auto space-y-3">
           
           {/* Quick chip triggers */}

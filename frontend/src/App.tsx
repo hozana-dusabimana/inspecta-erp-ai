@@ -204,7 +204,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30"
+              className="bg-brand-surface-container-lowest max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30"
             >
               <button
                 id="btn-close-demo"

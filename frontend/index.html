@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="x-build" content="%VITE_BUILD%" />
+    <!-- Apply saved/system theme before paint to avoid a flash of the wrong mode. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('inspecta.theme');
+          if (t !== 'dark' && t !== 'light') {
+            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          var r = document.documentElement;
+          r.classList.remove('light', 'dark');
+          r.classList.add(t);
+        } catch (e) {}
+      })();
+    </script>
     <title>Inspecta AI | The Construction Intelligence ERP</title>
     <!-- PWA (Module 19) -->
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -15,7 +29,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-[#f8f9ff]">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

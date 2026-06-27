@@ -24,7 +24,7 @@ export default function PortfolioPage({ onNavigate, onLogout }: { onNavigate: (v
             ['Avg Progress', `${s.company.avgProgressPct}%`],
             ['At Risk', String(s.company.atRiskProjects)],
           ].map(([label, val], i) => (
-            <div key={label} className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+            <div key={label} className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
               <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}</p>
               <p className={`font-mono text-xl font-extrabold mt-1 ${i === 4 && Number(val) > 0 ? 'text-red-600' : 'text-brand-primary'}`}>{val}</p>
             </div>
@@ -32,7 +32,7 @@ export default function PortfolioPage({ onNavigate, onLogout }: { onNavigate: (v
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-x-auto">
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-brand-outline-variant/20 text-brand-on-surface-variant font-bold text-left">

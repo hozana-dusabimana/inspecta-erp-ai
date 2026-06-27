@@ -228,7 +228,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
   return (
     <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans" id="daily-entry-root">
       {/* Top Header */}
-      <header className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
+      <header className="h-16 w-full sticky top-0 z-40 bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
         <div className="flex items-center gap-3">
           <button 
             id="btn-back-dashboard"
@@ -263,7 +263,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
       <main className="max-w-4xl mx-auto p-6 md:p-8 space-y-6">
         
         {/* Dynamic Productivity Glass Panel Alert */}
-        <div className="glass-panel p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-white relative overflow-hidden border-brand-primary/10">
+        <div className="glass-panel p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-brand-surface-container-lowest relative overflow-hidden border-brand-primary/10">
           <div className="ai-shimmer absolute inset-0 opacity-10 pointer-events-none"></div>
           
           <div className="space-y-1">
@@ -294,7 +294,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
         </div>
 
         {/* Daily Production Form */}
-        <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-2xl border border-brand-outline-variant/20 shadow-md space-y-6" id="daily-production-form">
+        <form onSubmit={handleSubmit} className="bg-brand-surface-container-lowest p-6 md:p-8 rounded-2xl border border-brand-outline-variant/20 shadow-md space-y-6" id="daily-production-form">
           {/* Field: Project (real, required) */}
           <div className="space-y-1.5">
             <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="project-select">
@@ -565,7 +565,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl relative"
+              className="bg-brand-surface-container-lowest max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl relative"
             >
               <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-500 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8" />

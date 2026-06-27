@@ -47,9 +47,9 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
       ) : undefined}
     >
       <div className="space-y-3 max-w-4xl">
-        {rows.length === 0 && <div className="bg-white rounded-xl border border-brand-outline-variant/20 p-10 text-center text-brand-on-surface-variant text-sm">No approval requests.</div>}
+        {rows.length === 0 && <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 p-10 text-center text-brand-on-surface-variant text-sm">No approval requests.</div>}
         {rows.map((r) => (
-          <div key={r.id} className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 flex items-center justify-between gap-4">
+          <div key={r.id} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className="font-bold text-sm text-brand-primary truncate">{r.title}</h4>
@@ -76,7 +76,7 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
 
       {open && (
         <div className="fixed inset-0 z-50 bg-brand-on-surface/40 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl relative">
+          <div className="bg-brand-surface-container-lowest w-full max-w-md rounded-2xl p-6 shadow-2xl relative">
             <button onClick={() => setOpen(false)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
             <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">New Approval Request</h3>
             <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }} className="space-y-3">

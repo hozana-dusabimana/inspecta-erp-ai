@@ -15,19 +15,19 @@ export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate
     <ErpLayout active={AppView.PROFITABILITY} title="Profitability Intelligence" subtitle="Activity-level margin & leakage detection (Module 14)" onNavigate={onNavigate} onLogout={onLogout}>
       {s && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+          <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
             <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Total Revenue</p>
             <p className="font-mono text-xl font-extrabold mt-1 text-brand-primary">{money(s.totals.revenue)}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+          <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
             <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Actual Cost</p>
             <p className="font-mono text-xl font-extrabold mt-1 text-brand-primary">{money(s.totals.actualCost)}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+          <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
             <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Forecast Margin</p>
             <p className={`font-mono text-xl font-extrabold mt-1 ${s.totals.forecastMargin < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(s.totals.forecastMargin)} ({s.totals.forecastMarginPct}%)</p>
           </div>
-          <div className="bg-white p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+          <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
             <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">At-Risk Projects</p>
             <p className={`font-mono text-xl font-extrabold mt-1 ${s.totals.atRisk > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{s.totals.atRisk}</p>
           </div>
@@ -36,7 +36,7 @@ export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate
 
       <div className="space-y-4">
         {(s?.projects ?? []).map((p: any) => (
-          <div key={p.projectId} className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
+          <div key={p.projectId} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <h3 className="font-bold text-sm text-brand-primary">{p.code} — {p.name}</h3>
               <span className={`text-xs font-bold font-mono px-2.5 py-1 rounded-full ${p.forecastMarginPct < 5 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>

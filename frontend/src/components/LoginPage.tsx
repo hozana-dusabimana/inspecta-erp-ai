@@ -107,7 +107,7 @@ export default function LoginPage({ onLoginSuccess, onNavigate }: LoginPageProps
       </section>
 
       {/* Right Side: Login Form Canvas */}
-      <main id="login-form-panel" className="w-full lg:w-1/2 flex flex-col items-center justify-center bg-white relative">
+      <main id="login-form-panel" className="w-full lg:w-1/2 flex flex-col items-center justify-center bg-brand-surface-container-lowest relative">
         <div className="absolute inset-0 ai-shimmer pointer-events-none opacity-20"></div>
         
         <div className="w-full max-w-md px-8 md:px-12 z-30">

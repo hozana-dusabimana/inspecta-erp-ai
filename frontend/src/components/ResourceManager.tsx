@@ -136,7 +136,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   };
 
   return (
-    <div className="bg-white rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
+    <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b border-brand-outline-variant/15">
         <h3 className="font-bold text-sm text-brand-primary">{entityLabel}s <span className="text-brand-on-surface-variant font-mono text-xs">({rows.length})</span></h3>
         {canWrite && (
@@ -192,7 +192,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
       {/* Create / edit modal */}
       {open && (
         <div className="fixed inset-0 z-50 bg-brand-on-surface/40 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-brand-surface-container-lowest w-full max-w-lg rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
             <button onClick={() => setOpen(false)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
             <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{editing ? 'Edit' : 'New'} {entityLabel}</h3>
             <form onSubmit={submit} className="space-y-3">

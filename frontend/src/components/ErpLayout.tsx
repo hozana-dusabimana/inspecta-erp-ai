@@ -22,6 +22,7 @@ export interface NavItem {
 // so the navigation (incl. admin-only Administration) is identical everywhere.
 export const NAV: NavItem[] = [
   { id: 'nav-dashboard', label: 'Dashboard', icon: Layers, view: AppView.DASHBOARD, perm: 'dashboard:read' },
+  { id: 'nav-exec', label: 'Executive Intelligence', icon: Bot, view: AppView.EXEC_DASH, perm: 'ai:use' },
   { id: 'nav-portfolio', label: 'Portfolio', icon: Building2, view: AppView.PORTFOLIO, perm: 'portfolio:read' },
   { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },
   { id: 'nav-hr', label: 'Human Resources', icon: Users, view: AppView.HR, perm: 'hr:read' },

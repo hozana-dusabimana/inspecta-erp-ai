@@ -25,6 +25,7 @@ export enum AppView {
   HR = 'HR',
   EQUIPMENT = 'EQUIPMENT',
   PLANNING_DASH = 'PLANNING_DASH',
+  EXEC_DASH = 'EXEC_DASH',
 }
 
 export interface ChatMessage {

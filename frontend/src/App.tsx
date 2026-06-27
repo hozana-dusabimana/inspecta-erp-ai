@@ -29,6 +29,7 @@ import PortfolioPage from './components/PortfolioPage';
 import ApprovalsPage from './components/ApprovalsPage';
 import AdminPage from './components/AdminPage';
 import PlanningDashboards from './components/PlanningDashboards';
+import ExecutiveDashboard from './components/ExecutiveDashboard';
 import { MODULES } from './modules';
 
 export default function App() {
@@ -193,6 +194,10 @@ export default function App() {
 
           {currentView === AppView.PLANNING_DASH && (
             <PlanningDashboards onNavigate={setCurrentView} onLogout={handleLogout} />
+          )}
+
+          {currentView === AppView.EXEC_DASH && (
+            <ExecutiveDashboard onNavigate={setCurrentView} onLogout={handleLogout} />
           )}
 
           {MODULES[currentView] && (

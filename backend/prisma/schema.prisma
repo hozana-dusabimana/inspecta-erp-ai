@@ -426,6 +426,7 @@ model ProductionEntry {
   wbsItemId             String?
   equipmentId           String?
   crewId                String?
+  tradeId               String?
   productivityStandardId String?
   unit            String   @default("unit")
   plannedQty      Decimal  @default(0) @db.Decimal(18, 3)

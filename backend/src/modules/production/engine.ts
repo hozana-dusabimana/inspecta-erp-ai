@@ -8,6 +8,7 @@ export interface EngineEntry {
   activity: string;
   crew?: string | null;
   trade?: string | null;
+  laborCost?: number;
   plannedQty: number;
   actualQty: number;
   laborHours: number;
@@ -37,6 +38,26 @@ export interface EngineInput {
   bac: number;
   /** Actual cost to date (CostEntry sum). */
   actualCost: number;
+  /** Delay/rework inputs for the impact engine (default 0). */
+  delayDays?: number;
+  dailyOverheadRate?: number;
+  dailyProfitRate?: number;
+  openNcrCount?: number;
+  reworkHoursPerNcr?: number;
+}
+
+/** Bucket a date string into day/week/month keys. */
+function bucketKeys(iso: string): { day: string; week: string; month: string } {
+  const day = iso.slice(0, 10);
+  const d = new Date(iso);
+  const month = iso.slice(0, 7);
+  // ISO week (year-Www), approximate via Thursday rule.
+  const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = (tmp.getUTCDay() + 6) % 7;
+  tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3);
+  const firstThu = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 4));
+  const week = `${tmp.getUTCFullYear()}-W${String(1 + Math.round(((tmp.getTime() - firstThu.getTime()) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7)).padStart(2, '0')}`;
+  return { day, week, month };
 }
 
 const round = (n: number, d = 2) => Number(n.toFixed(d));
@@ -47,7 +68,10 @@ const round = (n: number, d = 2) => Number(n.toFixed(d));
  * profitability impact (productivity loss → extra cost → profit reduction).
  */
 export function analyzeProduction(input: EngineInput) {
-  const { entries, materials, laborRatePerHour, contractValue, budgetedProfitMarginPct, bac, actualCost } = input;
+  const {
+    entries, materials, laborRatePerHour, contractValue, budgetedProfitMarginPct, bac, actualCost,
+    delayDays = 0, dailyOverheadRate = 0, dailyProfitRate = 0, openNcrCount = 0, reworkHoursPerNcr = 0,
+  } = input;
 
   const totalPlanned = entries.reduce((s, e) => s + e.plannedQty, 0);
   const totalActual = entries.reduce((s, e) => s + e.actualQty, 0);
@@ -91,7 +115,10 @@ export function analyzeProduction(input: EngineInput) {
 
   // Profitability impact engine.
   const budgetedProfit = (contractValue * budgetedProfitMarginPct) / 100;
-  const profitReduction = additionalLaborCost + additionalEquipmentCost + materialWastageCost;
+  const delayCost = delayDays * dailyOverheadRate;
+  const reworkCost = openNcrCount * reworkHoursPerNcr * laborRatePerHour;
+  const opportunityCost = delayDays * dailyProfitRate;
+  const profitReduction = additionalLaborCost + additionalEquipmentCost + materialWastageCost + delayCost + reworkCost + opportunityCost;
   const forecastProfit = budgetedProfit - profitReduction;
   const forecastCost = (actualCost || 0) + profitReduction; // best-effort
   const forecastMarginPct = contractValue > 0 ? ((contractValue - Math.max(forecastCost, contractValue - budgetedProfit + profitReduction)) / contractValue) * 100 : 0;
@@ -107,8 +134,28 @@ export function analyzeProduction(input: EngineInput) {
     return [...m.entries()].map(([name, g]) => ({ name, productivity: round(productivity(g.actual, g.labor), 3) }));
   };
 
+  // Time-bucketed productivity trends (daily / weekly / monthly).
+  const buildTrend = (pick: (k: { day: string; week: string; month: string }) => string) => {
+    const m = new Map<string, { planned: number; actual: number; labor: number }>();
+    for (const e of entries) {
+      const key = pick(bucketKeys(e.date));
+      const g = m.get(key) ?? { planned: 0, actual: 0, labor: 0 };
+      g.planned += e.plannedQty; g.actual += e.actualQty; g.labor += e.laborHours; m.set(key, g);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, g]) => ({
+      label, planned: round(g.planned), actual: round(g.actual), productivity: round(productivity(g.actual, g.labor), 3),
+    }));
+  };
+
+  // Labor-hours histogram by activity.
+  const laborHist = new Map<string, number>();
+  for (const e of entries) laborHist.set(e.activity, (laborHist.get(e.activity) ?? 0) + e.laborHours);
+  const laborByActivity = [...laborHist.entries()].map(([name, hours]) => ({ name, hours: round(hours) }));
+
   return {
     totals: { entries: entries.length, totalPlanned, totalActual, totalLaborHours: totalLabor, totalEquipmentHours: totalEquip },
+    trends: { daily: buildTrend((k) => k.day), weekly: buildTrend((k) => k.week), monthly: buildTrend((k) => k.month) },
+    histograms: { laborByActivity },
     productivity: {
       labor: round(laborProductivity, 3),
       equipment: round(equipmentProductivity, 3),
@@ -116,6 +163,7 @@ export function analyzeProduction(input: EngineInput) {
       variancePct: round(productivityVariancePct(laborProductivity, plannedProductivity)),
       byCrew: groupBy((e) => e.crew || 'Unassigned'),
       byActivity: groupBy((e) => e.activity),
+      byTrade: groupBy((e) => e.trade || 'Unassigned'),
     },
     progress: {
       plannedProgressPct: round(plannedProgressPct),
@@ -138,6 +186,9 @@ export function analyzeProduction(input: EngineInput) {
       additionalLaborCost: round(additionalLaborCost),
       additionalEquipmentCost: round(additionalEquipmentCost),
       materialWastageCost: round(materialWastageCost),
+      delayCost: round(delayCost),
+      reworkCost: round(reworkCost),
+      opportunityCost: round(opportunityCost),
       productivityLossPct: round(Math.min(0, productivityVariancePct(laborProductivity, plannedProductivity))),
       budgetedProfit: round(budgetedProfit),
       profitReduction: round(profitReduction),

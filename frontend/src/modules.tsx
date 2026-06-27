@@ -704,6 +704,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'wbsItemId', label: 'WBS Item (link)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'productivityStandardId', label: 'Productivity Standard', type: 'select', optionsEndpoint: '/planning/productivity', optionLabel: (r) => `${r.activity} (${r.productivityRate}/h)` },
           { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
+          { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name },
           { name: 'unit', label: 'Unit' },
           { name: 'plannedQty', label: 'Planned Qty', type: 'number', required: true },

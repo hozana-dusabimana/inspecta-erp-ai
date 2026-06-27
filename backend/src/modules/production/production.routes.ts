@@ -56,6 +56,7 @@ const entriesCrud = createCrudRouter({
     { field: 'wbsItemId', model: 'wbsItem' },
     { field: 'equipmentId', model: 'equipment' },
     { field: 'crewId', model: 'crew' },
+    { field: 'tradeId', model: 'trade' },
     { field: 'productivityStandardId', model: 'productivityStandard' },
   ],
   transform: (data, req: Request) => {
@@ -166,16 +167,20 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
   const projectId = req.query.projectId as string | undefined;
   if (!projectId) throw BadRequest('projectId is required');
 
-  const [entries, standards, equipment, crews, materials, project, boq, costAgg, equipUtil, laborRate] = await Promise.all([
+  const now = Date.now();
+  const [entries, standards, equipment, crews, trades, materials, project, boq, costAgg, equipUtil, schedule, openNcr, laborRate] = await Promise.all([
     prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId }, include: { materials: true }, orderBy: { date: 'asc' } }),
     prisma.productivityStandard.findMany({ where: { organizationId: orgId } }),
     prisma.equipment.findMany({ where: { organizationId: orgId } }),
     prisma.crew.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
+    prisma.trade.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
     prisma.material.findMany({ where: { organizationId: orgId }, select: { id: true, name: true, unitCost: true } }),
     prisma.project.findFirst({ where: { id: projectId, organizationId: orgId } }),
     prisma.boqItem.aggregate({ where: { organizationId: orgId, projectId }, _sum: { budget: true } }),
     prisma.costEntry.aggregate({ where: { organizationId: orgId, projectId }, _sum: { amount: true } }),
     prisma.equipmentUtilization.aggregate({ where: { organizationId: orgId }, _sum: { plannedHours: true, availableHours: true } }),
+    prisma.scheduleActivity.findMany({ where: { organizationId: orgId, projectId }, select: { finishDate: true, progressPct: true } }),
+    prisma.ncr.count({ where: { organizationId: orgId, projectId, status: { not: 'CLOSED' } } }),
     resolveLaborRate(orgId),
   ]);
 
@@ -183,13 +188,14 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
   const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), num(s.productivityRate)]));
   const eqRate = new Map(equipment.map((e) => [e.id, num(e.hourlyRate) || num(e.dailyRate) / 8]));
   const crewName = new Map(crews.map((c) => [c.id, c.name]));
+  const tradeName = new Map(trades.map((t) => [t.id, t.name]));
   const matInfo = new Map(materials.map((m) => [m.id, { name: m.name, unitCost: num(m.unitCost) }]));
 
   const engineEntries: EngineEntry[] = entries.map((e) => ({
     date: e.date.toISOString(),
     activity: e.wbsActivity,
     crew: e.crewId ? crewName.get(e.crewId) ?? null : null,
-    trade: null,
+    trade: e.tradeId ? tradeName.get(e.tradeId) ?? null : null,
     plannedQty: num(e.plannedQty),
     actualQty: num(e.actualQty),
     laborHours: num(e.laborHours),
@@ -208,14 +214,29 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
     name: matInfo.get(id)?.name ?? id, planned: g.planned, used: g.used, unitCost: matInfo.get(id)?.unitCost ?? 0,
   }));
 
+  // Delay / overhead inputs for the impact engine.
+  const totalDaysDelayed = schedule
+    .filter((a) => a.finishDate && a.finishDate.getTime() < now && a.progressPct < 100)
+    .reduce((s, a) => s + Math.ceil((now - a.finishDate!.getTime()) / 86400000), 0);
+  const start = project?.startDate?.getTime();
+  const end = project?.endDate?.getTime();
+  const spanDays = start && end && end > start ? Math.round((end - start) / 86400000) : 180;
+  const bac = num(boq._sum.budget) || num(project?.budget);
+  const budgetedProfit = (num(project?.budget) * num(project?.plannedProfitMargin)) / 100;
+
   const result = analyzeProduction({
     entries: engineEntries,
     materials: engineMaterials,
     laborRatePerHour: laborRate,
     contractValue: num(project?.budget),
     budgetedProfitMarginPct: num(project?.plannedProfitMargin),
-    bac: num(boq._sum.budget) || num(project?.budget),
+    bac,
     actualCost: num(costAgg._sum.amount),
+    delayDays: totalDaysDelayed,
+    dailyOverheadRate: spanDays > 0 ? bac / spanDays : 0,
+    dailyProfitRate: spanDays > 0 ? budgetedProfit / spanDays : 0,
+    openNcrCount: openNcr,
+    reworkHoursPerNcr: 8, // heuristic: ~1 crew-day of rework per open NCR
   });
 
   const avail = num(equipUtil._sum.availableHours);
@@ -262,27 +283,64 @@ analytics.get('/ai-summary', authenticate, requirePermission('production:read'),
   const projectId = req.query.projectId as string | undefined;
   if (!projectId) throw BadRequest('projectId is required');
 
-  const [entries, standards] = await Promise.all([
+  const [entries, standards, crews, project, openNcr] = await Promise.all([
     prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId } }),
     prisma.productivityStandard.findMany({ where: { organizationId: orgId } }),
+    prisma.crew.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
+    prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { name: true, health: true, progressPct: true } }),
+    prisma.ncr.count({ where: { organizationId: orgId, projectId, status: { not: 'CLOSED' } } }),
   ]);
   const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), num(s.productivityRate)]));
+  const crewName = new Map(crews.map((c) => [c.id, c.name]));
 
+  const insights: { severity: string; title: string; detail: string; recommendation: string }[] = [];
+
+  // 1. Activities below productivity standard.
   const byAct = new Map<string, { actual: number; labor: number }>();
   for (const e of entries) {
     const g = byAct.get(e.wbsActivity) ?? { actual: 0, labor: 0 };
     g.actual += num(e.actualQty); g.labor += num(e.laborHours); byAct.set(e.wbsActivity, g);
   }
-  const insights: { severity: string; title: string; detail: string }[] = [];
   for (const [act, g] of byAct) {
     const std = stdByActivity.get(act.toLowerCase());
     if (std && g.labor > 0) {
-      const actualProd = g.actual / g.labor;
-      const v = ((actualProd - std) / std) * 100;
-      if (v <= -15) insights.push({ severity: 'HIGH', title: `${act} productivity ${v.toFixed(0)}% below standard`, detail: `Actual ${actualProd.toFixed(2)} vs standard ${std} units/hour — investigate crew, method or site conditions.` });
+      const v = ((g.actual / g.labor - std) / std) * 100;
+      if (v <= -15) insights.push({
+        severity: v <= -30 ? 'HIGH' : 'MEDIUM',
+        title: `${act} productivity ${v.toFixed(0)}% below standard`,
+        detail: `Actual ${(g.actual / g.labor).toFixed(2)} vs standard ${std} units/hour.`,
+        recommendation: 'Review crew composition, methods and site constraints for this activity; consider re-sequencing or added supervision.',
+      });
     }
   }
-  if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Production tracking healthy', detail: 'No activities significantly below productivity standards.' });
+
+  // 2. Underperforming crews (below the project's average productivity).
+  const byCrew = new Map<string, { actual: number; labor: number }>();
+  for (const e of entries) {
+    const k = e.crewId ? crewName.get(e.crewId) ?? 'Unassigned' : 'Unassigned';
+    const g = byCrew.get(k) ?? { actual: 0, labor: 0 };
+    g.actual += num(e.actualQty); g.labor += num(e.laborHours); byCrew.set(k, g);
+  }
+  const totalA = entries.reduce((s, e) => s + num(e.actualQty), 0);
+  const totalL = entries.reduce((s, e) => s + num(e.laborHours), 0);
+  const avgProd = totalL > 0 ? totalA / totalL : 0;
+  for (const [crew, g] of byCrew) {
+    if (crew !== 'Unassigned' && g.labor > 0 && avgProd > 0) {
+      const cp = g.actual / g.labor;
+      if (cp < avgProd * 0.8) insights.push({
+        severity: 'MEDIUM',
+        title: `Crew ${crew} ${(((cp - avgProd) / avgProd) * 100).toFixed(0)}% below project average`,
+        detail: `Crew productivity ${cp.toFixed(2)} vs project average ${avgProd.toFixed(2)} units/hour.`,
+        recommendation: 'Pair with a higher-performing crew, check tooling/skills, and verify work-front readiness.',
+      });
+    }
+  }
+
+  // 3. Project-level risk.
+  if (openNcr > 0) insights.push({ severity: openNcr >= 3 ? 'HIGH' : 'MEDIUM', title: `${openNcr} open NCR(s) — rework risk`, detail: 'Open non-conformances usually translate into rework hours and cost.', recommendation: 'Prioritise closure of open NCRs to limit rework cost erosion of margin.' });
+  if (project?.health === 'CRITICAL') insights.push({ severity: 'HIGH', title: `Project "${project.name}" health is CRITICAL`, detail: `Reported progress ${project.progressPct}%.`, recommendation: 'Run a recovery plan: re-baseline critical-path activities and reallocate top crews.' });
+
+  if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Production tracking healthy', detail: 'No activities or crews significantly below standard.', recommendation: 'Maintain current pace; keep capturing daily reports for trend accuracy.' });
 
   return ok(res, { projectId, insights, generatedFrom: 'production-engine' });
 }));

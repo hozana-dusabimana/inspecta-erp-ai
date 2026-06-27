@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Activity, Gauge, Clock, Wallet, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -40,6 +40,7 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const [tab, setTab] = useState<'productivity' | 'resources' | 'delays' | 'profitability'>('productivity');
+  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
 
   const enabled = Boolean(projectId);
   const { data: aData } = useQuery({ queryKey: ['/production/analytics', projectId], queryFn: () => api.get<any>(`/production/analytics?projectId=${projectId}`), enabled });
@@ -69,7 +70,7 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
             {ai.insights.map((i: any, idx: number) => (
               <li key={idx} className="text-xs flex items-start gap-2">
                 <span className={`mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${i.severity === 'HIGH' ? 'bg-red-100 text-red-700' : i.severity === 'MEDIUM' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{i.severity}</span>
-                <span><strong className="text-brand-primary">{i.title}.</strong> <span className="text-brand-on-surface-variant">{i.detail}</span></span>
+                <span><strong className="text-brand-primary">{i.title}.</strong> <span className="text-brand-on-surface-variant">{i.detail}</span>{i.recommendation && <em className="text-brand-secondary block text-[11px] mt-0.5">→ {i.recommendation}</em>}</span>
               </li>
             ))}
           </ul>
@@ -115,20 +116,48 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 <Kpi label="Planned Standard" value={num(a.productivity.plannedStandard)} />
                 <Kpi label="Productivity Variance" value={`${a.productivity.variancePct}%`} tone={a.productivity.variancePct < 0 ? 'bad' : 'good'} />
               </div>
-              <div className="grid lg:grid-cols-2 gap-5">
-                <Card title="Productivity by Crew"><Bars data={a.productivity.byCrew} /></Card>
-                <Card title="Productivity by Activity"><Bars data={a.productivity.byActivity} /></Card>
+              <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-bold text-brand-primary text-sm">Productivity Trend</h4>
+                  <div className="flex gap-1 bg-brand-surface-container p-0.5 rounded-md">
+                    {(['daily', 'weekly', 'monthly'] as const).map((p) => (
+                      <button key={p} onClick={() => setPeriod(p)} className={`px-2.5 py-1 rounded text-[10px] font-bold capitalize ${period === p ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant'}`}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+                {(a.trends?.[period] ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No trend data.</p> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={a.trends[period]}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="productivity" stroke="#00286a" strokeWidth={2} dot={false} name="Productivity" />
+                      <Line type="monotone" dataKey="actual" stroke="#ff8a00" strokeWidth={2} dot={false} name="Actual Qty" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <div className="grid lg:grid-cols-3 gap-5">
+                <Card title="By Crew"><Bars data={a.productivity.byCrew} /></Card>
+                <Card title="By Trade"><Bars data={a.productivity.byTrade ?? []} /></Card>
+                <Card title="By Activity"><Bars data={a.productivity.byActivity} /></Card>
               </div>
             </div>
           )}
           {tab === 'resources' && (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <Kpi label="Labor Efficiency" value={num(a.utilization.laborEfficiency)} tone={a.utilization.laborEfficiency < 1 ? 'warn' : 'good'} />
-              <Kpi label="Equipment Utilization" value={`${a.utilization.equipmentUtilizationPct}%`} />
-              <Kpi label="Material Consumption" value={num(a.utilization.materialConsumptionRatio)} tone={a.utilization.materialConsumptionRatio > 1 ? 'bad' : 'good'} />
-              <Kpi label="Total Labor Hours" value={num(a.totals.totalLaborHours)} />
-              <Kpi label="Total Equipment Hours" value={num(a.totals.totalEquipmentHours)} />
-              <Kpi label="Entries" value={num(a.totals.entries)} />
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <Kpi label="Labor Efficiency" value={num(a.utilization.laborEfficiency)} tone={a.utilization.laborEfficiency < 1 ? 'warn' : 'good'} />
+                <Kpi label="Equipment Utilization" value={`${a.utilization.equipmentUtilizationPct}%`} />
+                <Kpi label="Material Consumption" value={num(a.utilization.materialConsumptionRatio)} tone={a.utilization.materialConsumptionRatio > 1 ? 'bad' : 'good'} />
+                <Kpi label="Total Labor Hours" value={num(a.totals.totalLaborHours)} />
+                <Kpi label="Total Equipment Hours" value={num(a.totals.totalEquipmentHours)} />
+                <Kpi label="Entries" value={num(a.totals.entries)} />
+              </div>
+              <Card title="Labor Hours by Activity (histogram)">
+                {(a.histograms?.laborByActivity ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No data.</p> : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={a.histograms.laborByActivity}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="hours" fill="#7c9cff" radius={[4, 4, 0, 0]} /></BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
             </div>
           )}
           {tab === 'delays' && (
@@ -139,6 +168,20 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 <Kpi label="Max Days Delayed" value={num(d?.maxDaysDelayed)} tone={d?.maxDaysDelayed > 0 ? 'warn' : 'good'} />
                 <Kpi label="Total Activities" value={num(d?.totalActivities)} />
               </div>
+              {d?.activities?.length > 0 && (
+                <Card title="Delay Heatmap (days late)">
+                  <div className="flex flex-wrap gap-2">
+                    {d.activities.map((x: any) => {
+                      const sev = x.daysDelayed >= 14 ? '#b91c1c' : x.daysDelayed >= 7 ? '#dc2626' : x.daysDelayed >= 3 ? '#f59e0b' : '#fbbf24';
+                      return (
+                        <div key={x.code} title={`${x.name}: ${x.daysDelayed}d late`} className="rounded-md px-2.5 py-2 text-white text-[10px] font-bold min-w-[64px] text-center" style={{ background: sev }}>
+                          <div className="font-mono">{x.code}</div><div className="text-[13px]">{x.daysDelayed}d</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
               <Card title="Delayed Activities">
                 {!d?.activities?.length ? <p className="text-xs text-brand-on-surface-variant">No delayed activities. 🎉</p> : (
                   <table className="w-full text-xs"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-3 py-2 font-bold">Code</th><th className="px-3 py-2 font-bold">Name</th><th className="px-3 py-2 font-bold text-right">Progress</th><th className="px-3 py-2 font-bold text-right">Days Late</th><th className="px-3 py-2 font-bold">Critical</th></tr></thead>
@@ -159,7 +202,21 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 <Kpi label="Add. Labor Cost" value={money(a.profitabilityImpact.additionalLaborCost)} tone={a.profitabilityImpact.additionalLaborCost > 0 ? 'bad' : 'good'} />
                 <Kpi label="Add. Equipment Cost" value={money(a.profitabilityImpact.additionalEquipmentCost)} tone={a.profitabilityImpact.additionalEquipmentCost > 0 ? 'bad' : 'good'} />
                 <Kpi label="Material Wastage" value={money(a.profitabilityImpact.materialWastageCost)} tone={a.profitabilityImpact.materialWastageCost > 0 ? 'bad' : 'good'} />
+                <Kpi label="Delay Cost" value={money(a.profitabilityImpact.delayCost)} tone={a.profitabilityImpact.delayCost > 0 ? 'bad' : 'good'} />
+                <Kpi label="Rework Cost" value={money(a.profitabilityImpact.reworkCost)} tone={a.profitabilityImpact.reworkCost > 0 ? 'bad' : 'good'} />
+                <Kpi label="Opportunity Cost" value={money(a.profitabilityImpact.opportunityCost)} tone={a.profitabilityImpact.opportunityCost > 0 ? 'warn' : 'good'} />
               </div>
+              {(a.trends?.daily ?? []).length > 0 && (
+                <Card title="Burndown — cumulative planned vs actual">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart data={(() => { let cp = 0; let ca = 0; const total = a.trends.daily.reduce((s: number, t: any) => s + t.planned, 0); return a.trends.daily.map((t: any) => { cp += t.planned; ca += t.actual; return { label: t.label, Remaining: Math.max(0, total - ca), Planned: Math.max(0, total - cp) }; }); })()}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="Planned" stroke="#9aa0b4" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                      <Line type="monotone" dataKey="Remaining" stroke="#00286a" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Card>
+              )}
               <Card title="Progress / Earned Value">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <Kpi label="Actual Progress" value={`${a.progress.actualProgressPct}%`} />

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest } from '../../lib/errors';
+import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import * as service from './ai.service';
 import { TOOLS, runTools } from './tools';
@@ -14,6 +15,7 @@ const chatSchema = z.object({
   provider: z.enum(['openrouter', 'claude', 'gemini']).optional(),
   projectId: z.string().optional(),
   pageContext: z.string().max(80).optional(),
+  conversationId: z.string().optional(),
 });
 
 router.post(
@@ -21,14 +23,59 @@ router.post(
   requirePermission('ai:use'),
   asyncHandler(async (req, res) => {
     const body = chatSchema.parse(req.body);
-    const answer = await service.ask(req.user!.orgId, body.prompt, {
+    const orgId = req.user!.orgId;
+    const answer = await service.ask(orgId, body.prompt, {
       provider: body.provider,
       projectId: body.projectId,
       pageContext: body.pageContext,
     });
-    return ok(res, answer);
+
+    // Persist the exchange (conversation memory).
+    let conversationId = body.conversationId;
+    if (conversationId) {
+      const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId: req.user!.id } });
+      if (!conv) conversationId = undefined;
+    }
+    if (!conversationId) {
+      const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId: req.user!.id, title: body.prompt.slice(0, 80) } });
+      conversationId = conv.id;
+    } else {
+      await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+    }
+    await prisma.aiMessage.createMany({ data: [
+      { conversationId, role: 'user', content: body.prompt },
+      { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
+    ] });
+
+    return ok(res, { ...answer, conversationId });
   }),
 );
+
+// ── Conversation history (per user, org-scoped) ───────────────
+router.get('/conversations', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const list = await prisma.aiConversation.findMany({
+    where: { organizationId: req.user!.orgId, userId: req.user!.id },
+    orderBy: { updatedAt: 'desc' }, take: 50,
+    select: { id: true, title: true, updatedAt: true },
+  });
+  return ok(res, list);
+}));
+
+router.get('/conversations/:id', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const conv = await prisma.aiConversation.findFirst({
+    where: { id: req.params.id, organizationId: req.user!.orgId, userId: req.user!.id },
+    include: { messages: { orderBy: { createdAt: 'asc' } } },
+  });
+  if (!conv) throw NotFound('Conversation not found');
+  return ok(res, conv);
+}));
+
+router.delete('/conversations/:id', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const conv = await prisma.aiConversation.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId, userId: req.user!.id } });
+  if (!conv) throw NotFound('Conversation not found');
+  await prisma.aiConversation.delete({ where: { id: conv.id } });
+  return ok(res, { deleted: true });
+}));
 
 // ── Tool registry (definitions) ───────────────────────────────
 router.get('/tools', requirePermission('ai:use'), asyncHandler(async (_req, res) => {

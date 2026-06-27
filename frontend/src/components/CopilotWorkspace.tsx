@@ -32,6 +32,7 @@ interface CopilotWorkspaceProps {
 
 export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage }: CopilotWorkspaceProps) {
   const [input, setInput] = useState('');
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [listeningTimer, setListeningTimer] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -56,7 +57,9 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
         provider: string;
         model: string;
         offline: boolean;
-      }>('/ai/chat', { prompt: userText });
+        conversationId?: string;
+      }>('/ai/chat', { prompt: userText, conversationId: conversationId ?? undefined });
+      if (res.data.conversationId) setConversationId(res.data.conversationId);
 
       const confidenceNote =
         typeof res.data.confidence === 'number'

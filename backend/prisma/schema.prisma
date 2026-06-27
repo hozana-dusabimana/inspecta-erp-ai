@@ -1654,3 +1654,33 @@ model ComplianceDocument {
   @@index([projectId])
   @@map("compliance_documents")
 }
+
+// ════════════════ MODULE 5 — AI Copilot ════════════════
+// Conversation memory (per user, org-scoped).
+model AiConversation {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  messages AiMessage[]
+
+  @@index([organizationId, userId])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // user | assistant
+  content        String
+  confidence     Int?
+  createdAt      DateTime @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("ai_messages")
+}

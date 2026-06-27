@@ -48,6 +48,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { NAV } from './ErpLayout';
 
 interface DashboardProps {
   onNavigate: (view: AppView) => void;
@@ -125,7 +126,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const [newProjectLocation, setNewProjectLocation] = useState('Chicago, IL');
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
 
   // ── Real project portfolio (Module 1) ──────────────────────────
@@ -322,89 +323,27 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar" id="sidebar-nav" onClick={() => setSidebarOpen(false)}>
-            <button 
-              id="nav-dashboard"
-              onClick={() => onNavigate(AppView.DASHBOARD)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-white rounded-lg border-l-4 border-brand-secondary-container bg-white/10 transition-all font-semibold text-xs text-left"
-            >
-              <Layers className="w-4 h-4 text-brand-secondary-container" />
-              <span>Dashboard</span>
-            </button>
-            
-            <button 
-              id="nav-projects"
-              onClick={() => {}}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <HardHat className="w-4 h-4" />
-              <span>Projects ({projectsList.length})</span>
-            </button>
-
-            <button
-              id="nav-planning"
-              onClick={() => onNavigate(AppView.PLANNING)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Planning Suite</span>
-            </button>
-
-            <button 
-              id="nav-production"
-              onClick={() => onNavigate(AppView.DAILY_ENTRY)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left group"
-            >
-              <Zap className="w-4 h-4 group-hover:text-brand-secondary-container transition-colors" />
-              <span className="flex-1">Production Entry</span>
-              <span className="bg-brand-secondary-container text-white px-2 py-0.5 rounded-full text-[9px] font-bold">New</span>
-            </button>
-
-            <button
-              id="nav-finance"
-              onClick={() => onNavigate(AppView.FINANCE)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <DollarSign className="w-4 h-4" />
-              <span>Finance Modules</span>
-            </button>
-
-            <button
-              id="nav-inventory"
-              onClick={() => onNavigate(AppView.INVENTORY)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <Warehouse className="w-4 h-4" />
-              <span>Inventory Control</span>
-            </button>
-
-            <button
-              id="nav-compliance"
-              onClick={() => onNavigate(AppView.QAQC)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <CheckSquare className="w-4 h-4" />
-              <span>QA/QC Audit</span>
-            </button>
-
-            <button
-              id="nav-hse"
-              onClick={() => onNavigate(AppView.HSE)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left"
-            >
-              <HeartPulse className="w-4 h-4" />
-              <span>HSE Operations</span>
-            </button>
-
-            <button 
-              id="nav-copilot"
-              onClick={() => onNavigate(AppView.COPILOT)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 rounded-lg transition-all text-xs text-left font-bold"
-            >
-              <Bot className="w-4 h-4 text-brand-on-primary-container" />
-              <span>AI Copilot Workspace</span>
-            </button>
+          {/* Navigation Items — shared list (incl. admin-only Administration) */}
+          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]" id="sidebar-nav" onClick={() => setSidebarOpen(false)}>
+            {NAV.filter((n) => !n.perm || hasPermission(n.perm)).map((n) => {
+              const Icon = n.icon;
+              const isActive = n.view === AppView.DASHBOARD;
+              return (
+                <button
+                  key={n.id}
+                  id={n.id}
+                  onClick={() => onNavigate(n.view)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-xs text-left ${
+                    isActive
+                      ? 'text-white border-l-4 border-brand-secondary-container bg-white/10 font-semibold'
+                      : 'text-brand-on-primary-container/85 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-secondary-container' : ''}`} />
+                  <span>{n.label}</span>
+                </button>
+              );
+            })}
           </nav>
         </div>
 

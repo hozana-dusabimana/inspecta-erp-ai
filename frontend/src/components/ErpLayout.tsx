@@ -9,7 +9,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-interface NavItem {
+export interface NavItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -17,7 +17,9 @@ interface NavItem {
   perm?: string;
 }
 
-const NAV: NavItem[] = [
+// Shared sidebar nav — used by both ErpLayout (module pages) and the Dashboard
+// so the navigation (incl. admin-only Administration) is identical everywhere.
+export const NAV: NavItem[] = [
   { id: 'nav-dashboard', label: 'Dashboard', icon: Layers, view: AppView.DASHBOARD, perm: 'dashboard:read' },
   { id: 'nav-portfolio', label: 'Portfolio', icon: Building2, view: AppView.PORTFOLIO, perm: 'portfolio:read' },
   { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },

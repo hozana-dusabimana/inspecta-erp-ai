@@ -7,6 +7,7 @@ import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
 import WbsTree from './components/WbsTree';
 import BoqVersions from './components/BoqVersions';
+import ProductionAnalytics from './components/ProductionAnalytics';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -660,10 +661,29 @@ export const MODULES: Record<string, ModuleDef> = {
 
   [AppView.PRODUCTION]: {
     view: AppView.PRODUCTION,
-    title: 'Production Control',
-    subtitle: 'Daily production, planned vs actual & productivity (Module 2)',
-    summary: (pid) => <ProductionSummary projectId={pid} />,
+    title: 'Production & Profitability Control',
+    subtitle: 'Daily reports, productivity, EVM, delays & profitability impact (Module 2)',
+    summary: (pid) => <ProductionAnalytics projectId={pid} />,
     tabs: [
+      {
+        key: 'reports', label: 'Daily Reports', endpoint: '/production/daily-reports', entityLabel: 'Daily Report',
+        projectScoped: true, readPerm: 'production:read', writePerm: 'production:write',
+        columns: [
+          { key: 'reportNumber', label: 'Number' },
+          { key: 'reportDate', label: 'Date', render: (r) => date(r.reportDate) },
+          { key: 'shift', label: 'Shift' }, { key: 'weather', label: 'Weather' },
+          { key: 'entries', label: 'Entries', align: 'right', render: (r) => num(r._count?.entries ?? 0) },
+          { key: 'status', label: 'Status' },
+        ],
+        fields: [
+          { name: 'reportNumber', label: 'Report Number', required: true },
+          { name: 'reportDate', label: 'Report Date', type: 'date' },
+          { name: 'shift', label: 'Shift', type: 'select', options: opt(['DAY', 'NIGHT']) },
+          { name: 'weather', label: 'Weather' },
+          { name: 'temperature', label: 'Temperature (°C)', type: 'number' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
       {
         key: 'entries', label: 'Daily Entries', endpoint: '/production', entityLabel: 'Production Entry',
         projectScoped: true, readPerm: 'production:read', writePerm: 'production:write',
@@ -672,19 +692,44 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'wbsActivity', label: 'Activity' },
           { key: 'plannedQty', label: 'Planned', align: 'right', render: (r) => num(r.plannedQty) },
           { key: 'actualQty', label: 'Actual', align: 'right', render: (r) => num(r.actualQty) },
+          { key: 'remainingQty', label: 'Remaining', align: 'right', render: (r) => (r.remainingQty != null ? num(r.remainingQty) : '—') },
           { key: 'laborHours', label: 'Labor h', align: 'right', render: (r) => num(r.laborHours) },
+          { key: 'equipmentHours', label: 'Equip h', align: 'right', render: (r) => num(r.equipmentHours) },
           { key: 'prod', label: 'Productivity', align: 'right', render: productivity },
         ],
         fields: [
           { name: 'date', label: 'Date', type: 'date' },
+          { name: 'dailyReportId', label: 'Daily Report', type: 'select', optionsEndpoint: '/production/daily-reports', optionLabel: (r) => r.reportNumber },
           { name: 'wbsActivity', label: 'WBS Activity', required: true },
+          { name: 'wbsItemId', label: 'WBS Item (link)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'productivityStandardId', label: 'Productivity Standard', type: 'select', optionsEndpoint: '/planning/productivity', optionLabel: (r) => `${r.activity} (${r.productivityRate}/h)` },
+          { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
+          { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name },
           { name: 'unit', label: 'Unit' },
           { name: 'plannedQty', label: 'Planned Qty', type: 'number', required: true },
           { name: 'actualQty', label: 'Actual Qty', type: 'number', required: true },
+          { name: 'remainingQty', label: 'Remaining Qty', type: 'number' },
           { name: 'laborHours', label: 'Labor Hours', type: 'number' },
           { name: 'equipmentHours', label: 'Equipment Hours', type: 'number' },
           { name: 'weatherCondition', label: 'Weather' },
+          { name: 'issues', label: 'Issues', type: 'textarea' },
+          { name: 'delays', label: 'Delays', type: 'textarea' },
           { name: 'remarks', label: 'Remarks', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'materials', label: 'Material Use', endpoint: '/production/materials', entityLabel: 'Material Consumption',
+        readPerm: 'production:read', writePerm: 'production:write',
+        columns: [
+          { key: 'materialId', label: 'Material' },
+          { key: 'plannedQty', label: 'Planned', align: 'right', render: (r) => num(r.plannedQty) },
+          { key: 'qtyUsed', label: 'Used', align: 'right', render: (r) => num(r.qtyUsed) },
+        ],
+        fields: [
+          { name: 'productionEntryId', label: 'Production Entry ID', required: true },
+          { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
+          { name: 'plannedQty', label: 'Planned Qty', type: 'number' },
+          { name: 'qtyUsed', label: 'Qty Used', type: 'number' },
         ],
       },
     ],

@@ -310,6 +310,7 @@ model Project {
   wbsItems         WbsItem[]
   boqItems         BoqItem[]
   productionEntries ProductionEntry[]
+  dailyReports      DailyReport[]
   budgetLines      BudgetLine[]
   costEntries      CostEntry[]
   invoices         Invoice[]
@@ -418,25 +419,97 @@ model ProductionEntry {
   id              String   @id @default(cuid())
   organizationId  String
   projectId       String
+  dailyReportId   String?
   date            DateTime @default(now())
   wbsActivity     String
+  // Links to Module 1 entities (scalar FKs, joined in the analytics engine).
+  wbsItemId             String?
+  equipmentId           String?
+  crewId                String?
+  productivityStandardId String?
   unit            String   @default("unit")
   plannedQty      Decimal  @default(0) @db.Decimal(18, 3)
   actualQty       Decimal  @default(0) @db.Decimal(18, 3)
+  remainingQty    Decimal? @db.Decimal(18, 3)
   laborHours      Decimal  @default(0) @db.Decimal(12, 2)
   equipmentHours  Decimal  @default(0) @db.Decimal(12, 2)
   weatherCondition String?
+  issues          String?
+  delays          String?
   remarks         String?
   photos          String[]
+  attachments     String[]
   createdById     String?
+  createdBy       String?
+  updatedBy       String?
+  deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dailyReport DailyReport? @relation(fields: [dailyReportId], references: [id], onDelete: SetNull)
+  materials   ProductionMaterial[]
 
   @@index([organizationId])
   @@index([projectId, date])
   @@map("production_entries")
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+// Daily Production Report header (Submodule 1).
+model DailyReport {
+  id             String       @id @default(cuid())
+  organizationId String
+  projectId      String
+  reportNumber   String
+  reportDate     DateTime     @default(now())
+  shift          String?
+  weather        String?
+  temperature    Float?
+  preparedById   String?
+  approvedById   String?
+  approvedAt     DateTime?
+  status         ReportStatus @default(DRAFT)
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  entries ProductionEntry[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("daily_reports")
+}
+
+// Material consumption per production entry (Material Used vs Planned).
+model ProductionMaterial {
+  id                String  @id @default(cuid())
+  organizationId    String
+  productionEntryId String
+  materialId        String
+  plannedQty        Decimal @default(0) @db.Decimal(18, 3)
+  qtyUsed           Decimal @default(0) @db.Decimal(18, 3)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entry ProductionEntry @relation(fields: [productionEntryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([productionEntryId])
+  @@map("production_materials")
 }
 
 // ──────────────────── M3 — Finance & Cost ────────────────────

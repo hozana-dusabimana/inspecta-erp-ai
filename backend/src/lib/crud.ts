@@ -62,6 +62,7 @@ const DATE_FIELDS = new Set([
   'requiredByDate',
   'neededByDate',
   'deliveryDate',
+  'reportDate',
   'issueDate',
   'dueDate',
   'orderDate',

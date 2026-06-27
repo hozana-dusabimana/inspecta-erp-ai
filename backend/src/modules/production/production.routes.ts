@@ -139,6 +139,7 @@ const matSchema = z.object({
   materialId: z.string(),
   plannedQty: z.number().nonnegative().optional(),
   qtyUsed: z.number().nonnegative().optional(),
+  wasteQty: z.number().nonnegative().optional(),
 });
 const materialsCrud = createCrudRouter({
   model: 'productionMaterial',

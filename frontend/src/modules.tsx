@@ -8,6 +8,7 @@ import GanttChart from './components/GanttChart';
 import WbsTree from './components/WbsTree';
 import BoqVersions from './components/BoqVersions';
 import ProductionAnalytics from './components/ProductionAnalytics';
+import FinanceAnalytics from './components/FinanceAnalytics';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -109,14 +110,35 @@ function CpmPanel({ projectId }: { projectId?: string }) {
 }
 
 function InventorySummary() {
-  const { data } = useQuery({ queryKey: ['inventory-stock'], queryFn: () => api.get<any>('/inventory/stock') });
+  const [method, setMethod] = useState<'wavg' | 'fifo'>('wavg');
+  const { data } = useQuery({ queryKey: ['inventory-dashboard'], queryFn: () => api.get<any>('/dashboards/inventory') });
+  const { data: val } = useQuery({ queryKey: ['inventory-valuation', method], queryFn: () => api.get<any>(`/inventory/valuation?method=${method}`) });
   const s = data?.data;
   if (!s) return null;
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-      <StatCard label="Materials" value={num(s.materials.length)} />
-      <StatCard label="Stock Value" value={money(s.totalValue)} />
-      <StatCard label="Reorder Alerts" value={num(s.reorderCount)} tone={s.reorderCount > 0 ? 'bad' : 'good'} />
+    <div className="space-y-4 mb-2">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard label="Materials" value={num(s.materialsCount)} />
+        <StatCard label="Stock Value" value={money(s.totalStockValue)} />
+        <StatCard label="Reorder Alerts" value={num(s.reorderCount)} tone={s.reorderCount > 0 ? 'bad' : 'good'} />
+        <StatCard label="Dead Stock" value={num(s.deadStockCount)} tone={s.deadStockCount > 0 ? 'warn' : 'good'} />
+        <StatCard label="Material Waste %" value={`${s.wastePct}%`} tone={s.wastePct > 5 ? 'bad' : 'good'} />
+      </div>
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between gap-3">
+          <span className="font-bold text-brand-primary text-sm">Inventory Valuation — {money(val?.data?.totalValue)}</span>
+          <div className="flex gap-1 bg-brand-surface-container p-0.5 rounded-md">
+            {(['wavg', 'fifo'] as const).map((m) => (
+              <button key={m} onClick={() => setMethod(m)} className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase ${method === m ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant'}`}>{m === 'wavg' ? 'Weighted Avg' : 'FIFO'}</button>
+            ))}
+          </div>
+        </div>
+        {(val?.data?.rows ?? []).length === 0 ? <p className="px-5 py-4 text-xs text-brand-on-surface-variant">No stock yet.</p> : (
+          <table className="w-full text-xs"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-4 py-2 font-bold">Material</th><th className="px-4 py-2 font-bold text-right">Qty</th><th className="px-4 py-2 font-bold text-right">Avg Cost</th><th className="px-4 py-2 font-bold text-right">Value</th></tr></thead>
+            <tbody>{(val?.data?.rows ?? []).filter((r: any) => r.quantity !== 0).map((r: any) => (<tr key={r.id} className="border-b border-brand-outline-variant/10 last:border-0"><td className="px-4 py-2">{r.code} — {r.name}</td><td className="px-4 py-2 text-right font-mono">{num(r.quantity)}</td><td className="px-4 py-2 text-right font-mono">{money(r.avgCost)}</td><td className="px-4 py-2 text-right font-mono">{money(r.value)}</td></tr>))}</tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -725,12 +747,14 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'materialId', label: 'Material' },
           { key: 'plannedQty', label: 'Planned', align: 'right', render: (r) => num(r.plannedQty) },
           { key: 'qtyUsed', label: 'Used', align: 'right', render: (r) => num(r.qtyUsed) },
+          { key: 'wasteQty', label: 'Waste', align: 'right', render: (r) => num(r.wasteQty) },
         ],
         fields: [
           { name: 'productionEntryId', label: 'Production Entry ID', required: true },
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
           { name: 'plannedQty', label: 'Planned Qty', type: 'number' },
           { name: 'qtyUsed', label: 'Qty Used', type: 'number' },
+          { name: 'wasteQty', label: 'Waste Qty', type: 'number' },
         ],
       },
     ],
@@ -739,19 +763,23 @@ export const MODULES: Record<string, ModuleDef> = {
   [AppView.FINANCE]: {
     view: AppView.FINANCE,
     title: 'Finance & Cost Control',
-    subtitle: 'Budgets, actual costs, billing & payments (Module 3)',
-    summary: (pid) => <FinanceSummary projectId={pid} />,
+    subtitle: 'Budgets, costs, cash flow, EVM, billing & inventory (Module 3)',
+    summary: (pid) => <FinanceAnalytics projectId={pid} />,
     tabs: [
       {
         key: 'budget', label: 'Budget', endpoint: '/finance/budget', entityLabel: 'Budget Line',
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
         columns: [
-          { key: 'category', label: 'Category' }, { key: 'description', label: 'Description' },
+          { key: 'budgetType', label: 'Type' }, { key: 'category', label: 'Category' },
+          { key: 'description', label: 'Description' },
           { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
         ],
         fields: [
-          { name: 'category', label: 'Category', type: 'select', options: COST_CATEGORIES },
           { name: 'description', label: 'Description', required: true },
+          { name: 'budgetType', label: 'Budget Type', type: 'select', options: opt(['ORIGINAL', 'REVISED', 'FORECAST', 'CONTINGENCY']) },
+          { name: 'category', label: 'Category', type: 'select', options: COST_CATEGORIES },
+          { name: 'wbsItemId', label: 'WBS Item', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'costCode', label: 'Cost Code' },
           { name: 'amount', label: 'Amount', type: 'number', required: true },
         ],
       },
@@ -761,13 +789,33 @@ export const MODULES: Record<string, ModuleDef> = {
         columns: [
           { key: 'date', label: 'Date', render: (r) => date(r.date) },
           { key: 'category', label: 'Category' }, { key: 'description', label: 'Description' },
+          { key: 'source', label: 'Source' },
           { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
         ],
         fields: [
           { name: 'category', label: 'Category', type: 'select', options: COST_CATEGORIES },
           { name: 'description', label: 'Description', required: true },
+          { name: 'wbsItemId', label: 'WBS Item', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'amount', label: 'Amount', type: 'number', required: true },
           { name: 'date', label: 'Date', type: 'date' },
+        ],
+      },
+      {
+        key: 'cashflow', label: 'Cash Flow', endpoint: '/finance/cash-flow-entries', entityLabel: 'Cash Movement',
+        readPerm: 'finance:read', writePerm: 'finance:write',
+        columns: [
+          { key: 'date', label: 'Date', render: (r) => date(r.date) },
+          { key: 'direction', label: 'Direction' }, { key: 'category', label: 'Category' },
+          { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
+          { key: 'reference', label: 'Reference' },
+        ],
+        fields: [
+          { name: 'direction', label: 'Direction', type: 'select', options: opt(['IN', 'OUT']), required: true },
+          { name: 'category', label: 'Category', type: 'select', options: opt(['CLIENT_PAYMENT', 'ADVANCE', 'RETENTION_RELEASE', 'OTHER_INCOME', 'PAYROLL', 'SUPPLIER', 'EQUIPMENT', 'SUBCONTRACTOR', 'OVERHEAD', 'OTHER']), required: true },
+          { name: 'amount', label: 'Amount', type: 'number', required: true },
+          { name: 'date', label: 'Date', type: 'date' },
+          { name: 'reference', label: 'Reference' },
+          { name: 'note', label: 'Note', type: 'textarea' },
         ],
       },
       {
@@ -782,8 +830,15 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'number', label: 'Number', required: true },
           { name: 'description', label: 'Description' },
-          { name: 'amount', label: 'Amount', type: 'number', required: true },
+          { name: 'amount', label: 'Amount (if not an IPC)', type: 'number', required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'APPROVED', 'PAID', 'REJECTED']) },
+          { name: 'isIpc', label: 'Is IPC?', type: 'select', options: [{ value: 'false', label: 'Invoice' }, { value: 'true', label: 'IPC / Certificate' }] },
+          { name: 'certificateNumber', label: 'Certificate No.' },
+          { name: 'grossValuation', label: 'Gross Valuation (IPC)', type: 'number' },
+          { name: 'previousCertified', label: 'Previously Certified', type: 'number' },
+          { name: 'retentionPct', label: 'Retention %', type: 'number' },
+          { name: 'advanceDeduction', label: 'Advance Deduction', type: 'number' },
+          { name: 'taxPct', label: 'Tax %', type: 'number' },
           { name: 'issueDate', label: 'Issue Date', type: 'date' },
           { name: 'dueDate', label: 'Due Date', type: 'date' },
         ],
@@ -821,8 +876,11 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
+          { name: 'category', label: 'Category' },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
           { name: 'unit', label: 'Unit' }, { name: 'reorderLevel', label: 'Reorder Level', type: 'number' },
           { name: 'unitCost', label: 'Unit Cost', type: 'number' },
+          { name: 'standardCost', label: 'Standard Cost', type: 'number' },
         ],
       },
       {
@@ -833,14 +891,18 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'material', label: 'Material', render: (r) => r.material?.name ?? '—' },
           { key: 'type', label: 'Type' },
           { key: 'quantity', label: 'Qty', align: 'right', render: (r) => num(r.quantity) },
+          { key: 'warehouse', label: 'Warehouse' },
           { key: 'reference', label: 'Reference' },
         ],
         fields: [
           { name: 'materialId', label: 'Material', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
-          { name: 'type', label: 'Type', type: 'select', options: opt(['RECEIPT', 'ISSUE', 'ADJUSTMENT']), required: true },
+          { name: 'type', label: 'Type (GRN=Receipt, Issue Note=Issue)', type: 'select', options: opt(['RECEIPT', 'ISSUE', 'ADJUSTMENT', 'TRANSFER', 'RETURN', 'WASTE']), required: true },
           { name: 'quantity', label: 'Quantity', type: 'number', required: true },
           { name: 'unitCost', label: 'Unit Cost', type: 'number' },
           { name: 'reference', label: 'Reference (GRN/Issue No.)' },
+          { name: 'warehouse', label: 'Warehouse' },
+          { name: 'requestedBy', label: 'Requested By' },
+          { name: 'approvedBy', label: 'Approved By' },
           { name: 'note', label: 'Note', type: 'textarea' },
           { name: 'date', label: 'Date', type: 'date' },
         ],

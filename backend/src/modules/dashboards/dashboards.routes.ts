@@ -288,4 +288,52 @@ router.get(
   }),
 );
 
+// ── 5. Inventory Dashboard ────────────────────────────────────
+router.get(
+  '/inventory',
+  requirePermission('dashboard:read'),
+  asyncHandler(async (req, res) => {
+    const orgId = req.user!.orgId;
+    const scope = { organizationId: orgId };
+
+    const [materials, groups, waste, lastMoves] = await Promise.all([
+      prisma.material.findMany({ where: scope }),
+      prisma.stockMovement.groupBy({ by: ['materialId', 'type'], where: scope, _sum: { quantity: true } }),
+      prisma.productionMaterial.aggregate({ where: scope, _sum: { wasteQty: true, qtyUsed: true } }),
+      prisma.stockMovement.groupBy({ by: ['materialId'], where: scope, _max: { date: true } }),
+    ]);
+
+    const stockBy = new Map<string, number>();
+    for (const g of groups) {
+      const q = num(g._sum.quantity);
+      const d = g.type === 'ISSUE' || g.type === 'WASTE' ? -q : g.type === 'TRANSFER' ? 0 : q;
+      stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d);
+    }
+    const lastMove = new Map(lastMoves.map((m) => [m.materialId, m._max.date?.getTime() ?? 0]));
+    const now = Date.now();
+    const DEAD_MS = 90 * 86400000;
+
+    let totalValue = 0; let reorderCount = 0; let deadStock = 0;
+    for (const m of materials) {
+      const stock = stockBy.get(m.id) ?? 0;
+      totalValue += stock * num(m.unitCost);
+      if (num(m.reorderLevel) > 0 && stock <= num(m.reorderLevel)) reorderCount++;
+      const lm = lastMove.get(m.id) ?? 0;
+      if (stock > 0 && (lm === 0 || now - lm > DEAD_MS)) deadStock++;
+    }
+    const usedTotal = num(waste._sum.qtyUsed);
+    const wasteTotal = num(waste._sum.wasteQty);
+
+    return ok(res, {
+      materialsCount: materials.length,
+      totalStockValue: Number(totalValue.toFixed(2)),
+      reorderCount,
+      deadStockCount: deadStock,
+      materialConsumed: usedTotal,
+      materialWaste: wasteTotal,
+      wastePct: usedTotal > 0 ? Number(((wasteTotal / usedTotal) * 100).toFixed(1)) : 0,
+    });
+  }),
+);
+
 export default router;

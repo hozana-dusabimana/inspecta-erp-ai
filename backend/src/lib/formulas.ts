@@ -55,6 +55,26 @@ export function scheduleVariance(earnedValue: number, plannedValue: number): num
   return earnedValue - plannedValue;
 }
 
+/** Cost Performance Index = Earned Value / Actual Cost. */
+export function cpi(earnedValue: number, actualCost: number): number {
+  return actualCost > 0 ? earnedValue / actualCost : 0;
+}
+
+/** Estimate At Completion = BAC / CPI (falls back to BAC when CPI is 0). */
+export function eac(bac: number, cpiValue: number): number {
+  return cpiValue > 0 ? bac / cpiValue : bac;
+}
+
+/** Estimate To Complete = EAC − Actual Cost. */
+export function etc(eacValue: number, actualCost: number): number {
+  return Math.max(0, eacValue - actualCost);
+}
+
+/** Variance At Completion = BAC − EAC. */
+export function vac(bac: number, eacValue: number): number {
+  return bac - eacValue;
+}
+
 /**
  * Extra (wasted) resource hours vs the standard for the achieved output.
  * standardHours = actualQty / plannedProductivity; extra = actualHours − standardHours.

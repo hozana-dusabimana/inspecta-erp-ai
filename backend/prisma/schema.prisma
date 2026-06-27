@@ -81,6 +81,14 @@ enum MovementType {
   RECEIPT
   ISSUE
   ADJUSTMENT
+  TRANSFER
+  RETURN
+  WASTE
+}
+
+enum CashDirection {
+  IN
+  OUT
 }
 
 enum Severity {
@@ -500,6 +508,7 @@ model ProductionMaterial {
   materialId        String
   plannedQty        Decimal @default(0) @db.Decimal(18, 3)
   qtyUsed           Decimal @default(0) @db.Decimal(18, 3)
+  wasteQty          Decimal @default(0) @db.Decimal(18, 3)
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -519,9 +528,15 @@ model BudgetLine {
   id             String       @id @default(cuid())
   organizationId String
   projectId      String
+  wbsItemId      String?
   category       CostCategory @default(OTHER)
+  budgetType     String       @default("ORIGINAL") // ORIGINAL | REVISED | FORECAST | CONTINGENCY
+  costCode       String?
   description    String
   amount         Decimal      @default(0) @db.Decimal(18, 2)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -536,10 +551,16 @@ model CostEntry {
   id             String       @id @default(cuid())
   organizationId String
   projectId      String
+  wbsItemId      String?
   category       CostCategory @default(OTHER)
+  source         String       @default("MANUAL") // MANUAL | PRODUCTION
+  sourceRef      String?
   description    String
   amount         Decimal      @default(0) @db.Decimal(18, 2)
   date           DateTime     @default(now())
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -558,8 +579,21 @@ model Invoice {
   description    String?
   amount         Decimal       @default(0) @db.Decimal(18, 2)
   status         InvoiceStatus @default(DRAFT)
+  // IPC / Interim Payment Certificate fields
+  isIpc             Boolean  @default(false)
+  certificateNumber String?
+  grossValuation    Decimal? @db.Decimal(18, 2)
+  previousCertified Decimal? @db.Decimal(18, 2)
+  retentionPct      Decimal? @db.Decimal(5, 2)
+  retentionAmount   Decimal? @db.Decimal(18, 2)
+  advanceDeduction  Decimal? @db.Decimal(18, 2)
+  taxPct            Decimal? @db.Decimal(5, 2)
+  netAmount         Decimal? @db.Decimal(18, 2)
   issueDate      DateTime      @default(now())
   dueDate        DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -597,9 +631,12 @@ model Material {
   organizationId String
   code           String
   name           String
+  category       String?
+  supplierId     String?
   unit           String   @default("unit")
   reorderLevel   Decimal  @default(0) @db.Decimal(18, 3)
   unitCost       Decimal  @default(0) @db.Decimal(18, 2)
+  standardCost   Decimal? @db.Decimal(18, 2)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -621,6 +658,9 @@ model StockMovement {
   quantity       Decimal      @default(0) @db.Decimal(18, 3)
   unitCost       Decimal      @default(0) @db.Decimal(18, 2)
   reference      String?
+  warehouse      String?
+  requestedBy    String?
+  approvedBy     String?
   note           String?
   date           DateTime     @default(now())
   createdAt      DateTime     @default(now())
@@ -1411,4 +1451,29 @@ model BoqVersionItem {
 
   @@index([boqVersionId])
   @@map("boq_version_items")
+}
+
+// ════════════════ MODULE 3 — Cash Flow Management ════════════════
+// Manual cash movements (advances, retention release, overheads, etc.).
+// Payments (inflows) and CostEntry (outflows) are also folded into the
+// cash-flow engine; this captures items not represented elsewhere.
+model CashFlowEntry {
+  id             String        @id @default(cuid())
+  organizationId String
+  projectId      String?
+  date           DateTime      @default(now())
+  direction      CashDirection
+  category       String // CLIENT_PAYMENT | ADVANCE | RETENTION_RELEASE | OTHER_INCOME | PAYROLL | SUPPLIER | EQUIPMENT | SUBCONTRACTOR | OVERHEAD | OTHER
+  amount         Decimal       @default(0) @db.Decimal(18, 2)
+  reference      String?
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("cash_flow_entries")
 }

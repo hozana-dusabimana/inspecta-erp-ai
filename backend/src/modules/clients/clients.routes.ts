@@ -15,6 +15,7 @@ const upsertSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   address: z.string().optional(),
+  taxNumber: z.string().optional(),
 });
 
 // LIST

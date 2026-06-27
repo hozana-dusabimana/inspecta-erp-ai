@@ -228,6 +228,7 @@ model Client {
   email          String?
   phone          String?
   address        String?
+  taxNumber      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -245,12 +246,23 @@ model Contract {
   clientId       String
   projectId      String?        @unique
   reference      String
+  contractNumber String?
   type           ContractType   @default(LUMP_SUM)
   status         ContractStatus @default(DRAFT)
   value          Decimal        @default(0) @db.Decimal(18, 2)
   currency       String         @default("USD")
   startDate      DateTime?
   endDate        DateTime?
+  contractDate         DateTime?
+  commencementDate     DateTime?
+  defectsLiabilityDays Int?
+  retentionPct         Decimal?  @db.Decimal(5, 2)
+  advancePayment       Decimal?  @db.Decimal(18, 2)
+  documentsUrl         String?
+  // Lifecycle / audit columns (multi-tenant spec)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -273,6 +285,12 @@ model Project {
   name           String
   description    String?
   location       String?
+  projectType         String?
+  category            String?
+  timezone            String?
+  gpsLat              Float?
+  gpsLng              Float?
+  plannedProfitMargin Decimal?      @db.Decimal(5, 2)
   status         ProjectStatus @default(PLANNING)
   health         ProjectHealth @default(OPTIMAL)
   budget         Decimal       @default(0) @db.Decimal(18, 2)
@@ -280,6 +298,7 @@ model Project {
   progressPct    Float         @default(0)
   startDate      DateTime?
   endDate        DateTime?
+  actualEndDate  DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

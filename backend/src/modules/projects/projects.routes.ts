@@ -15,6 +15,12 @@ const createSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
   location: z.string().optional(),
+  projectType: z.string().optional(),
+  category: z.string().optional(),
+  timezone: z.string().optional(),
+  gpsLat: z.number().optional(),
+  gpsLng: z.number().optional(),
+  plannedProfitMargin: z.number().min(0).max(100).optional(),
   clientId: z.string().optional(),
   managerId: z.string().optional(),
   status: z.nativeEnum(ProjectStatus).optional(),
@@ -24,6 +30,7 @@ const createSchema = z.object({
   progressPct: z.number().min(0).max(100).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  actualEndDate: z.string().datetime().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -134,6 +141,12 @@ router.post(
         name: body.name,
         description: body.description,
         location: body.location,
+        projectType: body.projectType,
+        category: body.category,
+        timezone: body.timezone,
+        gpsLat: body.gpsLat,
+        gpsLng: body.gpsLng,
+        plannedProfitMargin: body.plannedProfitMargin,
         clientId: body.clientId,
         managerId: body.managerId,
         status: body.status,
@@ -143,6 +156,7 @@ router.post(
         progressPct: body.progressPct ?? 0,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        actualEndDate: body.actualEndDate ? new Date(body.actualEndDate) : undefined,
       },
     });
     await auditFromRequest(req, 'CREATE', 'project', project.id, { newValues: project });
@@ -169,6 +183,7 @@ router.put(
         budget: body.budget,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        actualEndDate: body.actualEndDate ? new Date(body.actualEndDate) : undefined,
       },
     });
     await auditFromRequest(req, 'UPDATE', 'project', project.id, { oldValues: existing, newValues: project });

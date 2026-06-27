@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   HardHat, Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, Bell, Search, LogOut, ShoppingCart, ShieldAlert, FileText, BarChart3, Settings,
-  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X, ShieldCheck, Users, Truck,
+  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X, ShieldCheck, Users, Truck, LayoutDashboard,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
@@ -26,6 +26,7 @@ export const NAV: NavItem[] = [
   { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },
   { id: 'nav-hr', label: 'Human Resources', icon: Users, view: AppView.HR, perm: 'hr:read' },
   { id: 'nav-equipment', label: 'Equipment', icon: Truck, view: AppView.EQUIPMENT, perm: 'equipment:read' },
+  { id: 'nav-planning-dash', label: 'Planning Dashboards', icon: LayoutDashboard, view: AppView.PLANNING_DASH, perm: 'dashboard:read' },
   { id: 'nav-scheduling', label: 'Scheduling (CPM)', icon: GanttChartSquare, view: AppView.SCHEDULING, perm: 'scheduling:read' },
   { id: 'nav-production', label: 'Production', icon: Zap, view: AppView.PRODUCTION, perm: 'production:read' },
   { id: 'nav-fieldops', label: 'Field Ops', icon: ClipboardList, view: AppView.FIELDOPS, perm: 'fieldops:read' },

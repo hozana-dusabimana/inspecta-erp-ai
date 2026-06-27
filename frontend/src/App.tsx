@@ -28,6 +28,7 @@ import ProfitabilityPage from './components/ProfitabilityPage';
 import PortfolioPage from './components/PortfolioPage';
 import ApprovalsPage from './components/ApprovalsPage';
 import AdminPage from './components/AdminPage';
+import PlanningDashboards from './components/PlanningDashboards';
 import { MODULES } from './modules';
 
 export default function App() {
@@ -188,6 +189,10 @@ export default function App() {
 
           {currentView === AppView.ADMIN && (
             <AdminPage onNavigate={setCurrentView} onLogout={handleLogout} />
+          )}
+
+          {currentView === AppView.PLANNING_DASH && (
+            <PlanningDashboards onNavigate={setCurrentView} onLogout={handleLogout} />
           )}
 
           {MODULES[currentView] && (

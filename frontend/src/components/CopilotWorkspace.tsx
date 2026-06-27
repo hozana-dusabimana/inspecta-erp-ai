@@ -142,16 +142,16 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     recognition.start();
   };
 
+  const SUGGESTIONS: Record<string, string> = {
+    'Productivity': 'Which activities or crews are underperforming on productivity, and why?',
+    'Cost & EVM': 'Analyze cost variance and EVM (CPI/SPI/EAC) — are we trending over budget?',
+    'Forecast Profit': 'What is the forecast profit and margin, and what is eroding it?',
+    'Schedule Delays': 'Which activities are delaying the project and what is the completion outlook?',
+    'Inventory': 'Which materials should we reorder and where is material waste highest?',
+    'Compliance Risks': 'What are our biggest quality and safety risks right now?',
+  };
   const handleSuggestionClick = (suggestion: string) => {
-    let query = suggestion;
-    if (suggestion === 'Analyze Delay') {
-      query = 'Which projects in my portfolio are behind on progress, and what is the likely impact?';
-    } else if (suggestion === 'Forecast Profit') {
-      query = 'Based on budgets and progress, summarize the financial outlook across my active projects.';
-    } else if (suggestion === 'Safety Audit') {
-      query = 'Summarize the health status across my projects and flag any that need attention.';
-    }
-    handleSend(query);
+    handleSend(SUGGESTIONS[suggestion] ?? suggestion);
   };
 
   return (
@@ -333,7 +333,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
           
           {/* Quick chip triggers */}
           <div className="flex flex-wrap gap-2 justify-center">
-            {['Analyze Delay', 'Forecast Profit', 'Safety Audit'].map((chip) => (
+            {['Productivity', 'Cost & EVM', 'Forecast Profit', 'Schedule Delays', 'Inventory', 'Compliance Risks'].map((chip) => (
               <button 
                 key={chip}
                 id={`chip-${chip.toLowerCase().replace(' ', '-')}`}

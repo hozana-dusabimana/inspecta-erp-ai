@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
+import { selectTools, runTools } from './tools';
 
 export interface CopilotContext {
   organizationName: string;
@@ -114,14 +115,22 @@ export async function buildContext(orgId: string, isoNow: string): Promise<Copil
   };
 }
 
-const SYSTEM_PROMPT = `You are Inspecta Copilot, an AI construction-intelligence partner inside the INSPECTA BUILDOS ERP.
+const SYSTEM_PROMPT = `You are Inspecta Copilot — a construction project-controls advisor, cost controller, productivity advisor, risk advisor and executive assistant inside the INSPECTA BUILDOS ERP.
 
 STRICT RULES:
-- Use ONLY the figures present in the provided JSON DATA SNAPSHOT. Never invent project names, numbers, costs, or dates.
-- If the snapshot lacks the data needed to answer, say so plainly and state what data is missing — do NOT fabricate.
-- When you compute something (variance, averages, profit, productivity), show the formula and the inputs you used.
-- Be concise and practical: 2-4 short paragraphs or a tight bullet list.
-- End with a line: "Confidence: <0-100>%" reflecting how well the snapshot supports your answer (low if data is sparse).`;
+- Use ONLY the figures in the provided JSON DATA SNAPSHOT and TOOL RESULTS. Never invent project names, numbers, costs or dates.
+- If the data needed is missing, say so plainly and name what's missing — do NOT fabricate.
+- When you compute something (variance, profit, productivity, EVM), show the formula and the inputs used.
+
+ANSWER FORMAT — use these sections (omit a section only if there is genuinely no data for it):
+**Executive Summary** — 1-2 sentences.
+**Root Cause** — why (use Five-Whys / drivers where the data supports it).
+**Impact** — quantified effect on cost / schedule / profit / safety.
+**Recommendations** — specific, prioritized actions.
+**Forecast** — what happens if unaddressed (use the forecast/EVM figures).
+**Action Plan** — a short table: Priority | Action | Owner | Due | Expected Impact.
+**Supporting Metrics** — the key numbers you used.
+End with: "Confidence: <0-100>%" (low if data is sparse).`;
 
 export interface CopilotAnswer {
   text: string;
@@ -138,23 +147,35 @@ function extractConfidence(text: string): number {
   return Math.max(0, Math.min(100, Number(m[1])));
 }
 
+export interface AskOptions {
+  provider?: string;
+  projectId?: string;
+  pageContext?: string;
+}
+
 export async function ask(
   orgId: string,
   prompt: string,
-  providerName?: string,
+  opts: AskOptions = {},
 ): Promise<CopilotAnswer> {
+  const { provider: providerName, projectId, pageContext } = opts;
   const isoNow = new Date().toISOString();
   const context = await buildContext(orgId, isoNow);
+
+  // Tool calling: route the question (+page context) to the relevant org-scoped
+  // data tools, run them, and inject their structured results as ground truth.
+  const toolNames = selectTools(prompt, pageContext);
+  const toolResults = await runTools(toolNames, orgId, projectId);
 
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `DATA SNAPSHOT (the only source of truth):\n${JSON.stringify(
-        context,
-        null,
-        2,
-      )}\n\nQUESTION: ${prompt}`,
+      content:
+        `DATA SNAPSHOT (org-level, source of truth):\n${JSON.stringify(context, null, 2)}\n\n` +
+        `TOOL RESULTS (${toolNames.join(', ')}${projectId ? ' — scoped to the selected project' : ''}):\n${JSON.stringify(toolResults, null, 2)}\n\n` +
+        (pageContext ? `PAGE CONTEXT: the user is on the "${pageContext}" page.\n\n` : '') +
+        `QUESTION: ${prompt}`,
     },
   ];
 

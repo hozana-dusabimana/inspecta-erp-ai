@@ -58,7 +58,7 @@ async function sendXlsx(res: Response, sheetName: string, columns: Partial<Excel
 // ── WBS (Work Breakdown Structure) ────────────────────────────
 const wbsCreate = z.object({
   projectId: z.string(),
-  parentId: z.string().optional(),
+  parentId: z.string().nullable().optional(),
   code: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),

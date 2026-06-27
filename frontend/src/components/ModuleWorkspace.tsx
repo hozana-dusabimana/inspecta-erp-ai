@@ -16,6 +16,8 @@ export interface TabDef {
   writePerm: string;
   columns: Column[];
   fields: Field[];
+  /** Optional custom renderer; when set it replaces the generic ResourceManager. */
+  component?: React.ComponentType<{ projectId?: string; canWrite: boolean }>;
 }
 
 export interface ModuleDef {
@@ -90,15 +92,22 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
 
       {current && (
         <React.Fragment key={current.key}>
-          <ResourceManager
-            endpoint={current.endpoint}
-            entityLabel={current.entityLabel}
-            columns={current.columns}
-            fields={current.fields}
-            canWrite={hasPermission(current.writePerm)}
-            projectScoped={current.projectScoped}
-            projectId={current.projectScoped ? (projectId || undefined) : undefined}
-          />
+          {current.component ? (
+            <current.component
+              projectId={current.projectScoped ? (projectId || undefined) : undefined}
+              canWrite={hasPermission(current.writePerm)}
+            />
+          ) : (
+            <ResourceManager
+              endpoint={current.endpoint}
+              entityLabel={current.entityLabel}
+              columns={current.columns}
+              fields={current.fields}
+              canWrite={hasPermission(current.writePerm)}
+              projectScoped={current.projectScoped}
+              projectId={current.projectScoped ? (projectId || undefined) : undefined}
+            />
+          )}
         </React.Fragment>
       )}
     </ErpLayout>

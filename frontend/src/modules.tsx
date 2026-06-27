@@ -5,6 +5,7 @@ import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
+import WbsTree from './components/WbsTree';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -419,6 +420,11 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'weightPct', label: 'Weight %', type: 'number' },
           { name: 'progressPct', label: 'Progress %', type: 'number' },
         ],
+      },
+      {
+        key: 'wbs-tree', label: 'WBS Tree', endpoint: '/planning/wbs', entityLabel: 'WBS Item',
+        projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
+        component: WbsTree, columns: [], fields: [],
       },
       {
         key: 'boq', label: 'BOQ', endpoint: '/planning/boq', entityLabel: 'BOQ Item',

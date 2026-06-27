@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { RiskStatus } from '@prisma/client';
 import { createCrudRouter } from '../../lib/crud';
 import { riskScore } from '../../lib/formulas';
+import { notify } from '../notifications/notify';
 
 // ── M24 — Risk register with auto-scored severity (probability × impact) ──
 const riskCreate = z.object({
@@ -30,6 +31,19 @@ const router = createCrudRouter({
     const i = Number(data.impact ?? 0);
     if (p && i) data.score = riskScore(p, i); // 1–25 risk score
     return data;
+  },
+  // Risk alert: notify when a high/critical risk (score ≥ 15) is raised or updated.
+  afterChange: async (action, record, req) => {
+    if (action !== 'DELETE' && Number(record.score) >= 15 && record.status !== 'CLOSED') {
+      await notify({
+        organizationId: req.user!.orgId,
+        type: 'GENERAL',
+        severity: Number(record.score) >= 20 ? 'CRITICAL' : 'HIGH',
+        title: `High risk: ${record.title}`,
+        message: `Risk score ${record.score} (P${record.probability}×I${record.impact}) requires attention.`,
+        link: `/projects/${record.projectId}`,
+      });
+    }
   },
 });
 

@@ -9,6 +9,7 @@ import WbsTree from './components/WbsTree';
 import BoqVersions from './components/BoqVersions';
 import ProductionAnalytics from './components/ProductionAnalytics';
 import FinanceAnalytics from './components/FinanceAnalytics';
+import ComplianceAnalytics from './components/ComplianceAnalytics';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -1037,8 +1038,9 @@ export const MODULES: Record<string, ModuleDef> = {
 
   [AppView.QAQC]: {
     view: AppView.QAQC,
-    title: 'QA / QC',
-    subtitle: 'Inspections, testing & NCR register (Module 5)',
+    title: 'Quality & Compliance',
+    subtitle: 'Inspections, material testing, NCRs, corrective actions & rework (Module 4)',
+    summary: (pid) => <ComplianceAnalytics projectId={pid} mode="quality" />,
     tabs: [
       {
         key: 'inspections', label: 'Inspections', endpoint: '/qaqc/inspections', entityLabel: 'Inspection',
@@ -1046,12 +1048,36 @@ export const MODULES: Record<string, ModuleDef> = {
         columns: [
           { key: 'date', label: 'Date', render: (r) => date(r.date) },
           { key: 'title', label: 'Title' }, { key: 'type', label: 'Type' },
-          { key: 'result', label: 'Result' }, { key: 'inspector', label: 'Inspector' },
+          { key: 'result', label: 'Result' }, { key: 'defects', label: 'Defects', align: 'right' },
+          { key: 'inspector', label: 'Inspector' },
         ],
         fields: [
           { name: 'title', label: 'Title', required: true }, { name: 'type', label: 'Type' },
+          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'result', label: 'Result', type: 'select', options: opt(['PASS', 'FAIL', 'PENDING']) },
+          { name: 'defects', label: 'Defects', type: 'number' },
           { name: 'inspector', label: 'Inspector' }, { name: 'date', label: 'Date', type: 'date' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'tests', label: 'Material Tests', endpoint: '/qaqc/material-tests', entityLabel: 'Material Test',
+        projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
+        columns: [
+          { key: 'sampleDate', label: 'Sampled', render: (r) => date(r.sampleDate) },
+          { key: 'testType', label: 'Type' }, { key: 'batchNumber', label: 'Batch' },
+          { key: 'result', label: 'Result' }, { key: 'certificateNumber', label: 'Cert No.' },
+        ],
+        fields: [
+          { name: 'testType', label: 'Test Type', type: 'select', options: opt(['CONCRETE', 'SOIL', 'ASPHALT', 'STEEL', 'OTHER']) },
+          { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'batchNumber', label: 'Batch Number' },
+          { name: 'sampleDate', label: 'Sample Date', type: 'date' },
+          { name: 'resultDate', label: 'Result Date', type: 'date' },
+          { name: 'result', label: 'Result', type: 'select', options: opt(['PASS', 'FAIL', 'PENDING']) },
+          { name: 'labName', label: 'Laboratory' },
+          { name: 'certificateNumber', label: 'Certificate Number' },
           { name: 'notes', label: 'Notes', type: 'textarea' },
         ],
       },
@@ -1061,14 +1087,73 @@ export const MODULES: Record<string, ModuleDef> = {
         columns: [
           { key: 'number', label: 'Number' }, { key: 'description', label: 'Description' },
           { key: 'severity', label: 'Severity' }, { key: 'status', label: 'Status' },
+          { key: 'responsiblePerson', label: 'Responsible' },
         ],
         fields: [
           { name: 'number', label: 'NCR Number', required: true },
           { name: 'description', label: 'Description', type: 'textarea', required: true },
+          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'severity', label: 'Severity', type: 'select', options: SEVERITY },
-          { name: 'status', label: 'Status', type: 'select', options: opt(['OPEN', 'IN_PROGRESS', 'CLOSED']) },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'OPEN', 'IN_PROGRESS', 'INVESTIGATING', 'CORRECTIVE_ACTION', 'CLOSED']) },
+          { name: 'rootCause', label: 'Root Cause', type: 'textarea' },
           { name: 'correctiveAction', label: 'Corrective Action', type: 'textarea' },
+          { name: 'responsiblePerson', label: 'Responsible Person' },
+          { name: 'dueDate', label: 'Due Date', type: 'date' },
           { name: 'raisedBy', label: 'Raised By' },
+        ],
+      },
+      {
+        key: 'corrective', label: 'Corrective Actions', endpoint: '/qaqc/corrective-actions', entityLabel: 'Corrective Action',
+        readPerm: 'qaqc:read', writePerm: 'qaqc:write',
+        columns: [
+          { key: 'description', label: 'Action' }, { key: 'responsiblePerson', label: 'Responsible' },
+          { key: 'dueDate', label: 'Due', render: (r) => date(r.dueDate) }, { key: 'status', label: 'Status' },
+        ],
+        fields: [
+          { name: 'ncrId', label: 'NCR', type: 'select', optionsEndpoint: '/qaqc/ncrs', optionLabel: (r) => r.number },
+          { name: 'description', label: 'Action Plan', type: 'textarea', required: true },
+          { name: 'responsiblePerson', label: 'Responsible Person' },
+          { name: 'dueDate', label: 'Due Date', type: 'date' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['OPEN', 'IN_PROGRESS', 'VERIFIED', 'CLOSED']) },
+          { name: 'verification', label: 'Verification', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'rework', label: 'Rework', endpoint: '/qaqc/reworks', entityLabel: 'Rework',
+        projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
+        columns: [
+          { key: 'activity', label: 'Activity' }, { key: 'quantity', label: 'Qty', align: 'right', render: (r) => num(r.quantity) },
+          { key: 'reworkCost', label: 'Rework Cost', align: 'right', render: (r) => money(r.reworkCost) },
+          { key: 'delayDays', label: 'Delay (d)', align: 'right' }, { key: 'status', label: 'Status' },
+        ],
+        fields: [
+          { name: 'activity', label: 'Rework Activity', required: true },
+          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'ncrId', label: 'Related NCR', type: 'select', optionsEndpoint: '/qaqc/ncrs', optionLabel: (r) => r.number },
+          { name: 'quantity', label: 'Rework Quantity', type: 'number' },
+          { name: 'laborCost', label: 'Labor Cost', type: 'number' },
+          { name: 'equipmentCost', label: 'Equipment Cost', type: 'number' },
+          { name: 'delayDays', label: 'Delay Impact (days)', type: 'number' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['OPEN', 'IN_PROGRESS', 'DONE']) },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'compliance-docs', label: 'Compliance Docs', endpoint: '/compliance/documents', entityLabel: 'Compliance Document',
+        readPerm: 'document:read', writePerm: 'document:write',
+        columns: [
+          { key: 'docType', label: 'Type' }, { key: 'title', label: 'Title' },
+          { key: 'version', label: 'Ver' }, { key: 'status', label: 'Status' },
+          { key: 'expiryDate', label: 'Expiry', render: (r) => date(r.expiryDate) },
+        ],
+        fields: [
+          { name: 'docType', label: 'Document Type', type: 'select', options: opt(['METHOD_STATEMENT', 'ITP', 'PERMIT', 'CERTIFICATION', 'REGULATORY']) },
+          { name: 'title', label: 'Title', required: true },
+          { name: 'reference', label: 'Reference' }, { name: 'version', label: 'Version' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'APPROVED', 'EXPIRED']) },
+          { name: 'issueDate', label: 'Issue Date', type: 'date' },
+          { name: 'expiryDate', label: 'Expiry Date', type: 'date' },
+          { name: 'fileUrl', label: 'File URL' },
         ],
       },
     ],
@@ -1076,8 +1161,9 @@ export const MODULES: Record<string, ModuleDef> = {
 
   [AppView.HSE]: {
     view: AppView.HSE,
-    title: 'HSE Operations',
-    subtitle: 'Incidents & toolbox talks (Module 6)',
+    title: 'Safety (HSE)',
+    subtitle: 'Incidents, near-miss, toolbox talks, PPE & safety inspections (Module 4)',
+    summary: (pid) => <ComplianceAnalytics projectId={pid} mode="safety" />,
     tabs: [
       {
         key: 'incidents', label: 'Incidents', endpoint: '/hse/incidents', entityLabel: 'Incident',
@@ -1091,8 +1177,49 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'type', label: 'Type', type: 'select', options: opt(['NEAR_MISS', 'FIRST_AID', 'MEDICAL', 'LOST_TIME', 'FATALITY', 'PROPERTY_DAMAGE']) },
           { name: 'severity', label: 'Severity', type: 'select', options: SEVERITY },
           { name: 'description', label: 'Description', type: 'textarea', required: true },
-          { name: 'location', label: 'Location' }, { name: 'reportedBy', label: 'Reported By' },
+          { name: 'location', label: 'Location' },
+          { name: 'hazard', label: 'Hazard (for near-miss)' },
+          { name: 'investigation', label: 'Investigation', type: 'textarea' },
+          { name: 'rootCause', label: 'Root Cause', type: 'textarea' },
+          { name: 'correctiveAction', label: 'Corrective Action', type: 'textarea' },
+          { name: 'reportedBy', label: 'Reported By' },
           { name: 'date', label: 'Date', type: 'date' },
+        ],
+      },
+      {
+        key: 'ppe', label: 'PPE', endpoint: '/hse/ppe', entityLabel: 'PPE Issue',
+        readPerm: 'hse:read', writePerm: 'hse:write',
+        columns: [
+          { key: 'ppeType', label: 'PPE Type' }, { key: 'quantity', label: 'Qty', align: 'right' },
+          { key: 'issueDate', label: 'Issued', render: (r) => date(r.issueDate) },
+          { key: 'expiryDate', label: 'Expiry', render: (r) => date(r.expiryDate) },
+        ],
+        fields: [
+          { name: 'ppeType', label: 'PPE Type', required: true },
+          { name: 'employeeId', label: 'Employee', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName },
+          { name: 'quantity', label: 'Quantity', type: 'number' },
+          { name: 'issueDate', label: 'Issue Date', type: 'date' },
+          { name: 'expiryDate', label: 'Expiry Date', type: 'date' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'safety-inspections', label: 'Safety Inspections', endpoint: '/hse/safety-inspections', entityLabel: 'Safety Inspection',
+        projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
+        columns: [
+          { key: 'date', label: 'Date', render: (r) => date(r.date) },
+          { key: 'title', label: 'Title' }, { key: 'result', label: 'Result' },
+          { key: 'score', label: 'Score', align: 'right' }, { key: 'inspector', label: 'Inspector' },
+        ],
+        fields: [
+          { name: 'title', label: 'Title', required: true },
+          { name: 'template', label: 'Template/Checklist' },
+          { name: 'inspector', label: 'Inspector' },
+          { name: 'date', label: 'Date', type: 'date' },
+          { name: 'result', label: 'Result', type: 'select', options: opt(['PASS', 'FAIL', 'PENDING']) },
+          { name: 'score', label: 'Score (0-100)', type: 'number' },
+          { name: 'findings', label: 'Findings', type: 'textarea' },
+          { name: 'correctiveAction', label: 'Corrective Action', type: 'textarea' },
         ],
       },
       {

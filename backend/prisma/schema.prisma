@@ -99,8 +99,11 @@ enum Severity {
 }
 
 enum NcrStatus {
+  DRAFT
   OPEN
   IN_PROGRESS
+  INVESTIGATING
+  CORRECTIVE_ACTION
   CLOSED
 }
 
@@ -739,10 +742,17 @@ model Inspection {
   projectId      String
   title          String
   type           String           @default("General")
+  wbsItemId      String?
   result         InspectionResult @default(PENDING)
+  defects        Int              @default(0)
   inspector      String?
   date           DateTime         @default(now())
+  photos         String[]
+  attachments    String[]
   notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -759,15 +769,25 @@ model Ncr {
   projectId        String
   number           String
   description      String
+  wbsItemId        String?
   severity         Severity  @default(MEDIUM)
   status           NcrStatus @default(OPEN)
+  rootCause        String?
   correctiveAction String?
+  responsiblePerson String?
+  dueDate          DateTime?
+  photos           String[]
+  attachments      String[]
   raisedBy         String?
   closedAt         DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actions CorrectiveAction[]
 
   @@index([organizationId])
   @@index([projectId, status])
@@ -784,8 +804,16 @@ model Incident {
   severity       Severity     @default(LOW)
   description    String
   location       String?
+  hazard         String?
+  investigation  String?
+  rootCause      String?
+  correctiveAction String?
   reportedBy     String?
   date           DateTime     @default(now())
+  photos         String[]
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1476,4 +1504,153 @@ model CashFlowEntry {
   @@index([organizationId])
   @@index([projectId])
   @@map("cash_flow_entries")
+}
+
+// ════════════════ MODULE 4 — Quality, Safety & Compliance ════════════════
+
+// Material testing records (concrete/soil/asphalt/steel...).
+model MaterialTest {
+  id                String           @id @default(cuid())
+  organizationId    String
+  projectId         String
+  materialId        String?
+  supplierId        String?
+  testType          String           @default("CONCRETE") // CONCRETE | SOIL | ASPHALT | STEEL | OTHER
+  batchNumber       String?
+  sampleDate        DateTime?
+  resultDate        DateTime?
+  result            InspectionResult @default(PENDING)
+  labName           String?
+  certificateNumber String?
+  notes             String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("material_tests")
+}
+
+// First-class corrective actions (multiple per NCR).
+model CorrectiveAction {
+  id                String    @id @default(cuid())
+  organizationId    String
+  ncrId             String?
+  projectId         String?
+  description       String
+  responsiblePerson String?
+  dueDate           DateTime?
+  status            String    @default("OPEN") // OPEN | IN_PROGRESS | VERIFIED | CLOSED
+  verification      String?
+  closedAt          DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ncr Ncr? @relation(fields: [ncrId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("corrective_actions")
+}
+
+// Rework management (integrates with cost + productivity).
+model Rework {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  wbsItemId      String?
+  ncrId          String?
+  activity       String
+  quantity       Decimal  @default(0) @db.Decimal(18, 3)
+  laborCost      Decimal  @default(0) @db.Decimal(18, 2)
+  equipmentCost  Decimal  @default(0) @db.Decimal(18, 2)
+  reworkCost     Decimal  @default(0) @db.Decimal(18, 2)
+  delayDays      Int      @default(0)
+  status         String   @default("OPEN") // OPEN | IN_PROGRESS | DONE
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("reworks")
+}
+
+// PPE issuance / tracking.
+model PpeIssue {
+  id             String    @id @default(cuid())
+  organizationId String
+  projectId      String?
+  employeeId     String?
+  ppeType        String
+  quantity       Int       @default(1)
+  issueDate      DateTime?
+  expiryDate     DateTime?
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("ppe_issues")
+}
+
+// Safety inspections / audits (HSE-specific).
+model SafetyInspection {
+  id               String           @id @default(cuid())
+  organizationId   String
+  projectId        String
+  title            String
+  template         String?
+  inspector        String?
+  date             DateTime         @default(now())
+  result           InspectionResult @default(PENDING)
+  score            Float?
+  findings         String?
+  correctiveAction String?
+  photos           String[]
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("safety_inspections")
+}
+
+// Compliance documents (method statements, ITPs, permits, certifications).
+model ComplianceDocument {
+  id             String    @id @default(cuid())
+  organizationId String
+  projectId      String?
+  docType        String    @default("METHOD_STATEMENT") // METHOD_STATEMENT | ITP | PERMIT | CERTIFICATION | REGULATORY
+  title          String
+  reference      String?
+  version        String?
+  status         String    @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | EXPIRED
+  issueDate      DateTime?
+  expiryDate     DateTime?
+  fileUrl        String?
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("compliance_documents")
 }

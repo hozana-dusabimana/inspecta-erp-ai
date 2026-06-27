@@ -769,6 +769,13 @@ model Notification {
 
 // ──────────────────── M13 — Scheduling (CPM) ─────────────────
 
+enum DependencyType {
+  FS // Finish-to-Start
+  SS // Start-to-Start
+  FF // Finish-to-Finish
+  SF // Start-to-Finish
+}
+
 model ScheduleActivity {
   id             String   @id @default(cuid())
   organizationId String
@@ -776,18 +783,46 @@ model ScheduleActivity {
   code           String
   name           String
   durationDays   Int      @default(1)
-  // Predecessor activity codes (finish-to-start) within the same project.
+  // Legacy finish-to-start predecessor codes; typed links live in ScheduleDependency.
   predecessors   String[]
   progressPct    Float    @default(0)
   startDate      DateTime?
+  finishDate     DateTime?
+  milestone      Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dependencies ScheduleDependency[] @relation("ActivityDeps")
+  dependents   ScheduleDependency[] @relation("PredecessorDeps")
 
   @@index([organizationId])
   @@index([projectId])
   @@map("schedule_activities")
+}
+
+// Typed schedule relationship (FS/SS/FF/SF) with optional lag, between two
+// activities. `activity` depends on `predecessor`.
+model ScheduleDependency {
+  id             String         @id @default(cuid())
+  organizationId String
+  projectId      String
+  activityId     String
+  predecessorId  String
+  type           DependencyType @default(FS)
+  lagDays        Int            @default(0)
+  createdBy      String?
+  updatedBy      String?
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  activity    ScheduleActivity @relation("ActivityDeps", fields: [activityId], references: [id], onDelete: Cascade)
+  predecessor ScheduleActivity @relation("PredecessorDeps", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("schedule_dependencies")
 }
 
 // ──────────────────── M16 — Field Operations ─────────────────

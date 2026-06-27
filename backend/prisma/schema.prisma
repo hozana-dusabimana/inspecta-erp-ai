@@ -1296,3 +1296,45 @@ model Delivery {
   @@index([organizationId])
   @@map("deliveries")
 }
+
+// ════════════════ MODULE 1 — BOQ Versioning (#3) ════════════════
+// Point-in-time snapshot of a project's BOQ for revision history + cost comparison.
+model BoqVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  versionNo      Int
+  label          String?
+  note           String?
+  totalCost      Decimal  @default(0) @db.Decimal(18, 2)
+  totalBudget    Decimal  @default(0) @db.Decimal(18, 2)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items BoqVersionItem[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("boq_versions")
+}
+
+model BoqVersionItem {
+  id             String   @id @default(cuid())
+  boqVersionId   String
+  code           String
+  category       String?
+  description    String
+  unit           String   @default("unit")
+  quantity       Decimal  @default(0) @db.Decimal(18, 3)
+  rate           Decimal  @default(0) @db.Decimal(18, 2)
+  amount         Decimal  @default(0) @db.Decimal(18, 2)
+  markupPct      Decimal? @db.Decimal(5, 2)
+  contingencyPct Decimal? @db.Decimal(5, 2)
+  budget         Decimal  @default(0) @db.Decimal(18, 2)
+
+  version BoqVersion @relation(fields: [boqVersionId], references: [id], onDelete: Cascade)
+
+  @@index([boqVersionId])
+  @@map("boq_version_items")
+}

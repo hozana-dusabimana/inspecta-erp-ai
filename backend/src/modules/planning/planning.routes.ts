@@ -229,9 +229,109 @@ ioRouter.post('/boq/import', requirePermission('planning:write'), xlsxRaw, async
   return ok(res, { created, skipped: errors.length, errors: errors.slice(0, 10) }, 201);
 }));
 
+// ── BOQ Versioning + Cost Comparison (#3) ─────────────────────
+const verRouter = Router();
+verRouter.use(authenticate);
+const num = (v: unknown) => Number(v ?? 0);
+
+// LIST versions for a project.
+verRouter.get('/', requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const versions = await prisma.boqVersion.findMany({
+    where: { organizationId: req.user!.orgId, projectId },
+    orderBy: { versionNo: 'desc' },
+    include: { _count: { select: { items: true } } },
+  });
+  return ok(res, versions);
+}));
+
+// SNAPSHOT the current BOQ into a new version.
+verRouter.post('/', requirePermission('planning:write'), asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: req.user!.orgId }, select: { id: true } });
+  if (!project) throw BadRequest('projectId does not belong to your organization');
+  const items = await prisma.boqItem.findMany({ where: { organizationId: req.user!.orgId, projectId }, orderBy: { code: 'asc' } });
+  if (items.length === 0) throw BadRequest('No BOQ items to snapshot');
+
+  const last = await prisma.boqVersion.findFirst({ where: { organizationId: req.user!.orgId, projectId }, orderBy: { versionNo: 'desc' }, select: { versionNo: true } });
+  const versionNo = (last?.versionNo ?? 0) + 1;
+  const totalCost = items.reduce((s, i) => s + num(i.amount), 0);
+  const totalBudget = items.reduce((s, i) => s + num(i.budget), 0);
+  const label = typeof req.body?.label === 'string' ? req.body.label : undefined;
+  const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
+
+  const version = await prisma.boqVersion.create({
+    data: {
+      organizationId: req.user!.orgId, projectId, versionNo, label, note, totalCost, totalBudget,
+      createdBy: req.user!.id,
+      items: { create: items.map((i) => ({
+        code: i.code, category: i.category, description: i.description, unit: i.unit,
+        quantity: i.quantity, rate: i.rate, amount: i.amount,
+        markupPct: i.markupPct, contingencyPct: i.contingencyPct, budget: i.budget,
+      })) },
+    },
+    include: { _count: { select: { items: true } } },
+  });
+  return ok(res, version, 201);
+}));
+
+// COST COMPARISON between two versions (or a version vs current BOQ via to=current).
+verRouter.get('/compare', requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const orgId = req.user!.orgId;
+  const fromId = req.query.from as string | undefined;
+  const toId = req.query.to as string | undefined;
+  if (!fromId || !toId) throw BadRequest('from and to version ids are required (to may be "current")');
+
+  type Line = { code: string; description: string; amount: number; budget: number };
+  const loadVersion = async (id: string): Promise<Line[]> => {
+    const v = await prisma.boqVersion.findFirst({ where: { id, organizationId: orgId, projectId }, include: { items: true } });
+    if (!v) throw BadRequest(`Version ${id} not found`);
+    return v.items.map((i) => ({ code: i.code, description: i.description, amount: num(i.amount), budget: num(i.budget) }));
+  };
+  const loadCurrent = async (): Promise<Line[]> => {
+    const items = await prisma.boqItem.findMany({ where: { organizationId: orgId, projectId } });
+    return items.map((i) => ({ code: i.code, description: i.description, amount: num(i.amount), budget: num(i.budget) }));
+  };
+
+  const from = fromId === 'current' ? await loadCurrent() : await loadVersion(fromId);
+  const to = toId === 'current' ? await loadCurrent() : await loadVersion(toId);
+  const fromBy = new Map(from.map((l) => [l.code, l]));
+  const toBy = new Map(to.map((l) => [l.code, l]));
+  const codes = [...new Set([...fromBy.keys(), ...toBy.keys()])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const rows = codes.map((code) => {
+    const f = fromBy.get(code); const t = toBy.get(code);
+    const fromCost = f?.amount ?? 0; const toCost = t?.amount ?? 0;
+    const fromBudget = f?.budget ?? 0; const toBudget = t?.budget ?? 0;
+    const status = !f ? 'ADDED' : !t ? 'REMOVED' : (fromCost !== toCost || fromBudget !== toBudget) ? 'CHANGED' : 'SAME';
+    return { code, description: (t ?? f)!.description, fromCost, toCost, costDelta: toCost - fromCost, fromBudget, toBudget, budgetDelta: toBudget - fromBudget, status };
+  });
+
+  return ok(res, {
+    rows,
+    fromTotalCost: from.reduce((s, l) => s + l.amount, 0),
+    toTotalCost: to.reduce((s, l) => s + l.amount, 0),
+    fromTotalBudget: from.reduce((s, l) => s + l.budget, 0),
+    toTotalBudget: to.reduce((s, l) => s + l.budget, 0),
+    changed: rows.filter((r) => r.status !== 'SAME').length,
+  });
+}));
+
+// DETAIL with snapshot items.
+verRouter.get('/:id', requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const version = await prisma.boqVersion.findFirst({
+    where: { id: req.params.id, organizationId: req.user!.orgId },
+    include: { items: { orderBy: { code: 'asc' } } },
+  });
+  if (!version) throw BadRequest('Version not found');
+  return ok(res, version);
+}));
+
 const router = Router();
 router.use('/wbs', wbsRouter);
 router.use('/boq', boqRouter);
+router.use('/boq-versions', verRouter); // separate prefix avoids the /boq/:id route
 router.use('/productivity', productivityRouter);
 router.use('/io', ioRouter); // /planning/io/wbs/export.xlsx, /planning/io/boq/import, ...
 

@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
 import WbsTree from './components/WbsTree';
+import BoqVersions from './components/BoqVersions';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -449,6 +450,11 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'markupPct', label: 'Markup %', type: 'number' },
           { name: 'contingencyPct', label: 'Contingency %', type: 'number' },
         ],
+      },
+      {
+        key: 'boq-versions', label: 'BOQ Versions', endpoint: '/planning/boq-versions', entityLabel: 'BOQ Version',
+        projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
+        component: BoqVersions, columns: [], fields: [],
       },
       {
         key: 'productivity', label: 'Productivity', endpoint: '/planning/productivity', entityLabel: 'Productivity Standard',

@@ -366,8 +366,12 @@ model WbsItem {
   parentId       String?
   code           String
   name           String
+  description    String?
+  unit           String?
+  quantity       Decimal? @db.Decimal(18, 3)
   level          Int      @default(1)
   weightPct      Float    @default(0)
+  progressPct    Float    @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -387,11 +391,16 @@ model BoqItem {
   projectId      String
   wbsItemId      String?
   code           String
+  category       String?
   description    String
   unit           String   @default("unit")
   quantity       Decimal  @default(0) @db.Decimal(18, 3)
   rate           Decimal  @default(0) @db.Decimal(18, 2)
   amount         Decimal  @default(0) @db.Decimal(18, 2)
+  markupPct      Decimal? @db.Decimal(5, 2)
+  contingencyPct Decimal? @db.Decimal(5, 2)
+  budget         Decimal  @default(0) @db.Decimal(18, 2)
+  revision       Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

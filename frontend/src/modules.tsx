@@ -4,6 +4,7 @@ import { AppView } from './types';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
+import GanttChart from './components/GanttChart';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -963,7 +964,12 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.SCHEDULING,
     title: 'Scheduling (CPM)',
     subtitle: 'Activities, dependencies & critical path (Module 13)',
-    summary: (pid) => <CpmPanel projectId={pid} />,
+    summary: (pid) => (
+      <>
+        <GanttChart projectId={pid} />
+        <CpmPanel projectId={pid} />
+      </>
+    ),
     tabs: [
       {
         key: 'activities', label: 'Activities', endpoint: '/scheduling', entityLabel: 'Activity',

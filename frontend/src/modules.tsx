@@ -261,11 +261,68 @@ function ProcurementPanel() {
   );
 }
 
+// WBS/BOQ Excel import & export for the selected project.
+function PlanningIO({ projectId }: { projectId?: string }) {
+  const qc = useQueryClient();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (!projectId) {
+    return (
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 mb-2 text-xs text-brand-on-surface-variant">
+        Select a project above to import/export WBS & BOQ from Excel.
+      </div>
+    );
+  }
+
+  const doExport = (kind: 'wbs' | 'boq') =>
+    api.download(`/planning/io/${kind}/export.xlsx?projectId=${projectId}`, `${kind}.xlsx`);
+
+  const doImport = async (kind: 'wbs' | 'boq', file: File) => {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await api.upload<{ created: number; skipped: number; errors: string[] }>(`/planning/io/${kind}/import?projectId=${projectId}`, file);
+      const d = res.data;
+      setMsg(`${kind.toUpperCase()}: imported ${d.created}${d.skipped ? `, skipped ${d.skipped}` : ''}.${d.errors?.length ? ' ' + d.errors[0] : ''}`);
+      qc.invalidateQueries({ queryKey: [`/planning/${kind}`] });
+    } catch (e) {
+      setMsg(`Import failed: ${e instanceof Error ? e.message : 'error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const Row = ({ kind, label }: { kind: 'wbs' | 'boq'; label: string }) => (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-bold text-brand-primary w-10">{label}</span>
+      <button onClick={() => doExport(kind)} className="px-3 py-1.5 rounded-md bg-brand-primary/5 text-brand-primary border border-brand-primary/10 text-[11px] font-bold hover:bg-brand-primary/10">Export .xlsx</button>
+      <label className={`px-3 py-1.5 rounded-md bg-brand-primary text-white text-[11px] font-bold cursor-pointer hover:bg-brand-primary-container ${busy ? 'opacity-50' : ''}`}>
+        Import .xlsx
+        <input type="file" accept=".xlsx" className="hidden" disabled={busy}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) doImport(kind, f); e.target.value = ''; }} />
+      </label>
+    </div>
+  );
+
+  return (
+    <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 mb-2 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-brand-primary text-sm">Excel Import / Export</h3>
+        {msg && <span className="text-[11px] font-semibold text-brand-on-surface-variant">{msg}</span>}
+      </div>
+      <Row kind="wbs" label="WBS" />
+      <Row kind="boq" label="BOQ" />
+      <p className="text-[10px] text-brand-on-surface-variant">Tip: export to get the exact column template, fill rows, then import.</p>
+    </div>
+  );
+}
+
 export const MODULES: Record<string, ModuleDef> = {
   [AppView.PLANNING]: {
     view: AppView.PLANNING,
     title: 'Planning & Resources',
     subtitle: 'Project setup, WBS, BOQ & resource baseline (Module 1)',
+    summary: (pid) => <PlanningIO projectId={pid} />,
     tabs: [
       {
         key: 'projects', label: 'Project Setup', endpoint: '/projects', entityLabel: 'Project',

@@ -119,4 +119,19 @@ export const api = {
     a.remove();
     URL.revokeObjectURL(url);
   },
+
+  /** Upload a file as the raw request body (e.g. .xlsx import). */
+  async upload<T>(path: string, file: File): Promise<ApiEnvelope<T>> {
+    const headers: Record<string, string> = {
+      'Content-Type': file.type || 'application/octet-stream',
+    };
+    const access = tokenStore.access;
+    if (access) headers.Authorization = `Bearer ${access}`;
+    const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: file });
+    const json = (await res.json().catch(() => ({}))) as ApiEnvelope<T>;
+    if (!res.ok || json.success === false) {
+      throw new ApiError(res.status, json.error || `Upload failed (${res.status})`);
+    }
+    return json;
+  },
 };

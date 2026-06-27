@@ -1,5 +1,10 @@
-import { Router, Request } from 'express';
+import express, { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import ExcelJS from 'exceljs';
+import { prisma } from '../../lib/prisma';
+import { asyncHandler, ok } from '../../lib/http';
+import { BadRequest } from '../../lib/errors';
+import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -7,6 +12,48 @@ const stamp = (data: Record<string, unknown>, req: Request) => {
   data.updatedBy = req.user!.id;
   return data;
 };
+
+const str = (v: unknown) => (v === null || v === undefined ? '' : String(typeof v === 'object' && 'text' in (v as any) ? (v as any).text : v).trim());
+const numOrU = (v: unknown) => {
+  const n = Number(str(v).replace(/[, ]/g, ''));
+  return Number.isFinite(n) && str(v) !== '' ? n : undefined;
+};
+
+/** Parse the first worksheet of an uploaded .xlsx into header-keyed rows. */
+async function rowsFromXlsx(buf: Buffer): Promise<Record<string, unknown>[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as unknown as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  if (!ws) return [];
+  const headers: string[] = [];
+  ws.getRow(1).eachCell((cell, col) => { headers[col] = str(cell.value).toLowerCase(); });
+  const rows: Record<string, unknown>[] = [];
+  ws.eachRow((row, rn) => {
+    if (rn === 1) return;
+    const obj: Record<string, unknown> = {};
+    row.eachCell((cell, col) => { if (headers[col]) obj[headers[col]] = cell.value; });
+    if (Object.values(obj).some((v) => str(v) !== '')) rows.push(obj);
+  });
+  return rows;
+}
+
+const xlsxRaw = express.raw({
+  type: () => true, // accept any content-type for the upload body
+  limit: '8mb',
+});
+
+async function sendXlsx(res: Response, sheetName: string, columns: Partial<ExcelJS.Column>[], rows: Record<string, unknown>[], filename: string) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'INSPECTA BUILDOS';
+  const ws = wb.addWorksheet(sheetName);
+  ws.columns = columns as ExcelJS.Column[];
+  ws.getRow(1).font = { bold: true };
+  rows.forEach((r) => ws.addRow(r));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  await wb.xlsx.write(res);
+  res.end();
+}
 
 // ── WBS (Work Breakdown Structure) ────────────────────────────
 const wbsCreate = z.object({
@@ -96,9 +143,96 @@ const productivityRouter = createCrudRouter({
   transform: stamp,
 });
 
+// ── Excel import / export for WBS & BOQ ───────────────────────
+const ioRouter = Router();
+ioRouter.use(authenticate);
+
+function requireProjectQuery(req: Request): string {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) throw BadRequest('projectId is required');
+  return projectId;
+}
+
+// WBS export
+ioRouter.get('/wbs/export.xlsx', requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const items = await prisma.wbsItem.findMany({ where: { organizationId: req.user!.orgId, projectId }, orderBy: { code: 'asc' } });
+  await sendXlsx(res, 'WBS',
+    [
+      { header: 'code', key: 'code', width: 14 }, { header: 'name', key: 'name', width: 32 },
+      { header: 'description', key: 'description', width: 30 }, { header: 'unit', key: 'unit', width: 10 },
+      { header: 'quantity', key: 'quantity', width: 12 }, { header: 'level', key: 'level', width: 8 },
+      { header: 'weightPct', key: 'weightPct', width: 10 }, { header: 'progressPct', key: 'progressPct', width: 12 },
+    ],
+    items.map((i) => ({ code: i.code, name: i.name, description: i.description, unit: i.unit, quantity: i.quantity ? Number(i.quantity) : null, level: i.level, weightPct: i.weightPct, progressPct: i.progressPct })),
+    'wbs.xlsx');
+}));
+
+// WBS import
+ioRouter.post('/wbs/import', requirePermission('planning:write'), xlsxRaw, asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: req.user!.orgId }, select: { id: true } });
+  if (!project) throw BadRequest('projectId does not belong to your organization');
+  const rows = await rowsFromXlsx(req.body as Buffer);
+  let created = 0; const errors: string[] = [];
+  for (const [i, r] of rows.entries()) {
+    const code = str(r.code); const name = str(r.name);
+    if (!code || !name) { errors.push(`Row ${i + 2}: code and name are required`); continue; }
+    await prisma.wbsItem.create({ data: {
+      organizationId: req.user!.orgId, projectId,
+      code, name, description: str(r.description) || null, unit: str(r.unit) || null,
+      quantity: numOrU(r.quantity), level: numOrU(r.level) ?? 1,
+      weightPct: numOrU(r.weightpct) ?? 0, progressPct: numOrU(r.progresspct) ?? 0,
+    } });
+    created++;
+  }
+  return ok(res, { created, skipped: errors.length, errors: errors.slice(0, 10) }, 201);
+}));
+
+// BOQ export
+ioRouter.get('/boq/export.xlsx', requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const items = await prisma.boqItem.findMany({ where: { organizationId: req.user!.orgId, projectId }, orderBy: { code: 'asc' } });
+  await sendXlsx(res, 'BOQ',
+    [
+      { header: 'code', key: 'code', width: 14 }, { header: 'category', key: 'category', width: 16 },
+      { header: 'description', key: 'description', width: 34 }, { header: 'unit', key: 'unit', width: 10 },
+      { header: 'quantity', key: 'quantity', width: 12 }, { header: 'rate', key: 'rate', width: 12 },
+      { header: 'amount', key: 'amount', width: 14 }, { header: 'markupPct', key: 'markupPct', width: 10 },
+      { header: 'contingencyPct', key: 'contingencyPct', width: 12 }, { header: 'budget', key: 'budget', width: 14 },
+    ],
+    items.map((i) => ({ code: i.code, category: i.category, description: i.description, unit: i.unit, quantity: Number(i.quantity), rate: Number(i.rate), amount: Number(i.amount), markupPct: i.markupPct ? Number(i.markupPct) : null, contingencyPct: i.contingencyPct ? Number(i.contingencyPct) : null, budget: Number(i.budget) })),
+    'boq.xlsx');
+}));
+
+// BOQ import
+ioRouter.post('/boq/import', requirePermission('planning:write'), xlsxRaw, asyncHandler(async (req, res) => {
+  const projectId = requireProjectQuery(req);
+  const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: req.user!.orgId }, select: { id: true } });
+  if (!project) throw BadRequest('projectId does not belong to your organization');
+  const rows = await rowsFromXlsx(req.body as Buffer);
+  let created = 0; const errors: string[] = [];
+  for (const [i, r] of rows.entries()) {
+    const code = str(r.code); const description = str(r.description);
+    if (!code || !description) { errors.push(`Row ${i + 2}: code and description are required`); continue; }
+    const quantity = numOrU(r.quantity) ?? 0; const rate = numOrU(r.rate) ?? 0;
+    const cost = quantity * rate;
+    const markupPct = numOrU(r.markuppct); const contingencyPct = numOrU(r.contingencypct);
+    const budget = cost + (cost * (markupPct ?? 0)) / 100 + (cost * (contingencyPct ?? 0)) / 100;
+    await prisma.boqItem.create({ data: {
+      organizationId: req.user!.orgId, projectId,
+      code, category: str(r.category) || null, description, unit: str(r.unit) || 'unit',
+      quantity, rate, amount: cost, markupPct, contingencyPct, budget,
+    } });
+    created++;
+  }
+  return ok(res, { created, skipped: errors.length, errors: errors.slice(0, 10) }, 201);
+}));
+
 const router = Router();
 router.use('/wbs', wbsRouter);
 router.use('/boq', boqRouter);
 router.use('/productivity', productivityRouter);
+router.use('/io', ioRouter); // /planning/io/wbs/export.xlsx, /planning/io/boq/import, ...
 
 export default router;

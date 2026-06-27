@@ -22,6 +22,7 @@ export enum AppView {
   APPROVALS = 'APPROVALS',
   PORTFOLIO = 'PORTFOLIO',
   ADMIN = 'ADMIN',
+  HR = 'HR',
 }
 
 export interface ChatMessage {

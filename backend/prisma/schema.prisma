@@ -907,3 +907,154 @@ model ApprovalRequest {
   @@index([organizationId, status])
   @@map("approval_requests")
 }
+
+// ════════════════ MODULE 1 — Resource Planning ════════════════
+// Productivity Standards (#5), Human Resource Planning (#6).
+// organizationId is the tenant key (scalar, matching the leaf-model pattern).
+
+// Productivity library: planned output rate per activity/unit.
+model ProductivityStandard {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  activity            String
+  unit                String
+  productivityRate    Decimal  @db.Decimal(18, 4) // output units per crew-day
+  benchmarkSource     String?
+  companyStandard     Decimal? @db.Decimal(18, 4)
+  historicalStandard  Decimal? @db.Decimal(18, 4)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("productivity_standards")
+}
+
+// Trade / craft classification (e.g. Mason, Steel Fixer).
+model Trade {
+  id             String  @id @default(cuid())
+  organizationId String
+  code           String?
+  name           String
+  description    String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees  Employee[]
+  wageRates  WageRate[]
+
+  @@index([organizationId])
+  @@map("trades")
+}
+
+// Employee register with skills matrix & certifications.
+model Employee {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeNo     String?
+  fullName       String
+  tradeId        String?
+  phone          String?
+  email          String?
+  status         String   @default("ACTIVE")
+  dailyWage      Decimal? @db.Decimal(18, 2)
+  skills         String[]
+  certifications String[]
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trade        Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  crewMembers  CrewMember[]
+  availability LaborAvailability[]
+
+  @@index([organizationId])
+  @@map("employees")
+}
+
+// Wage rate by trade (hourly/daily), effective from a date.
+model WageRate {
+  id             String   @id @default(cuid())
+  organizationId String
+  tradeId        String
+  rateType       String   @default("DAILY") // DAILY | HOURLY
+  amount         Decimal  @db.Decimal(18, 2)
+  currency       String   @default("USD")
+  effectiveDate  DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("wage_rates")
+}
+
+// Crew = a named team, optionally tied to a project.
+model Crew {
+  id             String  @id @default(cuid())
+  organizationId String
+  projectId      String?
+  name           String
+  description    String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members CrewMember[]
+
+  @@index([organizationId])
+  @@map("crews")
+}
+
+model CrewMember {
+  id             String  @id @default(cuid())
+  organizationId String
+  crewId         String
+  employeeId     String
+  roleInCrew     String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  crew     Crew     @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("crew_members")
+}
+
+// Labor availability calendar per employee.
+model LaborAvailability {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeId     String
+  date           DateTime
+  available      Boolean  @default(true)
+  hoursAvailable Float?
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("labor_availability")
+}

@@ -1,6 +1,12 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { z } from 'zod';
 import { createCrudRouter } from '../../lib/crud';
+
+const stamp = (data: Record<string, unknown>, req: Request) => {
+  if (!('id' in data)) data.createdBy = req.user!.id;
+  data.updatedBy = req.user!.id;
+  return data;
+};
 
 // ── WBS (Work Breakdown Structure) ────────────────────────────
 const wbsCreate = z.object({
@@ -68,8 +74,31 @@ const boqRouter = createCrudRouter({
   },
 });
 
+// ── Productivity Standards (#5) ───────────────────────────────
+const productivityCreate = z.object({
+  activity: z.string().min(1),
+  unit: z.string().min(1),
+  productivityRate: z.number().positive(),
+  benchmarkSource: z.string().optional(),
+  companyStandard: z.number().nonnegative().optional(),
+  historicalStandard: z.number().nonnegative().optional(),
+});
+
+const productivityRouter = createCrudRouter({
+  model: 'productivityStandard',
+  entity: 'productivity-standard',
+  readPerm: 'productivity:read',
+  writePerm: 'productivity:write',
+  createSchema: productivityCreate,
+  updateSchema: productivityCreate.partial(),
+  searchField: 'activity',
+  orderBy: { activity: 'asc' },
+  transform: stamp,
+});
+
 const router = Router();
 router.use('/wbs', wbsRouter);
 router.use('/boq', boqRouter);
+router.use('/productivity', productivityRouter);
 
 export default router;

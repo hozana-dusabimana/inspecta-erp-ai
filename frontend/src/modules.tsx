@@ -247,6 +247,127 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'contingencyPct', label: 'Contingency %', type: 'number' },
         ],
       },
+      {
+        key: 'productivity', label: 'Productivity', endpoint: '/planning/productivity', entityLabel: 'Productivity Standard',
+        readPerm: 'productivity:read', writePerm: 'productivity:write',
+        columns: [
+          { key: 'activity', label: 'Activity' }, { key: 'unit', label: 'Unit' },
+          { key: 'productivityRate', label: 'Rate (units/crew-day)', align: 'right', render: (r) => num(r.productivityRate) },
+          { key: 'companyStandard', label: 'Company Std', align: 'right', render: (r) => (r.companyStandard != null ? num(r.companyStandard) : '—') },
+          { key: 'benchmarkSource', label: 'Source' },
+        ],
+        fields: [
+          { name: 'activity', label: 'Activity', required: true },
+          { name: 'unit', label: 'Unit', required: true },
+          { name: 'productivityRate', label: 'Planned Productivity Rate (units/crew-day)', type: 'number', required: true },
+          { name: 'companyStandard', label: 'Company Standard', type: 'number' },
+          { name: 'historicalStandard', label: 'Historical Standard', type: 'number' },
+          { name: 'benchmarkSource', label: 'Benchmark Source' },
+        ],
+      },
+    ],
+  },
+
+  [AppView.HR]: {
+    view: AppView.HR,
+    title: 'Human Resources',
+    subtitle: 'Employee register, trades, wages, crews & availability (Module 1)',
+    tabs: [
+      {
+        key: 'employees', label: 'Employees', endpoint: '/hr/employees', entityLabel: 'Employee',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'employeeNo', label: 'No.' }, { key: 'fullName', label: 'Name' },
+          { key: 'trade', label: 'Trade', render: (r) => r.trade?.name ?? '—' },
+          { key: 'status', label: 'Status' },
+          { key: 'dailyWage', label: 'Daily Wage', align: 'right', render: (r) => (r.dailyWage != null ? money(r.dailyWage) : '—') },
+        ],
+        fields: [
+          { name: 'fullName', label: 'Full Name', required: true },
+          { name: 'employeeNo', label: 'Employee No.' },
+          { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
+          { name: 'phone', label: 'Phone' },
+          { name: 'email', label: 'Email' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['ACTIVE', 'INACTIVE', 'ON_LEAVE']) },
+          { name: 'dailyWage', label: 'Daily Wage', type: 'number' },
+          { name: 'skills', label: 'Skills (comma-separated)', type: 'csv', placeholder: 'Formwork, Rebar' },
+          { name: 'certifications', label: 'Certifications (comma-separated)', type: 'csv' },
+        ],
+      },
+      {
+        key: 'trades', label: 'Trades', endpoint: '/hr/trades', entityLabel: 'Trade',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }, { key: 'description', label: 'Description' },
+        ],
+        fields: [
+          { name: 'name', label: 'Trade Name', required: true },
+          { name: 'code', label: 'Code' },
+          { name: 'description', label: 'Description', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'wages', label: 'Wage Rates', endpoint: '/hr/wage-rates', entityLabel: 'Wage Rate',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'trade', label: 'Trade', render: (r) => r.trade?.name ?? '—' },
+          { key: 'rateType', label: 'Type' },
+          { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
+          { key: 'currency', label: 'Currency' },
+          { key: 'effectiveDate', label: 'Effective', render: (r) => date(r.effectiveDate) },
+        ],
+        fields: [
+          { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name, required: true },
+          { name: 'rateType', label: 'Rate Type', type: 'select', options: opt(['DAILY', 'HOURLY']) },
+          { name: 'amount', label: 'Amount', type: 'number', required: true },
+          { name: 'currency', label: 'Currency (e.g. USD)' },
+          { name: 'effectiveDate', label: 'Effective Date', type: 'date' },
+        ],
+      },
+      {
+        key: 'crews', label: 'Crews', endpoint: '/hr/crews', entityLabel: 'Crew',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'name', label: 'Crew' }, { key: 'description', label: 'Description' },
+          { key: 'members', label: 'Members', align: 'right', render: (r) => num(r._count?.members ?? 0) },
+        ],
+        fields: [
+          { name: 'name', label: 'Crew Name', required: true },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'description', label: 'Description', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'crew-members', label: 'Crew Members', endpoint: '/hr/crew-members', entityLabel: 'Crew Member',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'crew', label: 'Crew', render: (r) => r.crew?.name ?? '—' },
+          { key: 'employee', label: 'Employee', render: (r) => r.employee?.fullName ?? '—' },
+          { key: 'roleInCrew', label: 'Role' },
+        ],
+        fields: [
+          { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name, required: true },
+          { name: 'employeeId', label: 'Employee', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName, required: true },
+          { name: 'roleInCrew', label: 'Role in Crew' },
+        ],
+      },
+      {
+        key: 'availability', label: 'Availability', endpoint: '/hr/availability', entityLabel: 'Availability',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'employee', label: 'Employee', render: (r) => r.employee?.fullName ?? '—' },
+          { key: 'date', label: 'Date', render: (r) => date(r.date) },
+          { key: 'available', label: 'Available', render: (r) => (r.available ? 'Yes' : 'No') },
+          { key: 'hoursAvailable', label: 'Hours', align: 'right' },
+        ],
+        fields: [
+          { name: 'employeeId', label: 'Employee', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName, required: true },
+          { name: 'date', label: 'Date', type: 'date', required: true },
+          { name: 'available', label: 'Available?', type: 'select', options: [{ value: 'true', label: 'Available' }, { value: 'false', label: 'Unavailable' }] },
+          { name: 'hoursAvailable', label: 'Hours Available', type: 'number' },
+          { name: 'note', label: 'Note' },
+        ],
+      },
     ],
   },
 

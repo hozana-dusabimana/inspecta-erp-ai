@@ -55,6 +55,7 @@ const DATE_FIELDS = new Set([
   'actualEndDate',
   'contractDate',
   'commencementDate',
+  'effectiveDate',
   'issueDate',
   'dueDate',
   'orderDate',

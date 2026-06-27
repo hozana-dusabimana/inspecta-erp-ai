@@ -34,6 +34,12 @@ export type Permission =
   | 'document:write'
   | 'scheduling:read'
   | 'scheduling:write'
+  | 'productivity:read'
+  | 'productivity:write'
+  | 'hr:read'
+  | 'hr:write'
+  | 'equipment:read'
+  | 'equipment:write'
   | 'profitability:read'
   | 'fieldops:read'
   | 'fieldops:write'
@@ -61,6 +67,9 @@ const ALL: Permission[] = [
   'risk:read', 'risk:write',
   'document:read', 'document:write',
   'scheduling:read', 'scheduling:write',
+  'productivity:read', 'productivity:write',
+  'hr:read', 'hr:write',
+  'equipment:read', 'equipment:write',
   'profitability:read',
   'fieldops:read', 'fieldops:write',
   'approval:read', 'approval:write',
@@ -97,6 +106,9 @@ const matrix: Record<Role, Permission[]> = {
     'risk:read', 'risk:write',
     'document:write',
     'scheduling:write',
+    'productivity:read', 'productivity:write',
+    'hr:read', 'hr:write',
+    'equipment:read', 'equipment:write',
     'profitability:read',
     'fieldops:write',
     'approval:write',
@@ -115,6 +127,9 @@ const matrix: Record<Role, Permission[]> = {
     'risk:read', 'risk:write',
     'document:write',
     'scheduling:write',
+    'productivity:read',
+    'hr:read',
+    'equipment:read',
     'fieldops:write',
   ],
 
@@ -131,6 +146,9 @@ const matrix: Record<Role, Permission[]> = {
     'qaqc:read',
     'risk:read',
     'document:write',
+    'productivity:read', 'productivity:write',
+    'hr:read',
+    'equipment:read',
     'profitability:read',
     'approval:write',
   ],

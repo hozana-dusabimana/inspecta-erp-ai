@@ -12,6 +12,7 @@ import rolesRoutes from './modules/roles/roles.routes';
 import organizationRoutes from './modules/organization/organization.routes';
 import clientsRoutes from './modules/clients/clients.routes';
 import contractsRoutes from './modules/contracts/contracts.routes';
+import hrRoutes from './modules/hr/hr.routes';
 import projectsRoutes from './modules/projects/projects.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import aiRoutes from './modules/ai/ai.routes';
@@ -88,6 +89,7 @@ export function createApp() {
   app.use('/api/organization', organizationRoutes);
   app.use('/api/clients', clientsRoutes);
   app.use('/api/contracts', contractsRoutes);
+  app.use('/api/hr', hrRoutes);
   app.use('/api/projects', projectsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/ai', aiRoutes);

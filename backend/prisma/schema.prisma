@@ -596,6 +596,7 @@ model PurchaseOrder {
   supplier Supplier            @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   project  Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   items    PurchaseOrderItem[]
+  deliveries Delivery[]
 
   @@index([organizationId])
   @@map("purchase_orders")
@@ -1173,4 +1174,125 @@ model MaterialRequirement {
   @@index([organizationId])
   @@index([projectId])
   @@map("material_requirements")
+}
+
+// ════════════════ MODULE 1 — Procurement Planning (#9) ════════════════
+// Workflow: DRAFT → SUBMITTED → APPROVED → ORDERED → DELIVERED → CLOSED
+enum PrStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ORDERED
+  DELIVERED
+  CLOSED
+}
+
+model PurchaseRequest {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String?
+  number         String
+  title          String?
+  status         PrStatus @default(DRAFT)
+  neededByDate   DateTime?
+  requestedById  String?
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
+  total          Decimal  @default(0) @db.Decimal(18, 2)
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items PurchaseRequestItem[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("purchase_requests")
+}
+
+model PurchaseRequestItem {
+  id                String  @id @default(cuid())
+  purchaseRequestId String
+  materialId        String?
+  description       String
+  unit              String  @default("unit")
+  quantity          Decimal @default(0) @db.Decimal(18, 3)
+  estimatedRate     Decimal @default(0) @db.Decimal(18, 2)
+  amount            Decimal @default(0) @db.Decimal(18, 2)
+
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseRequestId])
+  @@map("purchase_request_items")
+}
+
+// Request for Quotation + supplier quotes (vendor comparison).
+model Rfq {
+  id                String   @id @default(cuid())
+  organizationId    String
+  projectId         String?
+  purchaseRequestId String?
+  number            String
+  status            String   @default("DRAFT") // DRAFT | SENT | AWARDED | CLOSED
+  dueDate           DateTime?
+  notes             String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes RfqQuote[]
+
+  @@index([organizationId])
+  @@map("rfqs")
+}
+
+model RfqQuote {
+  id             String   @id @default(cuid())
+  organizationId String
+  rfqId          String
+  supplierId     String
+  totalAmount    Decimal  @default(0) @db.Decimal(18, 2)
+  leadTimeDays   Int?
+  awarded        Boolean  @default(false)
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rfq Rfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("rfq_quotes")
+}
+
+// Delivery tracking (goods received against a PO).
+model Delivery {
+  id              String   @id @default(cuid())
+  organizationId  String
+  projectId       String?
+  purchaseOrderId String?
+  number          String
+  status          String   @default("PENDING") // PENDING | PARTIAL | RECEIVED
+  deliveryDate    DateTime?
+  receivedBy      String?
+  notes           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("deliveries")
 }

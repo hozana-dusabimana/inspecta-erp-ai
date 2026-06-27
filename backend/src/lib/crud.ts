@@ -60,6 +60,8 @@ const DATE_FIELDS = new Set([
   'scheduledDate',
   'completedDate',
   'requiredByDate',
+  'neededByDate',
+  'deliveryDate',
   'issueDate',
   'dueDate',
   'orderDate',

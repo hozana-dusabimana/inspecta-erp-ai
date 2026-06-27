@@ -1,7 +1,8 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppView } from './types';
 import { api } from './lib/api';
+import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
@@ -120,6 +121,144 @@ const productivity = (row: Record<string, any>) => {
   const lh = Number(row.laborHours ?? 0);
   return lh > 0 ? (Number(row.actualQty) / lh).toFixed(3) : '—';
 };
+
+// Procurement workflow (PR approvals) + MRP — the generic table can't drive
+// status transitions, so this panel renders the action buttons and MRP view.
+const PR_STATUS_TONE: Record<string, string> = {
+  DRAFT: 'bg-brand-surface text-brand-on-surface-variant',
+  SUBMITTED: 'bg-amber-100 text-amber-700',
+  APPROVED: 'bg-emerald-100 text-emerald-700',
+  REJECTED: 'bg-red-100 text-red-700',
+  ORDERED: 'bg-sky-100 text-sky-700',
+  DELIVERED: 'bg-violet-100 text-violet-700',
+  CLOSED: 'bg-brand-surface text-brand-on-surface-variant',
+};
+// Allowed actions per status → [label, endpoint action, needs approval perm].
+const PR_ACTIONS: Record<string, Array<[string, string, boolean]>> = {
+  DRAFT: [['Submit', 'submit', false]],
+  SUBMITTED: [['Approve', 'approve', true], ['Reject', 'reject', true]],
+  APPROVED: [['Order', 'order', false]],
+  ORDERED: [['Mark Delivered', 'deliver', false]],
+  DELIVERED: [['Close', 'close', false]],
+  REJECTED: [],
+  CLOSED: [],
+};
+
+function ProcurementPanel() {
+  const qc = useQueryClient();
+  const { hasPermission } = useAuth();
+  const [mrpProject, setMrpProject] = useState('');
+
+  const { data: prData } = useQuery({
+    queryKey: ['/procurement/purchase-requests', 'all'],
+    queryFn: () => api.get<any[]>('/procurement/purchase-requests'),
+  });
+  const prs = prData?.data ?? [];
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects', 'picker'],
+    queryFn: () => api.get<any[]>('/projects?pageSize=200'),
+  });
+
+  const { data: mrp } = useQuery({
+    queryKey: ['/procurement/mrp', mrpProject],
+    queryFn: () => api.get<any>(`/procurement/mrp?projectId=${mrpProject}`),
+    enabled: Boolean(mrpProject),
+  });
+
+  const act = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: string }) =>
+      api.post(`/procurement/purchase-requests/${id}/${action}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['/procurement/purchase-requests', 'all'] }),
+  });
+
+  const m = mrp?.data;
+  return (
+    <div className="space-y-6 mb-2">
+      {/* PR approval workflow */}
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-brand-outline-variant/15 font-bold text-brand-primary text-sm">
+          Purchase Request Workflow
+        </div>
+        {prs.length === 0 ? (
+          <p className="px-5 py-4 text-xs text-brand-on-surface-variant">No purchase requests yet. Create one in the tab below, then drive it through the approval workflow.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15">
+              <th className="px-4 py-2 font-bold">Number</th><th className="px-4 py-2 font-bold">Title</th>
+              <th className="px-4 py-2 font-bold text-right">Total</th><th className="px-4 py-2 font-bold">Status</th>
+              <th className="px-4 py-2 font-bold text-right">Actions</th>
+            </tr></thead>
+            <tbody>
+              {prs.map((pr) => (
+                <tr key={pr.id} className="border-b border-brand-outline-variant/10 last:border-0">
+                  <td className="px-4 py-2 font-bold text-brand-primary">{pr.number}</td>
+                  <td className="px-4 py-2">{pr.title ?? '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono">{money(pr.total)}</td>
+                  <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${PR_STATUS_TONE[pr.status] ?? ''}`}>{pr.status}</span></td>
+                  <td className="px-4 py-2">
+                    <div className="flex justify-end gap-1.5">
+                      {(PR_ACTIONS[pr.status] ?? []).filter(([, , needsApproval]) => !needsApproval || hasPermission('approval:write')).map(([label, action]) => (
+                        <button key={action} disabled={act.isPending}
+                          onClick={() => act.mutate({ id: pr.id, action })}
+                          className="px-2.5 py-1 rounded-md bg-brand-primary text-white text-[10px] font-bold hover:bg-brand-primary-container disabled:opacity-50">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* MRP */}
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between gap-3">
+          <span className="font-bold text-brand-primary text-sm">MRP — Net Material Requirements</span>
+          <select value={mrpProject} onChange={(e) => setMrpProject(e.target.value)}
+            className="h-9 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary">
+            <option value="">Select a project…</option>
+            {(projects?.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+          </select>
+        </div>
+        {!mrpProject ? (
+          <p className="px-5 py-4 text-xs text-brand-on-surface-variant">Pick a project to compute net requirements (planned − stock on hand).</p>
+        ) : !m || m.rows.length === 0 ? (
+          <p className="px-5 py-4 text-xs text-brand-on-surface-variant">No material requirements planned for this project.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4">
+              <StatCard label="Items to Procure" value={num(m.itemsToProcure)} tone={m.itemsToProcure > 0 ? 'warn' : 'good'} />
+              <StatCard label="Est. Net Cost" value={money(m.totalNetCost)} />
+              <StatCard label="Requirements" value={num(m.rows.length)} />
+            </div>
+            <table className="w-full text-xs">
+              <thead><tr className="text-left text-brand-on-surface-variant border-y border-brand-outline-variant/15">
+                <th className="px-4 py-2 font-bold">Material</th><th className="px-4 py-2 font-bold text-right">Planned</th>
+                <th className="px-4 py-2 font-bold text-right">On Hand</th><th className="px-4 py-2 font-bold text-right">Net</th>
+                <th className="px-4 py-2 font-bold text-right">Est. Cost</th>
+              </tr></thead>
+              <tbody>
+                {m.rows.map((r: any) => (
+                  <tr key={r.materialId} className={`border-b border-brand-outline-variant/10 last:border-0 ${r.toProcure ? 'bg-amber-50/40' : ''}`}>
+                    <td className="px-4 py-2">{r.code} — {r.name}</td>
+                    <td className="px-4 py-2 text-right font-mono">{num(r.plannedQuantity)} {r.unit}</td>
+                    <td className="px-4 py-2 text-right font-mono">{num(r.onHand)}</td>
+                    <td className="px-4 py-2 text-right font-mono font-bold">{num(r.netRequirement)}</td>
+                    <td className="px-4 py-2 text-right font-mono">{money(r.estimatedCost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export const MODULES: Record<string, ModuleDef> = {
   [AppView.PLANNING]: {
@@ -615,8 +754,9 @@ export const MODULES: Record<string, ModuleDef> = {
 
   [AppView.PROCUREMENT]: {
     view: AppView.PROCUREMENT,
-    title: 'Procurement',
-    subtitle: 'Suppliers & purchase orders (Module 17)',
+    title: 'Procurement Planning',
+    subtitle: 'Requests, RFQs, orders, deliveries, approvals & MRP (Module 1 / 17)',
+    summary: () => <ProcurementPanel />,
     tabs: [
       {
         key: 'suppliers', label: 'Suppliers', endpoint: '/procurement/suppliers', entityLabel: 'Supplier',
@@ -646,6 +786,72 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'supplierId', label: 'Supplier', optionsEndpoint: '/procurement/suppliers', optionLabel: (s) => s.name, required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'ISSUED', 'PARTIAL', 'RECEIVED', 'CANCELLED']) },
           { name: 'expectedDate', label: 'Expected Date', type: 'date' },
+        ],
+      },
+      {
+        key: 'prs', label: 'Purchase Requests', endpoint: '/procurement/purchase-requests', entityLabel: 'Purchase Request',
+        readPerm: 'procurement:read', writePerm: 'procurement:write',
+        columns: [
+          { key: 'number', label: 'Number' }, { key: 'title', label: 'Title' },
+          { key: 'status', label: 'Status' },
+          { key: 'total', label: 'Total', align: 'right', render: (r) => money(r.total) },
+        ],
+        fields: [
+          { name: 'number', label: 'PR Number', required: true },
+          { name: 'title', label: 'Title' },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'neededByDate', label: 'Needed By', type: 'date' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'rfqs', label: 'RFQs', endpoint: '/procurement/rfqs', entityLabel: 'RFQ',
+        readPerm: 'procurement:read', writePerm: 'procurement:write',
+        columns: [
+          { key: 'number', label: 'Number' }, { key: 'status', label: 'Status' },
+          { key: 'dueDate', label: 'Due', render: (r) => date(r.dueDate) },
+        ],
+        fields: [
+          { name: 'number', label: 'RFQ Number', required: true },
+          { name: 'purchaseRequestId', label: 'From Purchase Request', type: 'select', optionsEndpoint: '/procurement/purchase-requests', optionLabel: (r) => r.number },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SENT', 'AWARDED', 'CLOSED']) },
+          { name: 'dueDate', label: 'Due Date', type: 'date' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'quotes', label: 'Quotes', endpoint: '/procurement/rfq-quotes', entityLabel: 'Quote',
+        readPerm: 'procurement:read', writePerm: 'procurement:write',
+        columns: [
+          { key: 'rfq', label: 'RFQ', render: (r) => r.rfq?.number ?? '—' },
+          { key: 'totalAmount', label: 'Amount', align: 'right', render: (r) => money(r.totalAmount) },
+          { key: 'leadTimeDays', label: 'Lead (days)', align: 'right' },
+          { key: 'awarded', label: 'Awarded', render: (r) => (r.awarded ? '★ Yes' : 'No') },
+        ],
+        fields: [
+          { name: 'rfqId', label: 'RFQ', type: 'select', optionsEndpoint: '/procurement/rfqs', optionLabel: (r) => r.number, required: true },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, required: true },
+          { name: 'totalAmount', label: 'Quoted Amount', type: 'number', required: true },
+          { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'deliveries', label: 'Deliveries', endpoint: '/procurement/deliveries', entityLabel: 'Delivery',
+        readPerm: 'procurement:read', writePerm: 'procurement:write',
+        columns: [
+          { key: 'number', label: 'Number' },
+          { key: 'purchaseOrder', label: 'PO', render: (r) => r.purchaseOrder?.number ?? '—' },
+          { key: 'status', label: 'Status' },
+          { key: 'deliveryDate', label: 'Date', render: (r) => date(r.deliveryDate) },
+        ],
+        fields: [
+          { name: 'number', label: 'Delivery Note No.', required: true },
+          { name: 'purchaseOrderId', label: 'Purchase Order', type: 'select', optionsEndpoint: '/procurement/purchase-orders', optionLabel: (r) => r.number },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['PENDING', 'PARTIAL', 'RECEIVED']) },
+          { name: 'deliveryDate', label: 'Delivery Date', type: 'date' },
+          { name: 'receivedBy', label: 'Received By' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
         ],
       },
     ],

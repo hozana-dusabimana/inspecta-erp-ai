@@ -531,6 +531,7 @@ model Material {
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
+  requirements   MaterialRequirement[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1057,4 +1058,119 @@ model LaborAvailability {
 
   @@index([organizationId])
   @@map("labor_availability")
+}
+
+// ════════════════ MODULE 1 — Equipment Planning (#7) ════════════════
+
+model EquipmentCategory {
+  id             String  @id @default(cuid())
+  organizationId String
+  code           String?
+  name           String
+  description    String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment[]
+
+  @@index([organizationId])
+  @@map("equipment_categories")
+}
+
+model Equipment {
+  id              String   @id @default(cuid())
+  organizationId  String
+  code            String?
+  name            String
+  categoryId      String?
+  ownershipStatus String   @default("OWNED") // OWNED | RENTED | LEASED
+  status          String   @default("AVAILABLE") // AVAILABLE | IN_USE | MAINTENANCE
+  hourlyRate      Decimal? @db.Decimal(18, 2)
+  dailyRate       Decimal? @db.Decimal(18, 2)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category    EquipmentCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  utilization EquipmentUtilization[]
+  maintenance EquipmentMaintenance[]
+
+  @@index([organizationId])
+  @@map("equipment")
+}
+
+// Planned utilization: Utilization = Planned Hours / Available Hours.
+model EquipmentUtilization {
+  id             String   @id @default(cuid())
+  organizationId String
+  equipmentId    String
+  projectId      String?
+  periodStart    DateTime?
+  plannedHours   Float    @default(0)
+  availableHours Float    @default(0)
+  utilizationPct Float    @default(0)
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("equipment_utilization")
+}
+
+model EquipmentMaintenance {
+  id             String   @id @default(cuid())
+  organizationId String
+  equipmentId    String
+  type           String?
+  scheduledDate  DateTime?
+  completedDate  DateTime?
+  cost           Decimal? @db.Decimal(18, 2)
+  status         String   @default("SCHEDULED") // SCHEDULED | DONE | OVERDUE
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("equipment_maintenance")
+}
+
+// ════════════════ MODULE 1 — Material Planning (#8) ════════════════
+// Planned material requirement per project (basis for MRP in procurement).
+model MaterialRequirement {
+  id              String   @id @default(cuid())
+  organizationId  String
+  projectId       String
+  materialId      String
+  plannedQuantity Decimal  @db.Decimal(18, 3)
+  requiredByDate  DateTime?
+  supplierId      String?
+  leadTimeDays    Int?
+  status          String   @default("PLANNED") // PLANNED | REQUESTED | ORDERED | FULFILLED
+  note            String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("material_requirements")
 }

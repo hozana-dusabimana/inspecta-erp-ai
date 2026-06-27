@@ -371,6 +371,84 @@ export const MODULES: Record<string, ModuleDef> = {
     ],
   },
 
+  [AppView.EQUIPMENT]: {
+    view: AppView.EQUIPMENT,
+    title: 'Equipment Planning',
+    subtitle: 'Register, categories, rates, utilization & maintenance (Module 1)',
+    tabs: [
+      {
+        key: 'register', label: 'Register', endpoint: '/equipment/register', entityLabel: 'Equipment',
+        readPerm: 'equipment:read', writePerm: 'equipment:write',
+        columns: [
+          { key: 'code', label: 'Code' }, { key: 'name', label: 'Name' },
+          { key: 'category', label: 'Category', render: (r) => r.category?.name ?? '—' },
+          { key: 'ownershipStatus', label: 'Ownership' }, { key: 'status', label: 'Status' },
+          { key: 'dailyRate', label: 'Daily Rate', align: 'right', render: (r) => (r.dailyRate != null ? money(r.dailyRate) : '—') },
+        ],
+        fields: [
+          { name: 'name', label: 'Equipment Name', required: true },
+          { name: 'code', label: 'Code' },
+          { name: 'categoryId', label: 'Category', type: 'select', optionsEndpoint: '/equipment/categories', optionLabel: (r) => r.name },
+          { name: 'ownershipStatus', label: 'Ownership', type: 'select', options: opt(['OWNED', 'RENTED', 'LEASED']) },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['AVAILABLE', 'IN_USE', 'MAINTENANCE']) },
+          { name: 'hourlyRate', label: 'Hourly Rate', type: 'number' },
+          { name: 'dailyRate', label: 'Daily Rate', type: 'number' },
+        ],
+      },
+      {
+        key: 'categories', label: 'Categories', endpoint: '/equipment/categories', entityLabel: 'Category',
+        readPerm: 'equipment:read', writePerm: 'equipment:write',
+        columns: [
+          { key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }, { key: 'description', label: 'Description' },
+        ],
+        fields: [
+          { name: 'name', label: 'Category Name', required: true },
+          { name: 'code', label: 'Code' },
+          { name: 'description', label: 'Description', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'utilization', label: 'Utilization', endpoint: '/equipment/utilization', entityLabel: 'Utilization',
+        readPerm: 'equipment:read', writePerm: 'equipment:write',
+        columns: [
+          { key: 'equipment', label: 'Equipment', render: (r) => r.equipment?.name ?? '—' },
+          { key: 'periodStart', label: 'Period', render: (r) => date(r.periodStart) },
+          { key: 'plannedHours', label: 'Planned h', align: 'right', render: (r) => num(r.plannedHours) },
+          { key: 'availableHours', label: 'Available h', align: 'right', render: (r) => num(r.availableHours) },
+          { key: 'utilizationPct', label: 'Utilization', align: 'right', render: (r) => `${num(r.utilizationPct)}%` },
+        ],
+        fields: [
+          { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name, required: true },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'periodStart', label: 'Period Start', type: 'date' },
+          { name: 'plannedHours', label: 'Planned Hours', type: 'number', required: true },
+          { name: 'availableHours', label: 'Available Hours', type: 'number', required: true },
+          { name: 'note', label: 'Note' },
+        ],
+      },
+      {
+        key: 'maintenance', label: 'Maintenance', endpoint: '/equipment/maintenance', entityLabel: 'Maintenance',
+        readPerm: 'equipment:read', writePerm: 'equipment:write',
+        columns: [
+          { key: 'equipment', label: 'Equipment', render: (r) => r.equipment?.name ?? '—' },
+          { key: 'type', label: 'Type' },
+          { key: 'scheduledDate', label: 'Scheduled', render: (r) => date(r.scheduledDate) },
+          { key: 'status', label: 'Status' },
+          { key: 'cost', label: 'Cost', align: 'right', render: (r) => (r.cost != null ? money(r.cost) : '—') },
+        ],
+        fields: [
+          { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name, required: true },
+          { name: 'type', label: 'Maintenance Type' },
+          { name: 'scheduledDate', label: 'Scheduled Date', type: 'date' },
+          { name: 'completedDate', label: 'Completed Date', type: 'date' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['SCHEDULED', 'DONE', 'OVERDUE']) },
+          { name: 'cost', label: 'Cost', type: 'number' },
+          { name: 'notes', label: 'Notes', type: 'textarea' },
+        ],
+      },
+    ],
+  },
+
   [AppView.PRODUCTION]: {
     view: AppView.PRODUCTION,
     title: 'Production Control',
@@ -510,6 +588,26 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'reference', label: 'Reference (GRN/Issue No.)' },
           { name: 'note', label: 'Note', type: 'textarea' },
           { name: 'date', label: 'Date', type: 'date' },
+        ],
+      },
+      {
+        key: 'requirements', label: 'Material Planning', endpoint: '/inventory/requirements', entityLabel: 'Material Requirement',
+        projectScoped: true, readPerm: 'inventory:read', writePerm: 'inventory:write',
+        columns: [
+          { key: 'material', label: 'Material', render: (r) => r.material?.name ?? '—' },
+          { key: 'plannedQuantity', label: 'Planned Qty', align: 'right', render: (r) => num(r.plannedQuantity) },
+          { key: 'requiredByDate', label: 'Required By', render: (r) => date(r.requiredByDate) },
+          { key: 'leadTimeDays', label: 'Lead (days)', align: 'right' },
+          { key: 'status', label: 'Status' },
+        ],
+        fields: [
+          { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
+          { name: 'plannedQuantity', label: 'Planned Quantity', type: 'number', required: true },
+          { name: 'requiredByDate', label: 'Required By', type: 'date' },
+          { name: 'supplierId', label: 'Preferred Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number' },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['PLANNED', 'REQUESTED', 'ORDERED', 'FULFILLED']) },
+          { name: 'note', label: 'Note', type: 'textarea' },
         ],
       },
     ],

@@ -23,6 +23,7 @@ export enum AppView {
   PORTFOLIO = 'PORTFOLIO',
   ADMIN = 'ADMIN',
   HR = 'HR',
+  EQUIPMENT = 'EQUIPMENT',
 }
 
 export interface ChatMessage {

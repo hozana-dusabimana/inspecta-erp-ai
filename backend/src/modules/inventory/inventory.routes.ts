@@ -30,6 +30,41 @@ router.use(
   }),
 );
 
+// ── Material Planning — planned requirements per project (#8) ─────
+const requirementCreate = z.object({
+  projectId: z.string(),
+  materialId: z.string(),
+  plannedQuantity: z.number().nonnegative(),
+  requiredByDate: z.string().datetime().optional(),
+  supplierId: z.string().optional(),
+  leadTimeDays: z.number().int().nonnegative().optional(),
+  status: z.enum(['PLANNED', 'REQUESTED', 'ORDERED', 'FULFILLED']).optional(),
+  note: z.string().optional(),
+});
+router.use(
+  '/requirements',
+  createCrudRouter({
+    model: 'materialRequirement',
+    entity: 'material-requirement',
+    readPerm: 'inventory:read',
+    writePerm: 'inventory:write',
+    createSchema: requirementCreate,
+    updateSchema: requirementCreate.partial(),
+    requireProject: true,
+    orderBy: { requiredByDate: 'asc' },
+    include: { material: { select: { id: true, code: true, name: true, unit: true } } },
+    refs: [
+      { field: 'materialId', model: 'material' },
+      { field: 'supplierId', model: 'supplier' },
+    ],
+    transform: (data, req) => {
+      if (!('id' in data)) data.createdBy = req.user!.id;
+      data.updatedBy = req.user!.id;
+      return data;
+    },
+  }),
+);
+
 /** Compute net stock for a material = Σreceipts − Σissues (+adjustments). */
 async function stockForMaterial(orgId: string, materialId: string): Promise<number> {
   const groups = await prisma.stockMovement.groupBy({

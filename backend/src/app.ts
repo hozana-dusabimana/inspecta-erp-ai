@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
+import { prisma } from './lib/prisma';
 import { notFoundHandler, errorHandler } from './middleware/error';
 
 import authRoutes from './modules/auth/auth.routes';
@@ -69,7 +70,7 @@ export function createApp() {
     message: { success: false, error: 'Too many authentication attempts, try again later.' },
   });
 
-  // Health stays unlimited (used by CI/monitoring).
+  // Liveness — stays unlimited (used by CI/monitoring). Cheap, no DB hit.
   app.get('/api/health', (_req, res) => {
     res.json({
       success: true,
@@ -77,8 +78,19 @@ export function createApp() {
         status: 'ok',
         service: 'inspecta-buildos-backend',
         build: process.env.BUILD_VERSION || 'dev',
+        uptime: Math.round(process.uptime()),
       },
     });
+  });
+
+  // Readiness — verifies the database is reachable. 503 if not (for orchestrators).
+  app.get('/api/health/ready', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ success: true, data: { status: 'ready', db: 'up' } });
+    } catch {
+      res.status(503).json({ success: false, error: 'Database unavailable', data: { status: 'not-ready', db: 'down' } });
+    }
   });
 
   app.use('/api', apiLimiter);

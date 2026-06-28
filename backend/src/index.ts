@@ -1,10 +1,12 @@
 import http from 'http';
 import { createApp } from './app';
-import { env } from './config/env';
+import { env, validateProductionEnv } from './config/env';
 import { prisma } from './lib/prisma';
 import { initRealtime } from './lib/realtime';
 
 async function main() {
+  // Fail fast on insecure production configuration (weak secrets, etc.).
+  validateProductionEnv();
   // Fail fast if the database is unreachable.
   await prisma.$connect();
   const app = createApp();

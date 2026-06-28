@@ -62,3 +62,32 @@ export const env = {
     adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345',
   },
 };
+
+/**
+ * Fail-fast guardrails for production. Called once at boot (index.ts). Refuses
+ * to start with dev-default secrets/credentials, and warns about soft-missing
+ * config (AI keys, storage, SMTP) that degrades gracefully but is likely a
+ * misconfiguration in production.
+ */
+export function validateProductionEnv(): void {
+  if (!env.isProd) return;
+  const fatal: string[] = [];
+  const warn: string[] = [];
+
+  if (env.jwt.accessSecret === 'dev-access-secret') fatal.push('JWT_ACCESS_SECRET is the insecure dev default');
+  if (env.jwt.refreshSecret === 'dev-refresh-secret') fatal.push('JWT_REFRESH_SECRET is the insecure dev default');
+  if (env.jwt.accessSecret.length < 24) fatal.push('JWT_ACCESS_SECRET is too short (use ≥ 32 random chars)');
+  if (env.jwt.refreshSecret.length < 24) fatal.push('JWT_REFRESH_SECRET is too short (use ≥ 32 random chars)');
+  if (env.seed.adminPassword === 'Admin@12345') warn.push('SEED_ADMIN_PASSWORD is the public default — change it after first login');
+
+  const providerKey = { openrouter: env.ai.openrouter.apiKey, claude: env.ai.claude.apiKey, gemini: env.ai.gemini.apiKey }[env.ai.provider];
+  if (!providerKey) warn.push(`AI provider "${env.ai.provider}" has no API key — Copilot runs in offline/deterministic mode`);
+  if (!env.supabase.url || !env.supabase.serviceKey) warn.push('Supabase storage not configured — document uploads will fail');
+  if (!env.smtp.host) warn.push('SMTP not configured — email notifications will not be delivered');
+
+  for (const w of warn) console.warn(`[env] WARNING: ${w}`); // eslint-disable-line no-console
+  if (fatal.length) {
+    for (const f of fatal) console.error(`[env] FATAL: ${f}`); // eslint-disable-line no-console
+    throw new Error(`Refusing to start in production with insecure configuration (${fatal.length} issue(s)). See logs above.`);
+  }
+}

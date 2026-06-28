@@ -147,4 +147,100 @@ router.get(
   }),
 );
 
+// ── Shared xlsx sender ────────────────────────────────────────
+const num = (v: unknown) => Number(v ?? 0);
+async function sendWorkbook(res: import('express').Response, wb: ExcelJS.Workbook, filename: string) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  await wb.xlsx.write(res);
+  res.end();
+}
+function addSheet(wb: ExcelJS.Workbook, name: string, columns: Partial<ExcelJS.Column>[], rows: Record<string, unknown>[]) {
+  const ws = wb.addWorksheet(name);
+  ws.columns = columns as ExcelJS.Column[];
+  ws.getRow(1).font = { bold: true };
+  rows.forEach((r) => ws.addRow(r));
+  return ws;
+}
+
+// ── Executive report (portfolio KPIs across all projects) ─────
+router.get('/executive.xlsx', requirePermission('report:read'), asyncHandler(async (req, res) => {
+  const scope = { organizationId: req.user!.orgId };
+  const [projects, costByP, invByP, ncrByP, incByP] = await Promise.all([
+    prisma.project.findMany({ where: scope, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
+    prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+    prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+    prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
+    prisma.incident.groupBy({ by: ['projectId'], where: scope, _count: { _all: true } }),
+  ]);
+  const m = (g: any[], v = (x: any) => num(x._sum?.amount)) => new Map(g.map((x) => [x.projectId, v(x)]));
+  const cost = m(costByP); const inv = m(invByP);
+  const ncr = new Map(ncrByP.map((x) => [x.projectId, x._count._all]));
+  const inc = new Map(incByP.map((x) => [x.projectId, x._count._all]));
+  const wb = new ExcelJS.Workbook(); wb.creator = 'INSPECTA BUILDOS';
+  addSheet(wb, 'Executive Summary', [
+    { header: 'Code', key: 'code', width: 14 }, { header: 'Project', key: 'name', width: 30 },
+    { header: 'Client', key: 'client', width: 22 }, { header: 'Status', key: 'status', width: 12 },
+    { header: 'Health', key: 'health', width: 10 }, { header: 'Progress %', key: 'progress', width: 12 },
+    { header: 'Budget', key: 'budget', width: 16 }, { header: 'Actual Cost', key: 'actual', width: 16 },
+    { header: 'Cost Variance', key: 'variance', width: 16 }, { header: 'Billed', key: 'billed', width: 16 },
+    { header: 'Open NCRs', key: 'ncrs', width: 12 }, { header: 'Incidents', key: 'incidents', width: 12 },
+  ], projects.map((p) => {
+    const budget = num(p.budget); const actual = cost.get(p.id) ?? 0;
+    return { code: p.code, name: p.name, client: p.client?.name ?? '—', status: p.status, health: p.health, progress: p.progressPct, budget, actual, variance: budget - actual, billed: inv.get(p.id) ?? 0, ncrs: ncr.get(p.id) ?? 0, incidents: inc.get(p.id) ?? 0 };
+  }));
+  await sendWorkbook(res, wb, 'executive-report.xlsx');
+}));
+
+// ── Financial report (project-scoped) ─────────────────────────
+router.get('/financial.xlsx', requirePermission('report:read'), asyncHandler(async (req, res) => {
+  const orgId = req.user!.orgId;
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) throw NotFound('projectId is required');
+  const scope = { organizationId: orgId, projectId };
+  const [budgetByCat, costByCat, invoices, payments, cash] = await Promise.all([
+    prisma.budgetLine.groupBy({ by: ['category'], where: scope, _sum: { amount: true } }),
+    prisma.costEntry.groupBy({ by: ['category'], where: scope, _sum: { amount: true } }),
+    prisma.invoice.findMany({ where: scope, orderBy: { issueDate: 'desc' } }),
+    prisma.payment.findMany({ where: scope, orderBy: { date: 'desc' } }),
+    prisma.cashFlowEntry.findMany({ where: scope, orderBy: { date: 'desc' } }),
+  ]);
+  const wb = new ExcelJS.Workbook(); wb.creator = 'INSPECTA BUILDOS';
+  addSheet(wb, 'Budget vs Actual', [{ header: 'Category', key: 'cat', width: 18 }, { header: 'Budget', key: 'budget', width: 16 }, { header: 'Actual', key: 'actual', width: 16 }],
+    [...new Set([...budgetByCat.map((b) => b.category), ...costByCat.map((c) => c.category)])].map((cat) => ({
+      cat, budget: num(budgetByCat.find((b) => b.category === cat)?._sum.amount), actual: num(costByCat.find((c) => c.category === cat)?._sum.amount),
+    })));
+  addSheet(wb, 'Invoices', [{ header: 'Number', key: 'number', width: 16 }, { header: 'Status', key: 'status', width: 12 }, { header: 'Amount', key: 'amount', width: 16 }, { header: 'Net', key: 'net', width: 16 }, { header: 'Issued', key: 'issued', width: 14 }],
+    invoices.map((i) => ({ number: i.number, status: i.status, amount: num(i.amount), net: num(i.netAmount), issued: i.issueDate?.toISOString().slice(0, 10) })));
+  addSheet(wb, 'Payments', [{ header: 'Reference', key: 'ref', width: 18 }, { header: 'Amount', key: 'amount', width: 16 }, { header: 'Date', key: 'date', width: 14 }],
+    payments.map((p) => ({ ref: p.reference, amount: num(p.amount), date: p.date.toISOString().slice(0, 10) })));
+  addSheet(wb, 'Cash Flow', [{ header: 'Direction', key: 'dir', width: 10 }, { header: 'Category', key: 'cat', width: 18 }, { header: 'Amount', key: 'amount', width: 16 }, { header: 'Date', key: 'date', width: 14 }],
+    cash.map((c) => ({ dir: c.direction, cat: c.category, amount: num(c.amount), date: c.date.toISOString().slice(0, 10) })));
+  await sendWorkbook(res, wb, 'financial-report.xlsx');
+}));
+
+// ── Compliance report (project-scoped) ────────────────────────
+router.get('/compliance.xlsx', requirePermission('report:read'), asyncHandler(async (req, res) => {
+  const orgId = req.user!.orgId;
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) throw NotFound('projectId is required');
+  const scope = { organizationId: orgId, projectId };
+  const [ncrs, inspections, incidents, safety] = await Promise.all([
+    prisma.ncr.findMany({ where: scope, orderBy: { createdAt: 'desc' } }),
+    prisma.inspection.findMany({ where: scope, orderBy: { date: 'desc' } }),
+    prisma.incident.findMany({ where: scope, orderBy: { date: 'desc' } }),
+    prisma.safetyInspection.findMany({ where: scope, orderBy: { date: 'desc' } }),
+  ]);
+  const wb = new ExcelJS.Workbook(); wb.creator = 'INSPECTA BUILDOS';
+  addSheet(wb, 'NCRs', [{ header: 'Number', key: 'n', width: 14 }, { header: 'Severity', key: 's', width: 12 }, { header: 'Status', key: 'st', width: 16 }, { header: 'Description', key: 'd', width: 40 }, { header: 'Responsible', key: 'r', width: 18 }],
+    ncrs.map((n) => ({ n: n.number, s: n.severity, st: n.status, d: n.description, r: n.responsiblePerson ?? '—' })));
+  addSheet(wb, 'Inspections', [{ header: 'Title', key: 't', width: 28 }, { header: 'Type', key: 'ty', width: 14 }, { header: 'Result', key: 'r', width: 10 }, { header: 'Defects', key: 'd', width: 10 }, { header: 'Date', key: 'dt', width: 14 }],
+    inspections.map((i) => ({ t: i.title, ty: i.type, r: i.result, d: i.defects, dt: i.date.toISOString().slice(0, 10) })));
+  addSheet(wb, 'Incidents', [{ header: 'Type', key: 't', width: 16 }, { header: 'Severity', key: 's', width: 12 }, { header: 'Description', key: 'd', width: 40 }, { header: 'Date', key: 'dt', width: 14 }],
+    incidents.map((i) => ({ t: i.type, s: i.severity, d: i.description, dt: i.date.toISOString().slice(0, 10) })));
+  addSheet(wb, 'Safety Inspections', [{ header: 'Title', key: 't', width: 28 }, { header: 'Result', key: 'r', width: 10 }, { header: 'Score', key: 'sc', width: 10 }, { header: 'Date', key: 'dt', width: 14 }],
+    safety.map((s) => ({ t: s.title, r: s.result, sc: s.score ?? '', dt: s.date.toISOString().slice(0, 10) })));
+  await sendWorkbook(res, wb, 'compliance-report.xlsx');
+}));
+
 export default router;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Wallet, Boxes, ShieldCheck, AlertTriangle, Bot } from 'lucide-react';
+import { Building2, Wallet, Boxes, ShieldCheck, AlertTriangle, Bot, Download } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import ErpLayout from './ErpLayout';
@@ -42,7 +42,10 @@ export default function ExecutiveDashboard({ onNavigate, onLogout }: Props) {
 
   return (
     <ErpLayout active={AppView.EXEC_DASH} title="Executive Intelligence" subtitle="Cross-module performance, AI alerts & forecasts" onNavigate={onNavigate} onLogout={onLogout}
-      actions={<button onClick={() => onNavigate(AppView.COPILOT)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container"><Bot className="w-4 h-4" /> Ask Copilot</button>}>
+      actions={<div className="flex items-center gap-2">
+        <button onClick={() => api.download('/reports/executive.xlsx', 'executive-report.xlsx')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-surface-container text-brand-primary font-bold text-xs border border-brand-outline-variant/20 hover:bg-brand-surface-container-high"><Download className="w-4 h-4" /> Export</button>
+        <button onClick={() => onNavigate(AppView.COPILOT)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container"><Bot className="w-4 h-4" /> Ask Copilot</button>
+      </div>}>
       {!d ? <p className="text-xs text-brand-on-surface-variant">Loading executive intelligence…</p> : (
         <div className="space-y-7">
           {/* AI alert engine */}

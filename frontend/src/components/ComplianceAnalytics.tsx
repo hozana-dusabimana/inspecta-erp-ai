@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Download } from 'lucide-react';
 import { api } from '../lib/api';
 
 const money = (n: unknown) => '$' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -50,6 +50,11 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
 
   return (
     <div className="space-y-5 mb-6">
+      <div className="flex justify-end">
+        <button onClick={() => api.download(`/reports/compliance.xlsx?projectId=${projectId}`, 'compliance-report.xlsx')} className="flex items-center gap-2 bg-brand-surface-container text-brand-primary text-xs font-bold rounded-lg px-4 py-2 border border-brand-outline-variant/20 hover:bg-brand-surface-container-high">
+          <Download className="w-4 h-4" /> Export Compliance Report
+        </button>
+      </div>
       {mode === 'quality' && a && (
         <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2">

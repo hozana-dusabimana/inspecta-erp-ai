@@ -57,11 +57,16 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
             <button key={t.key} onClick={() => setTab(t.key)} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === t.key ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}><Icon className="w-3.5 h-3.5" /> {t.label}</button>
           ); })}
         </div>
-        {hasPermission('finance:write') && (
-          <button onClick={() => post.mutate()} disabled={post.isPending} className="flex items-center gap-2 bg-brand-primary text-white text-xs font-bold rounded-lg px-4 py-2 hover:bg-brand-primary-container disabled:opacity-50">
-            <Download className="w-4 h-4" /> {post.isPending ? 'Posting…' : 'Post production costs'}
+        <div className="flex items-center gap-2">
+          <button onClick={() => api.download(`/reports/financial.xlsx${q}`, 'financial-report.xlsx')} className="flex items-center gap-2 bg-brand-surface-container text-brand-primary text-xs font-bold rounded-lg px-4 py-2 border border-brand-outline-variant/20 hover:bg-brand-surface-container-high">
+            <Download className="w-4 h-4" /> Export
           </button>
-        )}
+          {hasPermission('finance:write') && (
+            <button onClick={() => post.mutate()} disabled={post.isPending} className="flex items-center gap-2 bg-brand-primary text-white text-xs font-bold rounded-lg px-4 py-2 hover:bg-brand-primary-container disabled:opacity-50">
+              <Download className="w-4 h-4" /> {post.isPending ? 'Posting…' : 'Post production costs'}
+            </button>
+          )}
+        </div>
       </div>
 
       {tab === 'cost' && s && (

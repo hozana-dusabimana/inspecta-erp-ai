@@ -36,6 +36,13 @@ export interface CrudOptions {
   /** Foreign keys to validate as belonging to the caller's org before write. */
   refs?: Array<{ field: string; model: string }>;
   /**
+   * Async cross-field/relational validation that the generic `refs`/project
+   * checks can't express (e.g. two FKs must share the same parent). Runs after
+   * project + refs validation, before `transform`. Throw (BadRequest) to reject.
+   * On update it receives the merged `{ ...existing, ...body }` effective record.
+   */
+  validate?: (data: Record<string, unknown>, req: Request) => Promise<void> | void;
+  /**
    * Derive/normalize fields just before persisting (compute amounts, scores,
    * coerce dates...). Receives the validated body and the request.
    */
@@ -173,6 +180,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
         await assertProjectInOrg(req.user!.orgId, parsed.projectId);
       }
       await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
+      if (opts.validate) await opts.validate(parsed, req);
       let data = coerceDates(parsed);
       if (opts.transform) data = opts.transform(data, req);
       data.organizationId = req.user!.orgId;
@@ -197,6 +205,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
       const parsed = opts.updateSchema.parse(req.body) as Record<string, unknown>;
       if (parsed.projectId) await assertProjectInOrg(req.user!.orgId, parsed.projectId);
       await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
+      if (opts.validate) await opts.validate({ ...existing, ...parsed }, req);
       let data = coerceDates(parsed);
       if (opts.transform) data = opts.transform({ ...existing, ...data }, req);
       delete data.organizationId;

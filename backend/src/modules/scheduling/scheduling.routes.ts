@@ -73,6 +73,32 @@ const dependenciesRouter = createCrudRouter({
     { field: 'activityId', model: 'scheduleActivity' },
     { field: 'predecessorId', model: 'scheduleActivity' },
   ],
+  // Integrity: a dependency must connect two activities of the SAME project
+  // (and that project must match the body), and cannot be self-referential.
+  // `refs` already proved both ids are in the caller's org.
+  validate: async (data, req) => {
+    const activityId = data.activityId as string | undefined;
+    const predecessorId = data.predecessorId as string | undefined;
+    const projectId = data.projectId as string | undefined;
+    if (activityId && predecessorId && activityId === predecessorId) {
+      throw BadRequest('An activity cannot depend on itself');
+    }
+    const ids = [activityId, predecessorId].filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    const acts = await prisma.scheduleActivity.findMany({
+      where: { id: { in: ids }, organizationId: req.user!.orgId },
+      select: { id: true, projectId: true },
+    });
+    const projectById = new Map(acts.map((a) => [a.id, a.projectId]));
+    for (const id of ids) {
+      const pid = projectById.get(id);
+      if (pid === undefined) throw BadRequest('Dependency references an unknown activity');
+      if (projectId && pid !== projectId) throw BadRequest('Dependency activities must belong to the dependency project');
+    }
+    if (activityId && predecessorId && projectById.get(activityId) !== projectById.get(predecessorId)) {
+      throw BadRequest('Activity and predecessor must belong to the same project');
+    }
+  },
   transform: (data, req) => {
     if (!('id' in data)) data.createdBy = req.user!.id;
     data.updatedBy = req.user!.id;

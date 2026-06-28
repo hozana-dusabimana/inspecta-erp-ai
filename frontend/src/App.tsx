@@ -38,6 +38,8 @@ export default function App() {
   const online = useOnlineStatus();
   const [currentView, setCurrentView] = useState<AppView>(AppView.LANDING);
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  // Remember the last non-Copilot view so the Copilot knows the page context.
+  const lastModuleView = React.useRef<string>('Dashboard');
 
   // Restore an existing session: once auth resolves a user, land on the dashboard.
   React.useEffect(() => {
@@ -46,6 +48,12 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user]);
+
+  React.useEffect(() => {
+    if (currentView !== AppView.COPILOT && currentView !== AppView.LANDING && currentView !== AppView.LOGIN) {
+      lastModuleView.current = String(currentView);
+    }
+  }, [currentView]);
 
   // Demo Booking state
   const [demoName, setDemoName] = useState('');
@@ -165,6 +173,8 @@ export default function App() {
               onNavigate={setCurrentView}
               chatHistory={chatHistory}
               onAddMessage={handleAddMessage}
+              onSetHistory={setChatHistory}
+              pageContext={lastModuleView.current}
             />
           )}
 

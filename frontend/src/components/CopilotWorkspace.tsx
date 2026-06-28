@@ -7,7 +7,8 @@ import {
   Mic, 
   Sparkles, 
   MicOff, 
-  Plus, 
+  Plus,
+  Clock,
   TrendingUp, 
   FileText, 
   HardHat, 
@@ -28,11 +29,15 @@ interface CopilotWorkspaceProps {
   onNavigate: (view: AppView) => void;
   chatHistory: ChatMessage[];
   onAddMessage: (msg: ChatMessage) => void;
+  onSetHistory?: (msgs: ChatMessage[]) => void;
+  pageContext?: string;
 }
 
-export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage }: CopilotWorkspaceProps) {
+export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext }: CopilotWorkspaceProps) {
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [listeningTimer, setListeningTimer] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,8 +63,12 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
         model: string;
         offline: boolean;
         conversationId?: string;
-      }>('/ai/chat', { prompt: userText, conversationId: conversationId ?? undefined });
+        sources?: { source: string; snippet: string }[];
+      }>('/ai/chat', { prompt: userText, conversationId: conversationId ?? undefined, pageContext });
       if (res.data.conversationId) setConversationId(res.data.conversationId);
+      const sourceNote = res.data.sources?.length
+        ? `\n\nSources: ${res.data.sources.map((s) => s.source).join(' · ')}`
+        : '';
 
       const confidenceNote =
         typeof res.data.confidence === 'number'
@@ -69,7 +78,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       onAddMessage({
         id: Math.random().toString(),
         sender: 'assistant',
-        text: res.data.text + confidenceNote,
+        text: res.data.text + sourceNote + confidenceNote,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
     } catch (err) {
@@ -100,8 +109,42 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
 
     onAddMessage(userMessage);
     if (!textToSend) setInput('');
-    
+
     fetchAiResponse(prompt);
+  };
+
+  // ── Conversation history ──────────────────────────────────────
+  const loadHistory = async () => {
+    try {
+      const res = await api.get<{ id: string; title: string }[]>('/ai/conversations');
+      setHistory(res.data);
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { loadHistory(); }, []);
+
+  const openConversation = async (id: string) => {
+    setShowHistory(false);
+    try {
+      const res = await api.get<{ id: string; messages: { role: string; content: string; createdAt: string }[] }>(`/ai/conversations/${id}`);
+      setConversationId(id);
+      onSetHistory?.(res.data.messages.map((m, i) => ({
+        id: `${id}-${i}`,
+        sender: m.role === 'user' ? 'user' : 'assistant',
+        text: m.content,
+        timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      })));
+    } catch { /* ignore */ }
+  };
+
+  const newChat = () => {
+    setConversationId(null);
+    setShowHistory(false);
+    onSetHistory?.([{
+      id: 'greeting',
+      sender: 'assistant',
+      text: "New conversation. Ask me about productivity, cost, schedule, inventory or compliance across your projects.",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
   };
 
   // Real voice input via the browser Web Speech API (Chrome/Edge). Falls back
@@ -186,8 +229,23 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <button 
+        <div className="flex items-center gap-2">
+          <button onClick={newChat} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white bg-brand-primary font-bold text-xs hover:bg-brand-primary-container transition-all">
+            <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">New</span>
+          </button>
+          <div className="relative">
+            <button onClick={() => { setShowHistory((s) => !s); loadHistory(); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-brand-primary font-bold text-xs hover:bg-brand-primary/5 transition-all border border-brand-primary/10">
+              <Clock className="w-3.5 h-3.5" /> <span className="hidden sm:inline">History</span>
+            </button>
+            {showHistory && (
+              <div className="absolute right-0 mt-2 w-72 max-h-80 overflow-y-auto custom-scrollbar bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-xl z-50 py-1">
+                {history.length === 0 ? <p className="px-4 py-3 text-xs text-brand-on-surface-variant">No past conversations.</p> : history.map((c) => (
+                  <button key={c.id} onClick={() => openConversation(c.id)} className="w-full text-left px-4 py-2 text-xs hover:bg-brand-surface text-brand-on-surface truncate">{c.title}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
             onClick={() => onNavigate(AppView.DASHBOARD)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-brand-primary font-bold text-xs hover:bg-brand-primary/5 transition-all"
           >

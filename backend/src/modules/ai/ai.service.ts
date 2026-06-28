@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
 import { selectTools, runTools } from './tools';
+import { retrieve, RagSource } from './rag';
 
 export interface CopilotContext {
   organizationName: string;
@@ -130,6 +131,7 @@ ANSWER FORMAT — use these sections (omit a section only if there is genuinely 
 **Forecast** — what happens if unaddressed (use the forecast/EVM figures).
 **Action Plan** — a short table: Priority | Action | Owner | Due | Expected Impact.
 **Supporting Metrics** — the key numbers you used.
+When you use a fact from the RETRIEVED RECORDS, cite it inline in square brackets, e.g. [NCR NCR-01] or [Inspection "Slab pour QA"].
 End with: "Confidence: <0-100>%" (low if data is sparse).`;
 
 export interface CopilotAnswer {
@@ -138,6 +140,7 @@ export interface CopilotAnswer {
   provider: string;
   model: string;
   groundedOn: { projects: number; generatedAt: string };
+  sources: RagSource[];
   offline: boolean;
 }
 
@@ -162,10 +165,13 @@ export async function ask(
   const isoNow = new Date().toISOString();
   const context = await buildContext(orgId, isoNow);
 
-  // Tool calling: route the question (+page context) to the relevant org-scoped
-  // data tools, run them, and inject their structured results as ground truth.
+  // Tool calling + RAG: route the question to org-scoped data tools and retrieve
+  // citable records, injecting both as ground truth.
+  const [toolResults, sources] = await Promise.all([
+    runTools(selectTools(prompt, pageContext), orgId, projectId),
+    retrieve(orgId, prompt, projectId),
+  ]);
   const toolNames = selectTools(prompt, pageContext);
-  const toolResults = await runTools(toolNames, orgId, projectId);
 
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -174,6 +180,7 @@ export async function ask(
       content:
         `DATA SNAPSHOT (org-level, source of truth):\n${JSON.stringify(context, null, 2)}\n\n` +
         `TOOL RESULTS (${toolNames.join(', ')}${projectId ? ' — scoped to the selected project' : ''}):\n${JSON.stringify(toolResults, null, 2)}\n\n` +
+        (sources.length ? `RETRIEVED RECORDS (cite these in [brackets] when used):\n${sources.map((s) => `[${s.source}] ${s.snippet}`).join('\n')}\n\n` : '') +
         (pageContext ? `PAGE CONTEXT: the user is on the "${pageContext}" page.\n\n` : '') +
         `QUESTION: ${prompt}`,
     },
@@ -198,6 +205,7 @@ export async function ask(
       provider: 'offline',
       model: 'rule-based',
       groundedOn: { projects: context.projects.length, generatedAt: isoNow },
+      sources,
       offline: true,
     };
   };
@@ -217,6 +225,7 @@ export async function ask(
         provider: completion.provider,
         model: completion.model,
         groundedOn: { projects: context.projects.length, generatedAt: isoNow },
+        sources,
         offline: false,
       };
     } catch (err) {

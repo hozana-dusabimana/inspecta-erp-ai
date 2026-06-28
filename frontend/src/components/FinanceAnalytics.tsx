@@ -42,6 +42,7 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
   const post = useMutation({
     mutationFn: () => api.post(`/finance/post-production${q}`, {}),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['/finance/summary', projectId] }); qc.invalidateQueries({ queryKey: ['/finance/cost-by-wbs', projectId] }); qc.invalidateQueries({ queryKey: ['/finance/cash-flow', projectId] }); },
+    onError: (e) => alert(e instanceof Error ? e.message : 'Failed to post production costs'),
   });
 
   if (!projectId) return <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-6 text-sm text-brand-on-surface-variant mb-6">Select a project to view finance analytics.</div>;

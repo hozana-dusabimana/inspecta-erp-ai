@@ -218,7 +218,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               <h2 className="font-display text-sm font-extrabold text-brand-primary">Inspecta AI Copilot</h2>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[9px] font-bold text-brand-on-surface-variant uppercase tracking-wider">Analyzing: Skyline Tower A</span>
+                <span className="text-[9px] font-bold text-brand-on-surface-variant uppercase tracking-wider">Grounded on your live data</span>
               </div>
             </div>
           </div>

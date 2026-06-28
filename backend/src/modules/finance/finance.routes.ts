@@ -181,6 +181,7 @@ router.use(
     searchField: 'reference',
     requireProject: true,
     orderBy: { date: 'desc' },
+    refs: [{ field: 'invoiceId', model: 'invoice' }],
   }),
 );
 

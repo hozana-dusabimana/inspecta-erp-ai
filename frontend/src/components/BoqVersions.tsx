@@ -107,7 +107,8 @@ export default function BoqVersions({ projectId, canWrite }: { projectId?: strin
               <div><p className="text-[10px] font-bold text-brand-on-surface-variant uppercase">Cost Δ</p><p className={`font-mono font-extrabold ${cmp.toTotalCost - cmp.fromTotalCost > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{delta(cmp.toTotalCost - cmp.fromTotalCost)}</p></div>
               <div><p className="text-[10px] font-bold text-brand-on-surface-variant uppercase">Changed Lines</p><p className="font-mono font-extrabold text-brand-primary">{cmp.changed}</p></div>
             </div>
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[640px]">
               <thead><tr className="text-left text-brand-on-surface-variant border-y border-brand-outline-variant/15">
                 <th className="px-4 py-2 font-bold">Code</th><th className="px-4 py-2 font-bold">Description</th>
                 <th className="px-4 py-2 font-bold text-right">From</th><th className="px-4 py-2 font-bold text-right">To</th>
@@ -127,6 +128,7 @@ export default function BoqVersions({ projectId, canWrite }: { projectId?: strin
                 {cmp.changed === 0 && <tr><td colSpan={6} className="px-4 py-4 text-center text-brand-on-surface-variant">No differences between these versions.</td></tr>}
               </tbody>
             </table>
+            </div>
           </>
         )}
       </div>

@@ -32,6 +32,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     if (err.code === 'P2025') {
       return res.status(404).json({ success: false, error: 'Record not found' });
     }
+    if (err.code === 'P2003') {
+      return res.status(400).json({ success: false, error: 'Invalid reference to a related record' });
+    }
+    if (err.code === 'P2014') {
+      return res.status(400).json({ success: false, error: 'Operation violates a required relation' });
+    }
+  }
+
+  if (err instanceof Prisma.PrismaClientValidationError) {
+    return res.status(400).json({ success: false, error: 'Invalid query input' });
   }
 
   // eslint-disable-next-line no-console

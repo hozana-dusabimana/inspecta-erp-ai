@@ -21,6 +21,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { AppView, DailyProductionEntry } from '../types';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
 
 interface DailyEntryProps {
   onNavigate: (view: AppView) => void;
@@ -69,10 +70,13 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
     queryFn: () => api.get<{ id: string; name: string; code: string }[]>('/projects?pageSize=200'),
   });
   const projects = projectsResp?.data ?? [];
+  const { user } = useAuth();
   const [projectId, setProjectId] = useState('');
   useEffect(() => {
     if (!projectId && projects.length) setProjectId(projects[0].id);
   }, [projects, projectId]);
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const roleLabel = (r?: string) => (r ? r.toLowerCase().split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') : 'User');
 
   // Dynamic Productivity Index Calculation
   useEffect(() => {
@@ -242,15 +246,15 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
           
           <div>
             <h2 className="font-display text-lg font-extrabold text-brand-primary">Daily Entry</h2>
-            <p className="text-[10px] text-brand-on-surface-variant font-bold uppercase tracking-wider">Site node: Skyline Tower A</p>
+            <p className="text-[10px] text-brand-on-surface-variant font-bold uppercase tracking-wider">{selectedProject ? `${selectedProject.code} — ${selectedProject.name}` : 'Select a project'}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-brand-on-surface">Alex Thompson</p>
-              <p className="text-[9px] text-brand-on-surface-variant uppercase font-bold tracking-widest">Project Director</p>
+              <p className="text-xs font-bold text-brand-on-surface">{user?.fullName ?? 'User'}</p>
+              <p className="text-[9px] text-brand-on-surface-variant uppercase font-bold tracking-widest">{roleLabel(user?.role)}</p>
             </div>
             <div className="w-10 h-10 rounded-full border border-brand-primary-container/20 bg-brand-surface-container flex items-center justify-center text-brand-primary font-bold text-sm">
               AT

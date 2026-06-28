@@ -546,7 +546,7 @@ model BudgetLine {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("budget_lines")
 }
 
@@ -605,6 +605,7 @@ model Invoice {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("invoices")
 }
 
@@ -624,6 +625,7 @@ model Payment {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("payments")
 }
 
@@ -673,6 +675,7 @@ model StockMovement {
 
   @@index([organizationId])
   @@index([materialId, date])
+  @@index([organizationId, materialId, type])
   @@map("stock_movements")
 }
 
@@ -821,6 +824,7 @@ model Incident {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("incidents")
 }
 
@@ -1531,6 +1535,7 @@ model MaterialTest {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("material_tests")
 }
 
@@ -1581,6 +1586,7 @@ model Rework {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("reworks")
 }
 
@@ -1627,6 +1633,7 @@ model SafetyInspection {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("safety_inspections")
 }
 
@@ -1652,6 +1659,7 @@ model ComplianceDocument {
 
   @@index([organizationId])
   @@index([projectId])
+  @@index([organizationId, projectId])
   @@map("compliance_documents")
 }
 

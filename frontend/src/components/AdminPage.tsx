@@ -101,7 +101,15 @@ function UsersTab() {
 
   const toggleActive = useMutation({
     mutationFn: (u: AdminUser) => api.put(`/users/${u.id}`, { isActive: !u.isActive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+    // Optimistic: flip immediately, roll back on error.
+    onMutate: async (u) => {
+      await qc.cancelQueries({ queryKey: ['admin-users'] });
+      const prev = qc.getQueryData<{ data: AdminUser[] }>(['admin-users']);
+      qc.setQueryData<{ data: AdminUser[] }>(['admin-users'], (old) => old ? { ...old, data: old.data.map((x) => x.id === u.id ? { ...x, isActive: !x.isActive } : x) } : old);
+      return { prev };
+    },
+    onError: (e, _u, ctx) => { if (ctx?.prev) qc.setQueryData(['admin-users'], ctx.prev); alert(e instanceof ApiError ? e.message : 'Failed to update user'); },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   });
 
   return (

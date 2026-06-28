@@ -56,7 +56,7 @@ router.put(
   requirePermission('notification:read'),
   asyncHandler(async (req, res) => {
     const existing = await prisma.notification.findFirst({
-      where: { id: req.params.id, organizationId: req.user!.orgId },
+      where: { id: req.params.id, ...scope(req) },
     });
     if (!existing) throw NotFound('Notification not found');
     const updated = await prisma.notification.update({

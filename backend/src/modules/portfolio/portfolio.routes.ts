@@ -15,24 +15,27 @@ router.get(
   requirePermission('portfolio:read'),
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
-    const projects = await prisma.project.findMany({
-      where: { organizationId: orgId },
-      include: { client: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
+    const scope = { organizationId: orgId };
+    // Batch all per-project aggregates into grouped queries (was 5N+1 → ~6 total).
+    const [projects, costByP, invByP, ncrByP, incByP, openRisks] = await Promise.all([
+      prisma.project.findMany({ where: scope, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
+      prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
+      prisma.incident.groupBy({ by: ['projectId'], where: scope, _count: { _all: true } }),
+      prisma.risk.findMany({ where: { ...scope, status: { not: 'CLOSED' } }, select: { projectId: true, score: true } }),
+    ]);
+    const costMap = new Map(costByP.map((c) => [c.projectId, Number(c._sum.amount ?? 0)]));
+    const invMap = new Map(invByP.map((c) => [c.projectId, Number(c._sum.amount ?? 0)]));
+    const ncrMap = new Map(ncrByP.map((c) => [c.projectId, c._count._all]));
+    const incMap = new Map(incByP.map((c) => [c.projectId, c._count._all]));
+    const topRiskMap = new Map<string, number>();
+    for (const r of openRisks) topRiskMap.set(r.projectId, Math.max(topRiskMap.get(r.projectId) ?? 0, r.score));
 
-    const rows = await Promise.all(
-      projects.map(async (p) => {
-        const [costAgg, invoiceAgg, openNcrs, incidents, topRisk] = await Promise.all([
-          prisma.costEntry.aggregate({ where: { projectId: p.id }, _sum: { amount: true } }),
-          prisma.invoice.aggregate({ where: { projectId: p.id }, _sum: { amount: true } }),
-          prisma.ncr.count({ where: { projectId: p.id, status: { not: 'CLOSED' } } }),
-          prisma.incident.count({ where: { projectId: p.id } }),
-          prisma.risk.findFirst({ where: { projectId: p.id, status: { not: 'CLOSED' } }, orderBy: { score: 'desc' } }),
-        ]);
+    const rows = projects.map((p) => {
         const budget = Number(p.budget);
-        const actualCost = Number(costAgg._sum.amount ?? 0);
-        const billed = Number(invoiceAgg._sum.amount ?? 0);
+        const actualCost = costMap.get(p.id) ?? 0;
+        const billed = invMap.get(p.id) ?? 0;
         return {
           projectId: p.id,
           code: p.code,
@@ -46,12 +49,11 @@ router.get(
           billed,
           costVariance: budget - actualCost,
           budgetUtilizationPct: budget > 0 ? Number(((actualCost / budget) * 100).toFixed(1)) : 0,
-          openNcrs,
-          incidents,
-          topRiskScore: topRisk?.score ?? 0,
+          openNcrs: ncrMap.get(p.id) ?? 0,
+          incidents: incMap.get(p.id) ?? 0,
+          topRiskScore: topRiskMap.get(p.id) ?? 0,
         };
-      }),
-    );
+      });
 
     const company = {
       totalProjects: rows.length,

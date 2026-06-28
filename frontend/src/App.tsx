@@ -67,7 +67,7 @@ export default function App() {
     {
       id: 'greeting',
       sender: 'assistant',
-      text: "Hello Alex. I am Inspecta Copilot, your dedicated construction intelligence partner. Yesterday's concrete operations are fully compiled. How can I assist you with Skyline Tower A today?",
+      text: "Hello. I am Inspecta Copilot, your construction-intelligence partner. I can analyze productivity, cost, schedule, inventory and compliance across your projects. How can I help today?",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -251,7 +251,7 @@ export default function App() {
                         id="demo-name-input"
                         type="text"
                         required
-                        placeholder="Alex Thompson"
+                        placeholder="e.g. Jane Doe"
                         value={demoName}
                         onChange={(e) => setDemoName(e.target.value)}
                         className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold outline-none focus:border-brand-primary transition-all text-brand-primary"

@@ -148,7 +148,7 @@ const materialsCrud = createCrudRouter({
   writePerm: 'production:write',
   createSchema: matSchema,
   updateSchema: matSchema.partial(),
-  refs: [{ field: 'materialId', model: 'material' }],
+  refs: [{ field: 'materialId', model: 'material' }, { field: 'productionEntryId', model: 'productionEntry' }],
   transform: stamp,
 });
 

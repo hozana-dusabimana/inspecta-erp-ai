@@ -105,6 +105,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`${endpoint}/${id}`),
     onSuccess: invalidate,
+    onError: (e) => setError(e instanceof Error ? e.message : 'Delete failed'),
   });
 
   const openCreate = () => {
@@ -150,6 +151,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
         )}
       </div>
 
+      {!open && error && (
+        <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
       {projectScoped && !projectId ? (
         <div className="p-8 text-center text-brand-on-surface-variant text-xs">Select a project above to view and add {entityLabel.toLowerCase()}s.</div>
       ) : isLoading ? (
@@ -179,7 +187,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                   {canWrite && (
                     <td className="px-5 py-2.5 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button disabled={remove.isPending} onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-40" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                     </td>
                   )}
                 </tr>

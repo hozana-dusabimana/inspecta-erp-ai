@@ -28,20 +28,15 @@ interface ProjectProfit {
  * Forecast cost at completion extrapolates actual cost by progress, flagging
  * margin erosion, cost-burn-ahead-of-progress, and quality rework risk.
  */
-async function analyzeProject(orgId: string, project: { id: string; code: string; name: string; budget: unknown; progressPct: number }): Promise<ProjectProfit> {
-  const [contract, boqAgg, costAgg, invoiceAgg, openNcrs] = await Promise.all([
-    prisma.contract.findUnique({ where: { projectId: project.id } }).catch(() => null),
-    prisma.boqItem.aggregate({ where: { projectId: project.id }, _sum: { amount: true } }),
-    prisma.costEntry.aggregate({ where: { projectId: project.id }, _sum: { amount: true } }),
-    prisma.invoice.aggregate({ where: { projectId: project.id }, _sum: { amount: true } }),
-    prisma.ncr.count({ where: { projectId: project.id, status: { not: 'CLOSED' } } }),
-  ]);
+interface ProfitInputs { contractValue: number; boqTotal: number; actualCost: number; billed: number; openNcrs: number }
 
+function computeProfit(project: { id: string; code: string; name: string; budget: unknown; progressPct: number }, d: ProfitInputs): ProjectProfit {
   const budget = Number(project.budget);
-  const boqTotal = Number(boqAgg._sum.amount ?? 0);
-  const revenue = Number(contract?.value ?? 0) || boqTotal || budget;
-  const actualCost = Number(costAgg._sum.amount ?? 0);
-  const billed = Number(invoiceAgg._sum.amount ?? 0);
+  const boqTotal = d.boqTotal;
+  const revenue = d.contractValue || boqTotal || budget;
+  const actualCost = d.actualCost;
+  const billed = d.billed;
+  const openNcrs = d.openNcrs;
   const progress = project.progressPct;
 
   const earnedValue = revenue * (progress / 100);
@@ -80,12 +75,30 @@ router.get(
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
     const projectId = req.query.projectId as string | undefined;
-    const projects = await prisma.project.findMany({
-      where: { organizationId: orgId, ...(projectId ? { id: projectId } : {}) },
-      orderBy: { createdAt: 'desc' },
-    });
+    const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
+    // Batch per-project aggregates into grouped queries (was 5N → ~6 total).
+    const [projects, contracts, boqByP, costByP, invByP, ncrByP] = await Promise.all([
+      prisma.project.findMany({ where: { organizationId: orgId, ...(projectId ? { id: projectId } : {}) }, orderBy: { createdAt: 'desc' } }),
+      prisma.contract.findMany({ where: { organizationId: orgId }, select: { projectId: true, value: true } }),
+      prisma.boqItem.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
+    ]);
+    const num = (v: unknown) => Number(v ?? 0);
+    const contractMap = new Map(contracts.filter((c) => c.projectId).map((c) => [c.projectId as string, num(c.value)]));
+    const boqMap = new Map(boqByP.map((c) => [c.projectId, num(c._sum.amount)]));
+    const costMap = new Map(costByP.map((c) => [c.projectId, num(c._sum.amount)]));
+    const invMap = new Map(invByP.map((c) => [c.projectId, num(c._sum.amount)]));
+    const ncrMap = new Map(ncrByP.map((c) => [c.projectId, c._count._all]));
 
-    const analyses = await Promise.all(projects.map((p) => analyzeProject(orgId, p)));
+    const analyses = projects.map((p) => computeProfit(p, {
+      contractValue: contractMap.get(p.id) ?? 0,
+      boqTotal: boqMap.get(p.id) ?? 0,
+      actualCost: costMap.get(p.id) ?? 0,
+      billed: invMap.get(p.id) ?? 0,
+      openNcrs: ncrMap.get(p.id) ?? 0,
+    }));
     const totals = analyses.reduce(
       (acc, a) => {
         acc.revenue += a.revenue;

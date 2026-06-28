@@ -185,6 +185,43 @@ With no key configured, the Copilot still answers from real data deterministical
 
 ---
 
+## Importing a dataset (BuildCore sample workbook)
+
+`backend/prisma/import-dataset.ts` (`npm run import:dataset`) loads the 27-sheet
+BuildCore workbook (projects → employees → DSR → payroll → equipment → materials →
+procurement → finance → QA → HSE) into the data model. It builds Excel-id → cuid
+maps, creates Trade/EquipmentCategory/Client lookups, maps the workbook's lowercase
+values to the app enums, and splits the stock ledger in/out columns into signed
+movements.
+
+- **Dry run (default, no writes):** `npm run import:dataset -- "<path>/workbook.xlsx"`
+- **Load (wipes the org's business data, then loads — idempotent):** add `--confirm`.
+  Users, the organization and statutory rates are preserved.
+
+> ⚠️ The workbook contains PII (national IDs, salaries, payslips). **Never commit it**
+> (`*.xlsx` is gitignored). To load it into **production**, upload it to the server and
+> run the manual GitHub Actions workflow **"Import Sample Dataset (manual)"**
+> (`.github/workflows/import-dataset.yml`), which runs the importer inside the prod
+> backend container and deletes the temp copy afterward:
+> ```bash
+> scp "workbook.xlsx" root@<server>:/home/inspectaapi/app/dataset.xlsx
+> # then GitHub → Actions → Import Sample Dataset (manual) → Run workflow → type WIPE-AND-LOAD
+> ```
+
+---
+
+## Deployment
+
+Pushing to `main` triggers CI/CD (`.github/workflows/{backend,frontend}-deploy.yml`):
+backend builds + tests, then ships over SSH and runs `docker compose up --build`
+(the container applies the schema via `prisma db push` + seed on start); frontend
+builds with the prod API URL and ships the static bundle. Required repo secret:
+`SSH_PASSWORD`. Live at `inspecta.isiri.rw` / `api-inspecta.isiri.rw`. Schema changes
+ship as delta files under `backend/prisma/migrations/` (apply to an existing DB with
+`prisma db execute`, or rely on `db push` for fresh ones).
+
+---
+
 ## Tests
 
 ```bash

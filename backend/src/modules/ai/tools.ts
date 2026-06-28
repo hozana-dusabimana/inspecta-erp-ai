@@ -132,7 +132,7 @@ async function getInventoryAnalysis(orgId: string) {
     prisma.productionMaterial.aggregate({ where: scope, _sum: { wasteQty: true, qtyUsed: true } }),
   ]);
   const stockBy = new Map<string, number>();
-  for (const g of groups) { const q = num(g._sum.quantity); const d = g.type === 'ISSUE' || g.type === 'WASTE' ? -q : g.type === 'TRANSFER' ? 0 : q; stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d); }
+  for (const g of groups) { const q = num(g._sum.quantity); const d = g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE' ? -q : g.type === 'TRANSFER' ? 0 : q; stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d); }
   const reorder = materials.filter((m) => num(m.reorderLevel) > 0 && (stockBy.get(m.id) ?? 0) <= num(m.reorderLevel)).map((m) => ({ code: m.code, name: m.name, stock: stockBy.get(m.id) ?? 0, reorderLevel: num(m.reorderLevel) }));
   const totalValue = materials.reduce((s, m) => s + (stockBy.get(m.id) ?? 0) * num(m.unitCost), 0);
   const used = num(waste._sum.qtyUsed); const wasteQty = num(waste._sum.wasteQty);
@@ -162,6 +162,54 @@ async function getComplianceAnalysis(orgId: string, projectId?: string) {
   };
 }
 
+// ── get_payroll_analysis (M05 — Rwanda PAYE / RSSB) ───────────
+async function getPayrollAnalysis(orgId: string) {
+  const [employees, latest, runAgg, payslipAgg] = await Promise.all([
+    prisma.employee.findMany({ where: { organizationId: orgId, deletedAt: null }, select: { status: true, grossMonthlySalary: true, medicalScheme: true } }),
+    prisma.payrollRun.findFirst({ where: { organizationId: orgId }, orderBy: { periodMonth: 'desc' } }),
+    prisma.payrollRun.aggregate({ where: { organizationId: orgId }, _count: true }),
+    prisma.payslip.aggregate({ where: { organizationId: orgId }, _sum: { netPay: true, payeAmount: true } }),
+  ]);
+  const active = employees.filter((e) => e.status === 'active');
+  const monthlyWageBill = active.reduce((s, e) => s + num(e.grossMonthlySalary), 0);
+  return {
+    totalEmployees: employees.length,
+    activeEmployees: active.length,
+    monthlyGrossWageBill: round(monthlyWageBill),
+    onRama: active.filter((e) => e.medicalScheme === 'rama').length,
+    payrollRuns: runAgg._count,
+    lifetimeNetPaid: round(num(payslipAgg._sum.netPay)),
+    lifetimePaye: round(num(payslipAgg._sum.payeAmount)),
+    latestRun: latest && {
+      period: latest.periodMonth.toISOString().slice(0, 7), status: latest.status,
+      totalGross: num(latest.totalGross), totalPaye: num(latest.totalPaye),
+      totalRssbEmployee: num(latest.totalRssbEmployee), totalRssbEmployer: num(latest.totalRssbEmployer),
+      totalNet: num(latest.totalNet),
+    },
+  };
+}
+
+// ── get_pos_analysis (M09 — Point of Sale) ────────────────────
+async function getPosAnalysis(orgId: string) {
+  const [sales, txnCount, byMethod, openSessions, flagged, serviceAgg] = await Promise.all([
+    prisma.posTransaction.aggregate({ where: { organizationId: orgId, status: 'COMPLETED' }, _sum: { subtotal: true, vatAmount: true, totalAmount: true } }),
+    prisma.posTransaction.count({ where: { organizationId: orgId } }),
+    prisma.posTransaction.groupBy({ by: ['paymentMethod'], where: { organizationId: orgId, status: 'COMPLETED' }, _sum: { totalAmount: true } }),
+    prisma.tillSession.count({ where: { organizationId: orgId, status: 'OPEN' } }),
+    prisma.tillSession.findMany({ where: { organizationId: orgId, status: 'FLAGGED' }, select: { variance: true, openedAt: true } }),
+    prisma.serviceInvoice.aggregate({ where: { organizationId: orgId, status: { in: ['PENDING', 'OVERDUE'] } }, _sum: { totalAmount: true }, _count: true }),
+  ]);
+  return {
+    totalSales: round(num(sales._sum.totalAmount)),
+    vatCollected: round(num(sales._sum.vatAmount)),
+    transactions: txnCount,
+    openTills: openSessions,
+    flaggedTills: flagged.length,
+    salesByPaymentMethod: byMethod.map((m) => ({ method: m.paymentMethod, amount: round(num(m._sum.totalAmount)) })).sort((a, b) => b.amount - a.amount),
+    outstandingServiceInvoices: { count: serviceAgg._count, amount: round(num(serviceAgg._sum.totalAmount)) },
+  };
+}
+
 // ── get_dashboard_metrics (executive) ─────────────────────────
 async function getDashboardMetrics(orgId: string) {
   const [summary, cost, inv, comp] = await Promise.all([
@@ -178,6 +226,8 @@ export const TOOLS: Record<string, ToolDef> = {
   get_schedule_forecast: { name: 'get_schedule_forecast', description: 'Delayed/critical activities and progress forecast.', needsProject: false, run: getScheduleForecast },
   get_inventory_analysis: { name: 'get_inventory_analysis', description: 'Stock value, reorder items, material waste.', needsProject: false, run: (o) => getInventoryAnalysis(o) },
   get_compliance_analysis: { name: 'get_compliance_analysis', description: 'Open NCRs, defect rate, rework cost, incidents, high risks.', needsProject: false, run: getComplianceAnalysis },
+  get_payroll_analysis: { name: 'get_payroll_analysis', description: 'Payroll: active headcount, monthly wage bill, PAYE/RSSB totals, latest run.', needsProject: false, run: (o) => getPayrollAnalysis(o) },
+  get_pos_analysis: { name: 'get_pos_analysis', description: 'Point of Sale: total sales, VAT collected, payment-method mix, till sessions, service invoices.', needsProject: false, run: (o) => getPosAnalysis(o) },
   get_dashboard_metrics: { name: 'get_dashboard_metrics', description: 'Blended executive metrics across all modules.', needsProject: false, run: (o) => getDashboardMetrics(o) },
 };
 
@@ -192,6 +242,8 @@ export function selectTools(prompt: string, pageContext?: string): string[] {
   if (/schedul|delay|complet|critical|progress|late/.test(t)) add('get_schedule_forecast');
   if (/invent|stock|material|reorder|waste|overstock/.test(t)) add('get_inventory_analysis');
   if (/ncr|qa|qc|defect|rework|incident|safety|risk|complian|hse/.test(t)) add('get_compliance_analysis');
+  if (/payroll|salar|wage|paye|rssb|payslip|employee|tax|deduction/.test(t)) add('get_payroll_analysis');
+  if (/pos|point of sale|till|receipt|retail|sale|vat|mobile money|cashier/.test(t)) add('get_pos_analysis');
   if (/portfolio|project|overview|status|health/.test(t)) add('get_project_summary');
   if (picks.size === 0) { add('get_dashboard_metrics'); }
   return [...picks].slice(0, 5);

@@ -24,6 +24,7 @@ router.use(
     createSchema: diaryCreate,
     updateSchema: diaryCreate.partial(),
     searchField: 'notes',
+    dateField: 'date',
     requireProject: true,
     orderBy: { date: 'desc' },
     transform: (data, req: Request) => {
@@ -52,6 +53,7 @@ router.use(
     createSchema: taskCreate,
     updateSchema: taskCreate.partial(),
     searchField: 'title',
+    filterFields: ['status'],
     requireProject: true,
   }),
 );
@@ -59,9 +61,11 @@ router.use(
 // ── Attendance ────────────────────────────────────────────────
 const attendanceCreate = z.object({
   projectId: z.string(),
+  employeeId: z.string().optional(),
   date: z.string().datetime().optional(),
   workerName: z.string().min(1),
   trade: z.string().optional(),
+  status: z.enum(['present', 'half_day', 'absent', 'leave']).optional(),
   hoursWorked: z.number().nonnegative().optional(),
   present: z.boolean().optional(),
 });
@@ -75,8 +79,17 @@ router.use(
     createSchema: attendanceCreate,
     updateSchema: attendanceCreate.partial(),
     searchField: 'workerName',
+    dateField: 'date',
+    filterFields: ['status'],
+    sumFields: ['hoursWorked'],
     requireProject: true,
     orderBy: { date: 'desc' },
+    refs: [{ field: 'employeeId', model: 'employee' }],
+    // Keep present/status consistent so payroll proration and field views agree.
+    transform: (data) => {
+      if (typeof data.status === 'string') data.present = data.status === 'present' || data.status === 'half_day';
+      return data;
+    },
   }),
 );
 

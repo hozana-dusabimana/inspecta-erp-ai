@@ -15,7 +15,10 @@ async function main() {
   const org = await prisma.organization.upsert({
     where: { slug: 'inspecta-gc-corp' },
     update: {},
-    create: { name: 'Inspecta GC Corp', slug: 'inspecta-gc-corp' },
+    create: {
+      name: 'Inspecta GC Corp', slug: 'inspecta-gc-corp',
+      currency: 'RWF', country: 'Rwanda', tinNumber: '100000000', workingDaysPerWeek: 6,
+    },
   });
 
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
@@ -48,8 +51,8 @@ async function main() {
 
   // Clients
   const clientSpecs = [
-    { name: 'Meridian Developments', contactName: 'Jordan Blake', email: 'jordan@meridian.com', phone: '+1 312 555 0101' },
-    { name: 'Austin Civic Authority', contactName: 'Casey Lin', email: 'casey@austincivic.gov', phone: '+1 512 555 0144' },
+    { name: 'Meridian Developments', clientType: 'private', contactName: 'Jordan Blake', email: 'jordan@meridian.com', phone: '+1 312 555 0101' },
+    { name: 'Austin Civic Authority', clientType: 'government', contactName: 'Casey Lin', email: 'casey@austincivic.gov', phone: '+1 512 555 0144' },
   ];
   const clients: string[] = [];
   for (const c of clientSpecs) {
@@ -97,6 +100,28 @@ async function main() {
         managerId: users[Role.PROJECT_MANAGER],
       },
     });
+  }
+
+  // ── Statutory rates (Rwanda RRA PAYE / RSSB) — idempotent ─────
+  // Admin-configurable & date-versioned; these are sensible current defaults.
+  const ratesSeeded = await prisma.statutoryRate.count({ where: { organizationId: org.id } });
+  if (ratesSeeded === 0) {
+    const effectiveFrom = new Date('2024-01-01T00:00:00.000Z');
+    await prisma.statutoryRate.createMany({
+      data: [
+        // PAYE monthly bands (RWF) — 0 / 10 / 20 / 30%
+        { organizationId: org.id, rateType: 'paye_band', bandFrom: 0, bandTo: 60000, employeePct: 0, effectiveFrom, note: 'Band 1' },
+        { organizationId: org.id, rateType: 'paye_band', bandFrom: 60000, bandTo: 100000, employeePct: 10, effectiveFrom, note: 'Band 2' },
+        { organizationId: org.id, rateType: 'paye_band', bandFrom: 100000, bandTo: 200000, employeePct: 20, effectiveFrom, note: 'Band 3' },
+        { organizationId: org.id, rateType: 'paye_band', bandFrom: 200000, bandTo: null, employeePct: 30, effectiveFrom, note: 'Top band' },
+        // RSSB contributions (employee % / employer %)
+        { organizationId: org.id, rateType: 'rssb_pension', employeePct: 3, employerPct: 5, effectiveFrom, note: 'Pension (rising through 2030 — version, do not overwrite)' },
+        { organizationId: org.id, rateType: 'rssb_maternity', employeePct: 0.3, employerPct: 0.3, effectiveFrom, note: 'Maternity leave' },
+        { organizationId: org.id, rateType: 'rssb_medical', employeePct: 7.5, employerPct: 7.5, effectiveFrom, note: 'RAMA medical (applies when scheme=rama)' },
+        { organizationId: org.id, rateType: 'rssb_cbhi', employeePct: 0.5, effectiveFrom, note: 'CBHI (% of net)' },
+      ],
+    });
+    console.log('   Seeded Rwanda statutory rates (PAYE bands + RSSB).');
   }
 
   // ── Module demo data (only if not already seeded) ─────────────
@@ -226,7 +251,54 @@ async function main() {
       data: { organizationId: oid, projectId: pid, title: 'PO-1001 — Apex Building Materials', entityType: 'purchase-order', amount: 38_000, status: 'PENDING', requestedById: users[Role.STOREKEEPER] },
     });
 
-    console.log('   Seeded module demo data for Skyline Tower A.');
+    // M05 — Payroll: a few employees with monthly salaries + attendance.
+    const empA = await prisma.employee.create({
+      data: { organizationId: oid, employeeNo: 'EMP001', fullName: 'Eric Habimana', nationalId: '1199080012345678', status: 'active', grossMonthlySalary: 450_000, medicalScheme: 'rama', hireDate: day(400), bankAccountNumber: '0001234567' },
+    });
+    const empB = await prisma.employee.create({
+      data: { organizationId: oid, employeeNo: 'EMP002', fullName: 'Claudine Uwase', nationalId: '1198570087654321', status: 'active', grossMonthlySalary: 180_000, medicalScheme: 'rama', hireDate: day(300), bankAccountNumber: '0007654321' },
+    });
+    await prisma.attendance.createMany({
+      data: [
+        { organizationId: oid, projectId: pid, employeeId: empA.id, date: day(1), workerName: empA.fullName, status: 'present', hoursWorked: 8, present: true },
+        { organizationId: oid, projectId: pid, employeeId: empB.id, date: day(1), workerName: empB.fullName, status: 'present', hoursWorked: 8, present: true },
+      ],
+    });
+
+    // M06 — Equipment + fuel/usage
+    const excavator = await prisma.equipment.create({
+      data: { organizationId: oid, code: 'EQ-001', name: 'Excavator CAT 320', ownershipStatus: 'OWNED', status: 'IN_USE', fuelType: 'diesel', hourlyRate: 45_000 },
+    });
+    await prisma.fuelLog.create({
+      data: { organizationId: oid, equipmentId: excavator.id, date: day(2), liters: 120, costPerLiter: 1_650, totalCost: 198_000, odometerReading: 3420, supplier: 'SP Rwanda' },
+    });
+    await prisma.equipmentUsageLog.create({
+      data: { organizationId: oid, equipmentId: excavator.id, projectId: pid, date: day(2), hoursUsed: 7.5, note: 'Bulk excavation gridline B' },
+    });
+
+    // M09 — POS: product + open till + sale (draws down cement stock)
+    const posCement = await prisma.posProduct.create({
+      data: { organizationId: oid, materialId: cement.id, name: 'Cement OPC 42.5 (retail)', productType: 'material', unit: 'bag', unitPrice: 12_000, vatApplicable: true },
+    });
+    const till = await prisma.tillSession.create({
+      data: { organizationId: oid, openedById: users[Role.STOREKEEPER], openingFloat: 50_000, status: 'OPEN' },
+    });
+    const sale = await prisma.posTransaction.create({
+      data: {
+        organizationId: oid, tillSessionId: till.id, receiptNumber: 'RCT-0001', clientName: 'Walk-in client',
+        subtotal: 120_000, vatAmount: 21_600, totalAmount: 141_600, paymentMethod: 'CASH', status: 'COMPLETED',
+        createdById: users[Role.STOREKEEPER],
+        lines: { create: [{ organizationId: oid, posProductId: posCement.id, quantity: 10, unitPrice: 12_000, lineTotal: 120_000 }] },
+      },
+    });
+    await prisma.stockMovement.create({
+      data: { organizationId: oid, materialId: cement.id, type: 'POS_SALE', quantity: 10, reference: sale.receiptNumber, referenceId: sale.id, note: 'POS sale RCT-0001' },
+    });
+    await prisma.serviceInvoice.create({
+      data: { organizationId: oid, invoiceNumber: 'SI-0001', clientId: clients[0], description: 'Geotechnical soil testing', amount: 350_000, vatAmount: 63_000, totalAmount: 413_000, status: 'PENDING', dueDate: day(-14) },
+    });
+
+    console.log('   Seeded module demo data for Skyline Tower A (incl. payroll, POS, fuel).');
   }
 
   console.log('✅ Seed complete.');

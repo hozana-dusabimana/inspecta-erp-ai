@@ -50,6 +50,8 @@ const entriesCrud = createCrudRouter({
   createSchema,
   updateSchema: createSchema.partial(),
   searchField: 'wbsActivity',
+  dateField: 'date',
+  sumFields: ['plannedQty', 'actualQty', 'laborHours', 'equipmentHours'],
   requireProject: true,
   orderBy: { date: 'desc' },
   refs: [
@@ -98,6 +100,8 @@ const reportsCrud = createCrudRouter({
   createSchema: reportSchema,
   updateSchema: reportSchema.partial(),
   searchField: 'reportNumber',
+  dateField: 'reportDate',
+  filterFields: ['status'],
   requireProject: true,
   orderBy: { reportDate: 'desc' },
   include: { _count: { select: { entries: true } } },

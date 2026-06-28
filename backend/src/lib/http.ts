@@ -14,7 +14,7 @@ export function ok(res: Response, data: unknown, status = 200) {
 export function paginated(
   res: Response,
   data: unknown[],
-  meta: { page: number; pageSize: number; total: number },
+  meta: { page: number; pageSize: number; total: number; sums?: Record<string, number> },
 ) {
   return res.status(200).json({ success: true, data, meta });
 }

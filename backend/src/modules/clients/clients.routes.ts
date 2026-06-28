@@ -11,6 +11,8 @@ router.use(authenticate);
 
 const upsertSchema = z.object({
   name: z.string().min(2),
+  // private | government | individual — drives the billing workflow
+  clientType: z.enum(['private', 'government', 'individual']).optional(),
   contactName: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),

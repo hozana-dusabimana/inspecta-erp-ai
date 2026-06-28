@@ -4,6 +4,7 @@ import {
   HardHat, Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, Bell, Search, LogOut, ShoppingCart, ShieldAlert, FileText, BarChart3, Settings,
   GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, Menu, X, ShieldCheck, Users, Truck, LayoutDashboard,
+  Wallet, Store,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
@@ -26,6 +27,8 @@ export const NAV: NavItem[] = [
   { id: 'nav-portfolio', label: 'Portfolio', icon: Building2, view: AppView.PORTFOLIO, perm: 'portfolio:read' },
   { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },
   { id: 'nav-hr', label: 'Human Resources', icon: Users, view: AppView.HR, perm: 'hr:read' },
+  { id: 'nav-payroll', label: 'Payroll', icon: Wallet, view: AppView.PAYROLL, perm: 'payroll:read' },
+  { id: 'nav-pos', label: 'Point of Sale', icon: Store, view: AppView.POS, perm: 'pos:read' },
   { id: 'nav-equipment', label: 'Equipment', icon: Truck, view: AppView.EQUIPMENT, perm: 'equipment:read' },
   { id: 'nav-planning-dash', label: 'Planning Dashboards', icon: LayoutDashboard, view: AppView.PLANNING_DASH, perm: 'dashboard:read' },
   { id: 'nav-scheduling', label: 'Scheduling (CPM)', icon: GanttChartSquare, view: AppView.SCHEDULING, perm: 'scheduling:read' },

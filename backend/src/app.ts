@@ -14,6 +14,8 @@ import organizationRoutes from './modules/organization/organization.routes';
 import clientsRoutes from './modules/clients/clients.routes';
 import contractsRoutes from './modules/contracts/contracts.routes';
 import hrRoutes from './modules/hr/hr.routes';
+import payrollRoutes from './modules/payroll/payroll.routes';
+import posRoutes from './modules/pos/pos.routes';
 import equipmentRoutes from './modules/equipment/equipment.routes';
 import complianceRoutes from './modules/compliance/compliance.routes';
 import projectsRoutes from './modules/projects/projects.routes';
@@ -104,6 +106,8 @@ export function createApp() {
   app.use('/api/clients', clientsRoutes);
   app.use('/api/contracts', contractsRoutes);
   app.use('/api/hr', hrRoutes);
+  app.use('/api/payroll', payrollRoutes); // M05 — Payroll (PAYE/RSSB)
+  app.use('/api/pos', posRoutes); // M09 — Point of Sale
   app.use('/api/equipment', equipmentRoutes);
   app.use('/api/compliance', complianceRoutes);
   app.use('/api/projects', projectsRoutes);

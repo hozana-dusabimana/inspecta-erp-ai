@@ -30,6 +30,7 @@ const createSchema = z.object({
   progressPct: z.number().min(0).max(100).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  forecastFinishDate: z.string().datetime().optional(),
   actualEndDate: z.string().datetime().optional(),
 });
 
@@ -156,6 +157,7 @@ router.post(
         progressPct: body.progressPct ?? 0,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        forecastFinishDate: body.forecastFinishDate ? new Date(body.forecastFinishDate) : undefined,
         actualEndDate: body.actualEndDate ? new Date(body.actualEndDate) : undefined,
       },
     });
@@ -183,6 +185,7 @@ router.put(
         budget: body.budget,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        forecastFinishDate: body.forecastFinishDate ? new Date(body.forecastFinishDate) : undefined,
         actualEndDate: body.actualEndDate ? new Date(body.actualEndDate) : undefined,
       },
     });

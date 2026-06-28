@@ -107,7 +107,11 @@ In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you 
 | M12/M15 | Dashboards/KPI | `/dashboards/executive` | CPI/SPI, traffic lights, portfolio rollup |
 | M13 | Scheduling (CPM) | `/scheduling` (+`/cpm`) | critical path (forward/backward pass), float |
 | M14 | Profitability | `/profitability/analysis` | forecast margin, leakage detection |
-| M16 | Field Ops | `/fieldops/{diary,tasks,attendance}` | site diary, task assignment, attendance |
+| M16 | Field Ops | `/fieldops/{diary,tasks,attendance}` | site diary, task assignment, attendance (employee-linked) |
+| M05 | Payroll | `/payroll/{statutory-rates,runs,payslips}` | Rwanda PAYE bands + RSSB compute engine, payroll runs, payslips, posts net to cash flow |
+| M09 | Point of Sale | `/pos/{products,sessions,transactions,service-invoices}` | till sessions, VAT receipts, mobile-money/cash/bank, stock drawdown, service invoices |
+| M06b | Equipment Fuel/Usage | `/equipment/{fuel-logs,usage-logs}` | fuel consumption & cost, daily usage by operator + WBS cost allocation |
+| M07b | GRN & Issues | `/inventory/{grn,material-issues}` | goods-received notes + material issues that post to the stock ledger |
 | M18 | Workflow | `/approvals` (+`/approve`,`/reject`) | approval requests + escalation notify |
 | M23 | Portfolio | `/portfolio/comparison` | multi-project comparison + company KPIs |
 | M19 | PWA | (frontend) | installable, offline app shell, online/offline status |

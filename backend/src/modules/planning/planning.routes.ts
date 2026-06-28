@@ -64,6 +64,8 @@ const wbsCreate = z.object({
   description: z.string().optional(),
   unit: z.string().optional(),
   quantity: z.number().nonnegative().optional(),
+  budgetAmount: z.number().nonnegative().optional(),
+  sortOrder: z.number().int().optional(),
   level: z.number().int().min(1).optional(),
   weightPct: z.number().min(0).max(100).optional(),
   progressPct: z.number().min(0).max(100).optional(),

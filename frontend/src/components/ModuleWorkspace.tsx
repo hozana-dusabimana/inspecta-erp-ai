@@ -4,7 +4,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
-import ResourceManager, { Column, Field } from './ResourceManager';
+import ResourceManager, { Column, Field, FilterDef, SummaryCardDef } from './ResourceManager';
 
 export interface TabDef {
   key: string;
@@ -16,6 +16,11 @@ export interface TabDef {
   writePerm: string;
   columns: Column[];
   fields: Field[];
+  /** Toolbar controls (all optional, default off except search). */
+  searchable?: boolean;
+  dateFilter?: boolean;
+  filters?: FilterDef[];
+  summaryCards?: SummaryCardDef[];
   /** Optional custom renderer; when set it replaces the generic ResourceManager. */
   component?: React.ComponentType<{ projectId?: string; canWrite: boolean }>;
 }
@@ -106,6 +111,10 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               canWrite={hasPermission(current.writePerm)}
               projectScoped={current.projectScoped}
               projectId={current.projectScoped ? (projectId || undefined) : undefined}
+              searchable={current.searchable}
+              dateFilter={current.dateFilter}
+              filters={current.filters}
+              summaryCards={current.summaryCards}
             />
           )}
         </React.Fragment>

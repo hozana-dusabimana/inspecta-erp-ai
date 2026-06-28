@@ -34,7 +34,8 @@ const inspectionCreate = z.object({
 router.use('/inspections', createCrudRouter({
   model: 'inspection', entity: 'inspection', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: inspectionCreate, updateSchema: inspectionCreate.partial(),
-  searchField: 'title', requireProject: true, orderBy: { date: 'desc' },
+  searchField: 'title', dateField: 'date', filterFields: ['result'],
+  requireProject: true, orderBy: { date: 'desc' },
   refs: [{ field: 'wbsItemId', model: 'wbsItem' }], transform: stamp,
 }));
 
@@ -55,7 +56,8 @@ const testCreate = z.object({
 router.use('/material-tests', createCrudRouter({
   model: 'materialTest', entity: 'material-test', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: testCreate, updateSchema: testCreate.partial(),
-  searchField: 'batchNumber', requireProject: true, orderBy: { sampleDate: 'desc' },
+  searchField: 'batchNumber', dateField: 'sampleDate', filterFields: ['result', 'testType'],
+  requireProject: true, orderBy: { sampleDate: 'desc' },
   transform: stamp,
   afterChange: async (action, record, req) => {
     if (action !== 'DELETE' && record.result === 'FAIL') {
@@ -67,9 +69,11 @@ router.use('/material-tests', createCrudRouter({
 // ── NCR register (workflow via status) ────────────────────────
 const ncrCreate = z.object({
   projectId: z.string(),
+  inspectionId: z.string().optional(),
   number: z.string().min(1),
   description: z.string().min(1),
   wbsItemId: z.string().optional(),
+  reworkCost: z.number().nonnegative().optional(),
   severity: z.nativeEnum(Severity).optional(),
   status: z.nativeEnum(NcrStatus).optional(),
   rootCause: z.string().optional(),
@@ -84,8 +88,8 @@ const ncrCreate = z.object({
 router.use('/ncrs', createCrudRouter({
   model: 'ncr', entity: 'ncr', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: ncrCreate, updateSchema: ncrCreate.partial(),
-  searchField: 'description', requireProject: true, orderBy: { createdAt: 'desc' },
-  include: { actions: true }, refs: [{ field: 'wbsItemId', model: 'wbsItem' }], transform: stamp,
+  searchField: 'description', filterFields: ['status', 'severity'], requireProject: true, orderBy: { createdAt: 'desc' },
+  include: { actions: true }, refs: [{ field: 'wbsItemId', model: 'wbsItem' }, { field: 'inspectionId', model: 'inspection' }], transform: stamp,
   afterChange: async (action, record, req) => {
     if (action === 'CREATE' || (action === 'UPDATE' && record.severity === 'CRITICAL')) {
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: (record.severity as Severity) ?? 'MEDIUM', title: `NCR ${record.number}`, message: String(record.description), link: `/projects/${record.projectId}` });
@@ -127,7 +131,8 @@ const reworkCreate = z.object({
 router.use('/reworks', createCrudRouter({
   model: 'rework', entity: 'rework', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: reworkCreate, updateSchema: reworkCreate.partial(),
-  searchField: 'activity', requireProject: true, orderBy: { createdAt: 'desc' },
+  searchField: 'activity', filterFields: ['status'], sumFields: ['reworkCost', 'laborCost', 'equipmentCost'],
+  requireProject: true, orderBy: { createdAt: 'desc' },
   transform: (data, req) => {
     data.reworkCost = num(data.laborCost) + num(data.equipmentCost);
     return stamp(data, req);

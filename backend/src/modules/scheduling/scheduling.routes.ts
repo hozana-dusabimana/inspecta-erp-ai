@@ -24,6 +24,8 @@ const activitySchema = z.object({
   predecessors: z.array(z.string()).optional(),
   progressPct: z.number().min(0).max(100).optional(),
   startDate: z.string().datetime().optional(),
+  actualStart: z.string().datetime().optional(),
+  actualFinish: z.string().datetime().optional(),
   milestone: boolish.optional(),
 });
 

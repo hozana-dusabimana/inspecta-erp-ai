@@ -28,6 +28,7 @@ const incidentCreate = z.object({
   investigation: z.string().optional(),
   rootCause: z.string().optional(),
   correctiveAction: z.string().optional(),
+  involvedEmployeeId: z.string().optional(),
   reportedBy: z.string().optional(),
   date: z.string().datetime().optional(),
   photos: z.array(z.string()).optional(),
@@ -35,7 +36,8 @@ const incidentCreate = z.object({
 router.use('/incidents', createCrudRouter({
   model: 'incident', entity: 'incident', readPerm: 'hse:read', writePerm: 'hse:write',
   createSchema: incidentCreate, updateSchema: incidentCreate.partial(),
-  searchField: 'description', requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
+  searchField: 'description', dateField: 'date', filterFields: ['type', 'severity'],
+  requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
   afterChange: async (action, record, req) => {
     if (action === 'CREATE') {
       await notify({ organizationId: req.user!.orgId, type: 'SAFETY_INCIDENT', severity: (record.severity as Severity) ?? 'MEDIUM', title: `Safety incident: ${record.type}`, message: String(record.description), link: `/projects/${record.projectId}` });
@@ -55,7 +57,7 @@ const talkCreate = z.object({
 router.use('/toolbox-talks', createCrudRouter({
   model: 'toolboxTalk', entity: 'toolbox-talk', readPerm: 'hse:read', writePerm: 'hse:write',
   createSchema: talkCreate, updateSchema: talkCreate.partial(),
-  searchField: 'topic', requireProject: true, orderBy: { date: 'desc' },
+  searchField: 'topic', dateField: 'date', requireProject: true, orderBy: { date: 'desc' },
 }));
 
 // ── PPE tracking ──────────────────────────────────────────────
@@ -91,7 +93,40 @@ const safetyCreate = z.object({
 router.use('/safety-inspections', createCrudRouter({
   model: 'safetyInspection', entity: 'safety-inspection', readPerm: 'hse:read', writePerm: 'hse:write',
   createSchema: safetyCreate, updateSchema: safetyCreate.partial(),
-  searchField: 'title', requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
+  searchField: 'title', dateField: 'date', filterFields: ['result'],
+  requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
+}));
+
+// ── Risk assessments (activity-based, with validity window) ───
+const raCreate = z.object({
+  projectId: z.string(),
+  activityName: z.string().min(1),
+  riskLevel: z.enum(['low', 'medium', 'high']).optional(),
+  controls: z.string().optional(),
+  validFrom: z.string().datetime().optional(),
+  validUntil: z.string().datetime().optional(),
+  approvedBy: z.string().optional(),
+});
+router.use('/risk-assessments', createCrudRouter({
+  model: 'riskAssessment', entity: 'risk-assessment', readPerm: 'hse:read', writePerm: 'hse:write',
+  createSchema: raCreate, updateSchema: raCreate.partial(),
+  searchField: 'activityName', requireProject: true, orderBy: { createdAt: 'desc' }, transform: stamp,
+}));
+
+// ── PPE compliance checks (pass/fail per employee) ────────────
+const ppeCheckCreate = z.object({
+  projectId: z.string(),
+  employeeId: z.string().optional(),
+  checkDate: z.string().datetime().optional(),
+  result: z.nativeEnum(InspectionResult).optional(),
+  notes: z.string().optional(),
+});
+router.use('/ppe-checks', createCrudRouter({
+  model: 'ppeCheck', entity: 'ppe-check', readPerm: 'hse:read', writePerm: 'hse:write',
+  createSchema: ppeCheckCreate, updateSchema: ppeCheckCreate.partial(),
+  dateField: 'checkDate', filterFields: ['result'],
+  requireProject: true, orderBy: { checkDate: 'desc' },
+  refs: [{ field: 'employeeId', model: 'employee' }], transform: stamp,
 }));
 
 // ── Safety KPIs (incident frequency rate, safety score) ───────

@@ -23,6 +23,8 @@ const supplierCreate = z.object({
   contactName: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
+  tinNumber: z.string().optional(),
+  paymentTerms: z.string().optional(),
   rating: z.number().min(0).max(5).optional(),
   leadTimeDays: z.number().int().nonnegative().optional(),
 });
@@ -45,6 +47,7 @@ router.use(
 
 // ── Purchase orders (with nested line items) ──────────────────
 const poItem = z.object({
+  materialId: z.string().optional(),
   description: z.string().min(1),
   unit: z.string().optional(),
   quantity: z.number().nonnegative(),
@@ -74,12 +77,16 @@ router.use(
     createSchema: poCreate,
     updateSchema: poUpdate,
     searchField: 'number',
+    dateField: 'orderDate',
+    filterFields: ['status'],
+    sumFields: ['total'],
     refs: [{ field: 'supplierId', model: 'supplier' }],
     include: { items: true, supplier: { select: { id: true, name: true } } },
     transform: (data) => {
       const items = (data.items as Array<Record<string, number>> | undefined) ?? [];
       if (Array.isArray(items) && items.length) {
         const withAmounts = items.map((it) => ({
+          materialId: (it.materialId as unknown as string) || null,
           description: it.description,
           unit: (it.unit as unknown as string) ?? 'unit',
           quantity: Number(it.quantity ?? 0),
@@ -126,6 +133,8 @@ const prCrud = createCrudRouter({
   createSchema: prCreate,
   updateSchema: prUpdate,
   searchField: 'number',
+  filterFields: ['status'],
+  sumFields: ['total'],
   orderBy: { createdAt: 'desc' },
   include: { items: true },
   transform: (data, req) => {
@@ -306,7 +315,8 @@ router.use(
     model: 'delivery', entity: 'delivery',
     readPerm: 'procurement:read', writePerm: 'procurement:write',
     createSchema: deliveryCreate, updateSchema: deliveryCreate.partial(),
-    searchField: 'number', orderBy: { deliveryDate: 'desc' },
+    searchField: 'number', dateField: 'deliveryDate', filterFields: ['status'],
+    orderBy: { deliveryDate: 'desc' },
     include: { purchaseOrder: { select: { id: true, number: true } } },
     refs: [{ field: 'purchaseOrderId', model: 'purchaseOrder' }],
     transform: stamp,
@@ -337,7 +347,7 @@ router.get(
     const stockByMaterial = new Map<string, number>();
     for (const g of groups) {
       const qty = Number(g._sum.quantity ?? 0);
-      const delta = g.type === 'ISSUE' ? -qty : qty;
+      const delta = g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE' ? -qty : g.type === 'TRANSFER' ? 0 : qty;
       stockByMaterial.set(g.materialId, (stockByMaterial.get(g.materialId) ?? 0) + delta);
     }
 

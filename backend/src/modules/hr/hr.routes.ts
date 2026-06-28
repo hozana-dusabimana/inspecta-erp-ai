@@ -31,11 +31,16 @@ const trades = createCrudRouter({
 const employeeSchema = z.object({
   employeeNo: z.string().optional(),
   fullName: z.string().min(2),
+  nationalId: z.string().optional(),
   tradeId: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
-  status: z.string().optional(),
+  status: z.enum(['active', 'on_leave', 'terminated']).optional(),
   dailyWage: z.number().nonnegative().optional(),
+  grossMonthlySalary: z.number().nonnegative().optional(),
+  medicalScheme: z.enum(['rama', 'private', 'none']).optional(),
+  hireDate: z.string().datetime().optional(),
+  bankAccountNumber: z.string().optional(),
   skills: z.array(z.string()).optional(),
   certifications: z.array(z.string()).optional(),
 });
@@ -43,6 +48,8 @@ const employees = createCrudRouter({
   model: 'employee', entity: 'employee', readPerm: 'hr:read', writePerm: 'hr:write',
   createSchema: employeeSchema, updateSchema: employeeSchema.partial(),
   searchField: 'fullName', orderBy: { fullName: 'asc' },
+  filterFields: ['status'],
+  sumFields: ['grossMonthlySalary'],
   include: { trade: { select: { id: true, name: true } } },
   refs: [{ field: 'tradeId', model: 'trade' }],
   transform: (data, req) => {

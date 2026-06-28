@@ -22,6 +22,8 @@ const selectOrg = {
   phone: true,
   address: true,
   logoUrl: true,
+  tinNumber: true,
+  workingDaysPerWeek: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -68,6 +70,8 @@ const updateSchema = z.object({
   phone: optStr,
   address: z.string().trim().max(400).optional().transform((v) => (v === undefined || v === '' ? null : v)),
   logoUrl: optStr,
+  tinNumber: optStr,
+  workingDaysPerWeek: z.number().int().min(1).max(7).optional(),
 });
 
 // UPDATE company settings (SYSTEM_ADMIN only).

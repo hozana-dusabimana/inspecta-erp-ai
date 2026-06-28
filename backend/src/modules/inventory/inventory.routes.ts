@@ -78,8 +78,8 @@ async function stockForMaterial(orgId: string, materialId: string): Promise<numb
   let stock = 0;
   for (const g of groups) {
     const qty = Number(g._sum.quantity ?? 0);
-    if (g.type === 'RECEIPT' || g.type === 'ADJUSTMENT' || g.type === 'RETURN') stock += qty;
-    if (g.type === 'ISSUE' || g.type === 'WASTE') stock -= qty;
+    if (g.type === 'OPENING' || g.type === 'RECEIPT' || g.type === 'ADJUSTMENT' || g.type === 'RETURN') stock += qty;
+    if (g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE') stock -= qty;
     // TRANSFER nets to zero org-wide.
   }
   return stock;
@@ -89,6 +89,7 @@ async function stockForMaterial(orgId: string, materialId: string): Promise<numb
 const movementCreate = z.object({
   materialId: z.string(),
   projectId: z.string().optional(),
+  wbsItemId: z.string().optional(),
   type: z.nativeEnum(MovementType),
   quantity: z.number().positive(),
   unitCost: z.number().nonnegative().optional(),
@@ -108,6 +109,10 @@ router.use(
     writePerm: 'inventory:write',
     createSchema: movementCreate,
     updateSchema: movementCreate.partial(),
+    searchField: 'reference',
+    dateField: 'date',
+    filterFields: ['type'],
+    sumFields: ['quantity'],
     refs: [{ field: 'materialId', model: 'material' }],
     orderBy: { date: 'desc' },
     include: { material: { select: { id: true, code: true, name: true, unit: true } } },
@@ -148,7 +153,7 @@ router.get(
     const byMaterial = new Map<string, number>();
     for (const g of groups) {
       const qty = Number(g._sum.quantity ?? 0);
-      const delta = g.type === 'ISSUE' || g.type === 'WASTE' ? -qty : g.type === 'TRANSFER' ? 0 : qty;
+      const delta = g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE' ? -qty : g.type === 'TRANSFER' ? 0 : qty;
       byMaterial.set(g.materialId, (byMaterial.get(g.materialId) ?? 0) + delta);
     }
 
@@ -175,6 +180,109 @@ router.get(
   }),
 );
 
+// ── Goods Received Notes (GRN) — posts a RECEIPT to the ledger ──
+const grnCreate = z.object({
+  materialId: z.string(),
+  projectId: z.string().optional(),
+  purchaseOrderId: z.string().optional(),
+  quantityReceived: z.number().positive(),
+  unitCost: z.number().nonnegative().optional(),
+  dateReceived: z.string().datetime().optional(),
+  receivedBy: z.string().optional(),
+  supplierName: z.string().optional(),
+  grnNumber: z.string().optional(),
+  note: z.string().optional(),
+});
+router.use('/grn', createCrudRouter({
+  model: 'goodsReceipt', entity: 'goods-receipt',
+  readPerm: 'inventory:read', writePerm: 'inventory:write',
+  createSchema: grnCreate, updateSchema: grnCreate.partial(),
+  searchField: 'grnNumber',
+  dateField: 'dateReceived',
+  sumFields: ['quantityReceived'],
+  orderBy: { dateReceived: 'desc' },
+  refs: [{ field: 'materialId', model: 'material' }],
+  transform: (data, req) => {
+    if (!('id' in data)) data.createdBy = req.user!.id;
+    data.updatedBy = req.user!.id;
+    return data;
+  },
+  // Post the receipt into the stock ledger so balances/valuation stay consistent.
+  afterChange: async (action, record, req) => {
+    if (action !== 'CREATE') return;
+    await prisma.stockMovement.create({
+      data: {
+        organizationId: req.user!.orgId,
+        materialId: String(record.materialId),
+        projectId: (record.projectId as string) ?? null,
+        type: 'RECEIPT',
+        quantity: Number(record.quantityReceived),
+        unitCost: Number(record.unitCost ?? 0),
+        reference: (record.grnNumber as string) ?? 'GRN',
+        referenceId: String(record.id),
+        date: (record.dateReceived as Date) ?? new Date(),
+        note: `GRN ${record.grnNumber ?? ''}`.trim(),
+      },
+    });
+    // Increment received qty on a linked PO line for the same material.
+    if (record.purchaseOrderId) {
+      const line = await prisma.purchaseOrderItem.findFirst({
+        where: { purchaseOrderId: String(record.purchaseOrderId), materialId: String(record.materialId) },
+      });
+      if (line) {
+        await prisma.purchaseOrderItem.update({
+          where: { id: line.id },
+          data: { quantityReceived: Number(line.quantityReceived) + Number(record.quantityReceived) },
+        });
+      }
+    }
+  },
+}));
+
+// ── Material Issues — posts an ISSUE to the ledger (WBS cost allocation) ──
+const issueCreate = z.object({
+  materialId: z.string(),
+  projectId: z.string(),
+  wbsItemId: z.string().optional(),
+  quantityIssued: z.number().positive(),
+  dateIssued: z.string().datetime().optional(),
+  issuedTo: z.string().optional(),
+  issueNumber: z.string().optional(),
+  note: z.string().optional(),
+});
+router.use('/material-issues', createCrudRouter({
+  model: 'materialIssue', entity: 'material-issue',
+  readPerm: 'inventory:read', writePerm: 'inventory:write',
+  createSchema: issueCreate, updateSchema: issueCreate.partial(),
+  searchField: 'issueNumber',
+  dateField: 'dateIssued',
+  sumFields: ['quantityIssued'],
+  requireProject: true, orderBy: { dateIssued: 'desc' },
+  refs: [{ field: 'materialId', model: 'material' }, { field: 'wbsItemId', model: 'wbsItem' }],
+  transform: (data, req) => {
+    if (!('id' in data)) data.createdBy = req.user!.id;
+    data.updatedBy = req.user!.id;
+    return data;
+  },
+  afterChange: async (action, record, req) => {
+    if (action !== 'CREATE') return;
+    await prisma.stockMovement.create({
+      data: {
+        organizationId: req.user!.orgId,
+        materialId: String(record.materialId),
+        projectId: String(record.projectId),
+        wbsItemId: (record.wbsItemId as string) ?? null,
+        type: 'ISSUE',
+        quantity: Number(record.quantityIssued),
+        reference: (record.issueNumber as string) ?? 'ISS',
+        referenceId: String(record.id),
+        date: (record.dateIssued as Date) ?? new Date(),
+        note: `Issue ${record.issueNumber ?? ''}`.trim(),
+      },
+    });
+  },
+}));
+
 // ── Inventory valuation: Weighted-Average or FIFO ─────────────
 router.get(
   '/valuation',
@@ -200,8 +308,8 @@ router.get(
       const layers: { q: number; c: number }[] = []; // FIFO receipt layers
       for (const m of mv) {
         const q = Number(m.quantity);
-        const isIn = m.type === 'RECEIPT' || m.type === 'ADJUSTMENT' || m.type === 'RETURN';
-        const isOut = m.type === 'ISSUE' || m.type === 'WASTE';
+        const isIn = m.type === 'OPENING' || m.type === 'RECEIPT' || m.type === 'ADJUSTMENT' || m.type === 'RETURN';
+        const isOut = m.type === 'ISSUE' || m.type === 'WASTE' || m.type === 'POS_SALE';
         const cost = Number(m.unitCost) || Number(mat.unitCost);
         if (m.type === 'TRANSFER') continue;
         if (isIn) {

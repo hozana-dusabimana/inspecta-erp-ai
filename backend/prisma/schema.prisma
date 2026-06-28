@@ -27,6 +27,7 @@ enum ProjectStatus {
   PLANNING
   ACTIVE
   ON_HOLD
+  AT_RISK
   COMPLETED
   CANCELLED
 }
@@ -72,14 +73,17 @@ enum CostCategory {
 enum InvoiceStatus {
   DRAFT
   SUBMITTED
+  CERTIFIED
   APPROVED
   PAID
   REJECTED
 }
 
 enum MovementType {
+  OPENING
   RECEIPT
   ISSUE
+  POS_SALE
   ADJUSTMENT
   TRANSFER
   RETURN
@@ -174,6 +178,9 @@ model Organization {
   phone     String?
   address   String?
   logoUrl   String?
+  // Tax / statutory (Rwanda RRA TIN, working-week basis for payroll & productivity)
+  tinNumber          String?
+  workingDaysPerWeek Int     @default(6)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -235,6 +242,8 @@ model Client {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  // private | government | individual — drives the billing workflow (IPC vs invoice vs receipt)
+  clientType     String   @default("private")
   contactName    String?
   email          String?
   phone          String?
@@ -243,9 +252,10 @@ model Client {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  projects     Project[]
-  contracts    Contract[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]
+  contracts      Contract[]
+  serviceInvoices ServiceInvoice[]
 
   @@index([organizationId])
   @@map("clients")
@@ -309,6 +319,8 @@ model Project {
   progressPct    Float         @default(0)
   startDate      DateTime?
   endDate        DateTime?
+  // Updated by the schedule engine / AI Copilot forecast (Excel: forecast_finish_date)
+  forecastFinishDate DateTime?
   actualEndDate  DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -381,6 +393,8 @@ model WbsItem {
   description    String?
   unit           String?
   quantity       Decimal? @db.Decimal(18, 3)
+  budgetAmount   Decimal? @db.Decimal(18, 2)
+  sortOrder      Int      @default(0)
   level          Int      @default(1)
   weightPct      Float    @default(0)
   progressPct    Float    @default(0)
@@ -585,6 +599,8 @@ model Invoice {
   // IPC / Interim Payment Certificate fields
   isIpc             Boolean  @default(false)
   certificateNumber String?
+  periodStart       DateTime?
+  periodEnd         DateTime?
   grossValuation    Decimal? @db.Decimal(18, 2)
   previousCertified Decimal? @db.Decimal(18, 2)
   retentionPct      Decimal? @db.Decimal(5, 2)
@@ -592,7 +608,11 @@ model Invoice {
   advanceDeduction  Decimal? @db.Decimal(18, 2)
   taxPct            Decimal? @db.Decimal(5, 2)
   netAmount         Decimal? @db.Decimal(18, 2)
+  // Amount approved by client/consultant, may differ from gross_amount
+  certifiedAmount   Decimal? @db.Decimal(18, 2)
   issueDate      DateTime      @default(now())
+  submittedDate  DateTime?
+  paidDate       DateTime?
   dueDate        DateTime?
   createdBy String?
   updatedBy String?
@@ -659,9 +679,14 @@ model StockMovement {
   organizationId String
   materialId     String
   projectId      String?
+  wbsItemId      String?      // cost allocation to a WBS activity (Excel: material_issues.wbs_item_id)
   type           MovementType
   quantity       Decimal      @default(0) @db.Decimal(18, 3)
   unitCost       Decimal      @default(0) @db.Decimal(18, 2)
+  // Running balance computed at insert time (sequential), Excel: stock_ledger.running_balance
+  runningBalance Decimal?     @db.Decimal(18, 3)
+  // Polymorphic link to grn.id / material_issues.id / pos_transactions.id
+  referenceId    String?
   reference      String?
   warehouse      String?
   requestedBy    String?
@@ -688,6 +713,8 @@ model Supplier {
   contactName    String?
   email          String?
   phone          String?
+  tinNumber      String?
+  paymentTerms   String?  // e.g. 'Net 30'
   rating         Float    @default(0)
   leadTimeDays   Int      @default(0)
   createdAt      DateTime @default(now())
@@ -725,9 +752,11 @@ model PurchaseOrder {
 model PurchaseOrderItem {
   id              String  @id @default(cuid())
   purchaseOrderId String
+  materialId      String?
   description     String
   unit            String  @default("unit")
   quantity        Decimal @default(0) @db.Decimal(18, 3)
+  quantityReceived Decimal @default(0) @db.Decimal(18, 3) // incremented as GRNs post
   rate            Decimal @default(0) @db.Decimal(18, 2)
   amount          Decimal @default(0) @db.Decimal(18, 2)
 
@@ -760,6 +789,7 @@ model Inspection {
   updatedAt      DateTime         @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ncrs    Ncr[]
 
   @@index([organizationId])
   @@index([projectId])
@@ -770,9 +800,11 @@ model Ncr {
   id               String    @id @default(cuid())
   organizationId   String
   projectId        String
+  inspectionId     String?   // often raised directly from a failed inspection
   number           String
   description      String
   wbsItemId        String?
+  reworkCost       Decimal?  @db.Decimal(18, 2)
   severity         Severity  @default(MEDIUM)
   status           NcrStatus @default(OPEN)
   rootCause        String?
@@ -789,8 +821,9 @@ model Ncr {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  actions CorrectiveAction[]
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inspection Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+  actions    CorrectiveAction[]
 
   @@index([organizationId])
   @@index([projectId, status])
@@ -811,6 +844,7 @@ model Incident {
   investigation  String?
   rootCause      String?
   correctiveAction String?
+  involvedEmployeeId String?
   reportedBy     String?
   date           DateTime     @default(now())
   photos         String[]
@@ -936,6 +970,10 @@ model ScheduleActivity {
   progressPct    Float    @default(0)
   startDate      DateTime?
   finishDate     DateTime?
+  // Planned vs actual (Excel: planned_start/finish vs actual_start/finish)
+  actualStart    DateTime?
+  actualFinish   DateTime?
+  isCriticalPath Boolean  @default(false)
   milestone      Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1017,18 +1055,24 @@ model Attendance {
   id             String   @id @default(cuid())
   organizationId String
   projectId      String
+  // Optional link to the employee register (Excel: attendance_records.employee_id).
+  // Free-text workerName is retained for ad-hoc/crew-level logging.
+  employeeId     String?
   date           DateTime @default(now())
   workerName     String
   trade          String?
+  status         String   @default("present") // present | half_day | absent | leave
   hoursWorked    Decimal  @default(0) @db.Decimal(8, 2)
   present        Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([projectId, date])
+  @@index([employeeId, date])
   @@map("attendances")
 }
 
@@ -1106,11 +1150,16 @@ model Employee {
   organizationId String
   employeeNo     String?
   fullName       String
+  nationalId     String?  // Rwanda national ID
   tradeId        String?
   phone          String?
   email          String?
-  status         String   @default("ACTIVE")
+  status         String   @default("ACTIVE") // active | on_leave | terminated
   dailyWage      Decimal? @db.Decimal(18, 2)
+  grossMonthlySalary Decimal? @db.Decimal(18, 2)
+  medicalScheme  String   @default("rama") // rama | private | none — drives RAMA/CBHI deduction
+  hireDate       DateTime?
+  bankAccountNumber String?
   skills         String[]
   certifications String[]
   createdBy String?
@@ -1122,6 +1171,8 @@ model Employee {
   trade        Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
   crewMembers  CrewMember[]
   availability LaborAvailability[]
+  attendances  Attendance[]
+  payslips     Payslip[]
 
   @@index([organizationId])
   @@map("employees")
@@ -1235,6 +1286,7 @@ model Equipment {
   categoryId      String?
   ownershipStatus String   @default("OWNED") // OWNED | RENTED | LEASED
   status          String   @default("AVAILABLE") // AVAILABLE | IN_USE | MAINTENANCE
+  fuelType        String   @default("diesel") // diesel | petrol | electric | none
   hourlyRate      Decimal? @db.Decimal(18, 2)
   dailyRate       Decimal? @db.Decimal(18, 2)
   createdBy String?
@@ -1246,6 +1298,8 @@ model Equipment {
   category    EquipmentCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   utilization EquipmentUtilization[]
   maintenance EquipmentMaintenance[]
+  fuelLogs    FuelLog[]
+  usageLogs   EquipmentUsageLog[]
 
   @@index([organizationId])
   @@map("equipment")
@@ -1278,10 +1332,12 @@ model EquipmentMaintenance {
   id             String   @id @default(cuid())
   organizationId String
   equipmentId    String
-  type           String?
+  type           String?  // scheduled | breakdown_repair
   scheduledDate  DateTime?
   completedDate  DateTime?
   cost           Decimal? @db.Decimal(18, 2)
+  downtimeHours  Decimal? @db.Decimal(10, 2)
+  nextDueDate    DateTime? // for scheduled-maintenance alerts
   status         String   @default("SCHEDULED") // SCHEDULED | DONE | OVERDUE
   notes          String?
   createdBy String?
@@ -1497,6 +1553,7 @@ model CashFlowEntry {
   direction      CashDirection
   category       String // CLIENT_PAYMENT | ADVANCE | RETENTION_RELEASE | OTHER_INCOME | PAYROLL | SUPPLIER | EQUIPMENT | SUBCONTRACTOR | OVERHEAD | OTHER
   amount         Decimal       @default(0) @db.Decimal(18, 2)
+  isForecast     Boolean       @default(false) // true = projected, false = actual/realized
   reference      String?
   note           String?
   createdBy String?
@@ -1691,4 +1748,367 @@ model AiMessage {
 
   @@index([conversationId])
   @@map("ai_messages")
+}
+
+// ════════════════ MODULE 05 — Labor, Attendance & Payroll ════════════════
+// Rwanda RRA PAYE / RSSB. statutory_rates are admin-configurable and
+// date-versioned — never hardcode rates in app logic.
+
+enum PayrollRunStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+}
+
+// Versioned statutory rate table (PAYE bands + RSSB contributions).
+model StatutoryRate {
+  id            String   @id @default(cuid())
+  organizationId String
+  // paye_band | rssb_pension | rssb_maternity | rssb_medical | rssb_cbhi
+  rateType      String
+  bandFrom      Decimal? @db.Decimal(18, 2) // paye_band rows only
+  bandTo        Decimal? @db.Decimal(18, 2) // NULL = unbounded top band
+  employeePct   Decimal? @db.Decimal(6, 3)
+  employerPct   Decimal? @db.Decimal(6, 3)
+  fixedAmount   Decimal? @db.Decimal(18, 2) // for flat deductions (e.g. CBHI per-capita)
+  effectiveFrom DateTime
+  note          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, rateType, effectiveFrom])
+  @@map("statutory_rates")
+}
+
+model PayrollRun {
+  id             String           @id @default(cuid())
+  organizationId String
+  periodMonth    DateTime         // first-of-month, e.g. 2026-06-01
+  status         PayrollRunStatus @default(DRAFT)
+  totalGross     Decimal          @default(0) @db.Decimal(18, 2)
+  totalPaye      Decimal          @default(0) @db.Decimal(18, 2)
+  totalRssbEmployee Decimal       @default(0) @db.Decimal(18, 2)
+  totalRssbEmployer Decimal       @default(0) @db.Decimal(18, 2)
+  totalNet       Decimal          @default(0) @db.Decimal(18, 2)
+  approvedById   String?
+  postedToFinanceAt DateTime?
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payslips Payslip[]
+
+  @@index([organizationId])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id             String  @id @default(cuid())
+  organizationId String
+  payrollRunId   String
+  employeeId     String
+  daysWorked     Decimal @default(0) @db.Decimal(6, 2)
+  grossSalary    Decimal @default(0) @db.Decimal(18, 2)
+  payeAmount     Decimal @default(0) @db.Decimal(18, 2)
+  rssbPensionEmployee   Decimal @default(0) @db.Decimal(18, 2)
+  rssbPensionEmployer   Decimal @default(0) @db.Decimal(18, 2)
+  rssbMaternityEmployee Decimal @default(0) @db.Decimal(18, 2)
+  rssbMaternityEmployer Decimal @default(0) @db.Decimal(18, 2)
+  rssbMedicalEmployee   Decimal @default(0) @db.Decimal(18, 2)
+  rssbMedicalEmployer   Decimal @default(0) @db.Decimal(18, 2)
+  cbhiAmount    Decimal @default(0) @db.Decimal(18, 2)
+  otherDeductions Decimal @default(0) @db.Decimal(18, 2)
+  netPay        Decimal @default(0) @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([payrollRunId])
+  @@map("payslips")
+}
+
+// ════════════════ MODULE 09 — Point of Sale ════════════════
+
+enum PosPaymentMethod {
+  CASH
+  MOBILE_MONEY
+  BANK_TRANSFER
+}
+
+enum PosTransactionStatus {
+  COMPLETED
+  REFUNDED
+}
+
+enum TillSessionStatus {
+  OPEN
+  CLOSED
+  FLAGGED
+}
+
+enum ServiceInvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model PosProduct {
+  id             String  @id @default(cuid())
+  organizationId String
+  materialId     String? // set when productType='material' to draw down shared stock
+  name           String
+  productType    String  @default("material") // material | equipment_rental | service
+  unit           String  @default("unit")
+  unitPrice      Decimal @default(0) @db.Decimal(18, 2)
+  vatApplicable  Boolean @default(true)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines PosTransactionLine[]
+
+  @@index([organizationId])
+  @@map("pos_products")
+}
+
+model TillSession {
+  id             String            @id @default(cuid())
+  organizationId String
+  openedById     String
+  openingFloat   Decimal           @default(0) @db.Decimal(18, 2)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  countedCash    Decimal?          @db.Decimal(18, 2) // end-of-day reconciliation
+  expectedCash   Decimal?          @db.Decimal(18, 2)
+  variance       Decimal?          @db.Decimal(18, 2)
+  status         TillSessionStatus @default(OPEN)
+  note           String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions PosTransaction[]
+
+  @@index([organizationId])
+  @@map("till_sessions")
+}
+
+model PosTransaction {
+  id             String               @id @default(cuid())
+  organizationId String
+  tillSessionId  String
+  receiptNumber  String
+  clientName     String?              // 'Walk-in client' or a named individual/company
+  subtotal       Decimal              @default(0) @db.Decimal(18, 2)
+  vatAmount      Decimal              @default(0) @db.Decimal(18, 2)
+  totalAmount    Decimal              @default(0) @db.Decimal(18, 2)
+  paymentMethod  PosPaymentMethod     @default(CASH)
+  status         PosTransactionStatus @default(COMPLETED)
+  createdById    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tillSession TillSession          @relation(fields: [tillSessionId], references: [id], onDelete: Cascade)
+  lines       PosTransactionLine[]
+
+  @@index([organizationId])
+  @@index([tillSessionId])
+  @@map("pos_transactions")
+}
+
+model PosTransactionLine {
+  id               String  @id @default(cuid())
+  organizationId   String
+  posTransactionId String
+  posProductId     String
+  quantity         Decimal @default(0) @db.Decimal(18, 2)
+  unitPrice        Decimal @default(0) @db.Decimal(18, 2) // snapshot at sale time
+  lineTotal        Decimal @default(0) @db.Decimal(18, 2)
+
+  transaction PosTransaction @relation(fields: [posTransactionId], references: [id], onDelete: Cascade)
+  product     PosProduct     @relation(fields: [posProductId], references: [id], onDelete: Restrict)
+
+  @@index([posTransactionId])
+  @@map("pos_transaction_lines")
+}
+
+// Billed services outside the project IPC flow (e.g. geotechnical testing).
+model ServiceInvoice {
+  id             String               @id @default(cuid())
+  organizationId String
+  invoiceNumber  String
+  clientId       String?
+  clientNameFreetext String?          // one-off clients not in the clients table
+  description    String
+  amount         Decimal              @default(0) @db.Decimal(18, 2)
+  vatAmount      Decimal              @default(0) @db.Decimal(18, 2)
+  totalAmount    Decimal              @default(0) @db.Decimal(18, 2)
+  dueDate        DateTime?
+  status         ServiceInvoiceStatus @default(PENDING)
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("service_invoices")
+}
+
+// ════════════════ MODULE 06 — Equipment Fuel & Usage Control ════════════════
+
+model FuelLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  equipmentId    String
+  date           DateTime @default(now())
+  liters         Decimal  @default(0) @db.Decimal(12, 2)
+  costPerLiter   Decimal? @db.Decimal(12, 2)
+  totalCost      Decimal  @default(0) @db.Decimal(18, 2)
+  odometerReading Decimal? @db.Decimal(14, 2) // for L/hr or L/km consumption analysis
+  supplier       String?
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([equipmentId, date])
+  @@map("fuel_logs")
+}
+
+model EquipmentUsageLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  equipmentId    String
+  projectId      String?
+  wbsItemId      String?  // links usage to an activity for cost allocation
+  operatorId     String?
+  date           DateTime @default(now())
+  hoursUsed      Decimal  @default(0) @db.Decimal(10, 2)
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([equipmentId, date])
+  @@map("equipment_usage_logs")
+}
+
+// ════════════════ MODULE 07 — GRN & Material Issues ════════════════
+// Dedicated source documents for stock movements; each posts a StockMovement
+// row to keep the ledger and running balance consistent.
+
+model GoodsReceipt {
+  id              String   @id @default(cuid())
+  organizationId  String
+  materialId      String
+  projectId       String?
+  purchaseOrderId String?
+  quantityReceived Decimal @default(0) @db.Decimal(18, 3)
+  unitCost        Decimal? @db.Decimal(18, 2)
+  dateReceived    DateTime @default(now())
+  receivedBy      String?
+  supplierName    String?
+  grnNumber       String?
+  note            String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([materialId])
+  @@map("goods_receipts")
+}
+
+model MaterialIssue {
+  id             String   @id @default(cuid())
+  organizationId String
+  materialId     String
+  projectId      String
+  wbsItemId      String?  // cost allocation to activity
+  quantityIssued Decimal  @default(0) @db.Decimal(18, 3)
+  dateIssued     DateTime @default(now())
+  issuedTo       String?
+  issueNumber    String?
+  note           String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([materialId])
+  @@index([projectId])
+  @@map("material_issues")
+}
+
+// ════════════════ MODULE 12 — HSE Risk Assessments & PPE Checks ════════════════
+// Activity-based risk assessments with validity windows (distinct from the
+// enterprise Risk register), and per-employee PPE compliance checks.
+
+model RiskAssessment {
+  id             String    @id @default(cuid())
+  organizationId String
+  projectId      String
+  activityName   String    // e.g. 'Working at Height', 'Confined Space Entry'
+  riskLevel      String    @default("medium") // low | medium | high
+  controls       String?
+  validFrom      DateTime?
+  validUntil     DateTime? // used to flag expired risk assessments
+  approvedBy     String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("risk_assessments")
+}
+
+model PpeCheck {
+  id             String           @id @default(cuid())
+  organizationId String
+  projectId      String
+  employeeId     String?
+  checkDate      DateTime         @default(now())
+  result         InspectionResult @default(PASS) // PASS | FAIL
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("ppe_checks")
 }

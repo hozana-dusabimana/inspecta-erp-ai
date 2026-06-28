@@ -38,6 +38,10 @@ export type Permission =
   | 'productivity:write'
   | 'hr:read'
   | 'hr:write'
+  | 'payroll:read'
+  | 'payroll:write'
+  | 'pos:read'
+  | 'pos:write'
   | 'equipment:read'
   | 'equipment:write'
   | 'profitability:read'
@@ -69,6 +73,8 @@ const ALL: Permission[] = [
   'scheduling:read', 'scheduling:write',
   'productivity:read', 'productivity:write',
   'hr:read', 'hr:write',
+  'payroll:read', 'payroll:write',
+  'pos:read', 'pos:write',
   'equipment:read', 'equipment:write',
   'profitability:read',
   'fieldops:read', 'fieldops:write',
@@ -111,6 +117,8 @@ const matrix: Record<Role, Permission[]> = {
     'scheduling:write',
     'productivity:read', 'productivity:write',
     'hr:read', 'hr:write',
+    'payroll:read', 'payroll:write',
+    'pos:read', 'pos:write',
     'equipment:read', 'equipment:write',
     'profitability:read',
     'fieldops:write',
@@ -152,6 +160,7 @@ const matrix: Record<Role, Permission[]> = {
     'document:write',
     'productivity:read', 'productivity:write',
     'hr:read',
+    'payroll:read',
     'equipment:read',
     'profitability:read',
     'approval:write',
@@ -162,6 +171,7 @@ const matrix: Record<Role, Permission[]> = {
     ...COMMON,
     'inventory:read', 'inventory:write',
     'procurement:read', 'procurement:write',
+    'pos:read', 'pos:write',
   ],
 };
 

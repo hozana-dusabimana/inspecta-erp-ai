@@ -25,9 +25,16 @@ describe('RBAC permission matrix', () => {
     expect(can('QUANTITY_SURVEYOR', 'hse:write')).toBe(false);
   });
 
-  it('every role can use the AI copilot and read dashboards', () => {
+  it('restricts AI copilot to admin/PM/QS but gives dashboards to every role', () => {
+    // ai:use exposes cross-project financial/compliance data — granted only to
+    // SYSTEM_ADMIN, PROJECT_MANAGER and QUANTITY_SURVEYOR.
+    expect(can('SYSTEM_ADMIN', 'ai:use')).toBe(true);
+    expect(can('PROJECT_MANAGER', 'ai:use')).toBe(true);
+    expect(can('QUANTITY_SURVEYOR', 'ai:use')).toBe(true);
+    expect(can('SITE_ENGINEER', 'ai:use')).toBe(false);
+    expect(can('STOREKEEPER', 'ai:use')).toBe(false);
+    // Dashboards remain available to every authenticated role.
     for (const role of ['PROJECT_MANAGER', 'SITE_ENGINEER', 'QUANTITY_SURVEYOR', 'STOREKEEPER'] as const) {
-      expect(can(role, 'ai:use')).toBe(true);
       expect(can(role, 'dashboard:read')).toBe(true);
     }
   });

@@ -292,145 +292,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex" id="dashboard-root">
-      {/* Mobile drawer backdrop */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
-
-      {/* Sidebar Panel — slide-in drawer on mobile, static on lg+ */}
-      <aside
-        id="sidebar"
-        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-nav border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-      >
-        {/* Mobile close button */}
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="lg:hidden absolute top-3 right-3 p-1.5 rounded-lg text-white/80 hover:bg-white/10"
-          aria-label="Close menu"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="flex flex-col gap-6">
-          {/* Sidebar Brand Header */}
-          <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(AppView.LANDING)}>
-            <div className="w-10 h-10 rounded-xl bg-brand-secondary-container flex items-center justify-center shadow-lg shadow-brand-secondary-container/20">
-              <HardHat className="text-white w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="font-display text-lg font-bold text-white leading-none">Inspecta AI</h1>
-              <p className="text-brand-on-primary-container text-[10px] uppercase font-bold tracking-widest mt-1">Construction ERP</p>
-            </div>
-          </div>
-
-          {/* Navigation Items — shared list (incl. admin-only Administration) */}
-          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]" id="sidebar-nav" onClick={() => setSidebarOpen(false)}>
-            {NAV.filter((n) => !n.perm || hasPermission(n.perm)).map((n) => {
-              const Icon = n.icon;
-              const isActive = n.view === AppView.DASHBOARD;
-              return (
-                <button
-                  key={n.id}
-                  id={n.id}
-                  onClick={() => onNavigate(n.view)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-xs text-left ${
-                    isActive
-                      ? 'text-white border-l-4 border-brand-secondary-container bg-white/10 font-semibold'
-                      : 'text-brand-on-primary-container/85 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-secondary-container' : ''}`} />
-                  <span>{n.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Sidebar Footer Operations */}
-        <div className="px-4 py-2 space-y-3">
-          <button 
-            id="btn-sidebar-new-project"
-            onClick={() => setIsNewProjectOpen(true)}
-            className="w-full bg-brand-secondary-container text-white py-3 rounded-lg font-bold text-xs flex items-center justify-center gap-2 hover:opacity-95 transition-opacity cursor-pointer shadow-lg shadow-brand-secondary-container/10"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Project</span>
-          </button>
-          
-          <div className="h-[1px] bg-brand-on-primary-container/20 my-2" />
-          
-          <div className="flex items-center justify-between text-brand-on-primary-container/70 text-xs px-2">
-            <button className="flex items-center gap-2 hover:text-white transition-all text-[11px] font-bold" onClick={onLogout}>
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
-            </button>
-            <span className="text-[9px] font-mono opacity-60">V3.14-AI</span>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Panel Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        {/* Top Header */}
-        <header id="header" className="h-16 w-full sticky top-0 z-40 bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
-          <div className="flex items-center gap-3 flex-1">
-            {/* Mobile menu toggle */}
-            <button
-              id="btn-mobile-menu"
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 -ml-1 rounded-lg text-brand-primary hover:bg-brand-surface shrink-0"
-              aria-label="Open menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="relative max-w-md w-full">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-on-surface-variant w-4 h-4" />
-              <input 
-                id="search-input"
-                type="text"
-                placeholder="Search projects, documents, or insights..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-brand-surface border-none rounded-lg focus:ring-2 focus:ring-brand-primary/10 text-xs outline-none font-medium"
-              />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <button 
-              id="header-ask-ai"
-              onClick={() => onNavigate(AppView.COPILOT)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary/5 text-brand-primary font-bold text-xs hover:bg-brand-primary/10 transition-all border border-brand-primary/10 cursor-pointer"
-            >
-              <Bot className="w-4 h-4 text-brand-secondary-container" />
-              <span>Ask AI Assistant</span>
-            </button>
-
-            <ThemeToggle />
-
-            <button id="header-notifications" className="p-2 rounded-full hover:bg-brand-surface transition-colors relative">
-              <Bell className="w-4.5 h-4.5 text-brand-on-surface-variant" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-status-critical rounded-full animate-pulse"></span>
-            </button>
-            
-            <div className="h-6 w-[1px] bg-brand-outline-variant/30"></div>
-            
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-brand-on-surface">{user?.fullName ?? 'User'}</p>
-                <p className="text-[9px] text-brand-on-surface-variant uppercase font-bold tracking-widest">{roleLabel(user?.role)}</p>
-              </div>
-              <div className="w-10 h-10 rounded-full border-2 border-brand-primary-container/20 bg-brand-surface-container overflow-hidden">
-                <div className="w-full h-full bg-brand-primary flex items-center justify-center text-white font-bold text-sm">
-                  {user ? initials(user.fullName) : '··'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
+    <>
         {/* Dashboard Canvas Wrapper */}
         <main className="flex-1 flex flex-col xl:flex-row xl:overflow-hidden">
           {/* Left Area: General Charts & KPI grids */}
@@ -442,8 +304,17 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 <p className="text-brand-on-surface-variant text-xs mt-1">Portfolio performance across active construction sites.</p>
               </div>
               
-              <div className="flex gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10">
-                <button 
+              <div className="flex items-center gap-3">
+                <button
+                  id="btn-dashboard-new-project"
+                  onClick={() => setIsNewProjectOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-secondary-container text-white font-bold text-xs hover:opacity-95 transition-opacity cursor-pointer shadow-sm shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Project</span>
+                </button>
+                <div className="flex gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10">
+                <button
                   id="tab-portfolio"
                   onClick={() => setActiveTab('portfolio')}
                   className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'portfolio' ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'}`}
@@ -464,6 +335,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 >
                   Risk Priority
                 </button>
+                </div>
               </div>
             </div>
 
@@ -872,7 +744,6 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             </div>
           </aside>
         </main>
-      </div>
 
       {/* New Project Dialog Modal */}
       <AnimatePresence>
@@ -941,6 +812,6 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

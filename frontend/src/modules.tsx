@@ -345,6 +345,35 @@ function PlanningIO({ projectId }: { projectId?: string }) {
   );
 }
 
+// KPI banners shown above the tabs (consistent with Finance/Inventory).
+function PosSummary() {
+  const { data } = useQuery({ queryKey: ['/pos/summary'], queryFn: () => api.get<any>('/pos/summary') });
+  const s = data?.data;
+  if (!s) return null;
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatCard label="Total Sales" value={money(s.totalSales)} />
+      <StatCard label="VAT Collected" value={money(s.totalVat)} />
+      <StatCard label="Transactions" value={num(s.transactions)} />
+      <StatCard label="Open Tills" value={num(s.openSessions)} />
+    </div>
+  );
+}
+
+function PayrollSummary() {
+  const { data } = useQuery({ queryKey: ['/payroll/summary'], queryFn: () => api.get<any>('/payroll/summary') });
+  const s = data?.data;
+  if (!s) return null;
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatCard label="Active Employees" value={num(s.activeEmployees)} />
+      <StatCard label="Payroll Runs" value={num(s.totalRuns)} />
+      <StatCard label="Latest Net Pay" value={money(s.latestRun?.totalNet)} />
+      <StatCard label="Latest PAYE" value={money(s.latestRun?.totalPaye)} />
+    </div>
+  );
+}
+
 export const MODULES: Record<string, ModuleDef> = {
   [AppView.PLANNING]: {
     view: AppView.PLANNING,
@@ -623,6 +652,7 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.PAYROLL,
     title: 'Labor & Payroll',
     subtitle: 'Rwanda RRA PAYE / RSSB payroll runs, payslips & statutory rates (Module 05)',
+    summary: () => <PayrollSummary />,
     tabs: [
       {
         key: 'runs', label: 'Payroll Runs', endpoint: '/payroll/runs', entityLabel: 'Payroll Run',
@@ -659,6 +689,7 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.POS,
     title: 'Point of Sale',
     subtitle: 'Till sessions, retail sales, VAT receipts & service invoices (Module 09)',
+    summary: () => <PosSummary />,
     tabs: [
       {
         key: 'terminal', label: 'Till & Sales', endpoint: '/pos/transactions', entityLabel: 'Sale',

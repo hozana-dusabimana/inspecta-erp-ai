@@ -19,7 +19,6 @@ export default function PosWorkspace({ canWrite }: { projectId?: string; canWrit
   const [counted, setCounted] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: summary } = useQuery({ queryKey: ['/pos/summary'], queryFn: () => api.get<any>('/pos/summary') });
   const { data: productsData } = useQuery({ queryKey: ['/pos/products'], queryFn: () => api.get<Product[]>('/pos/products?pageSize=200') });
   const { data: sessionsData } = useQuery({ queryKey: ['/pos/sessions'], queryFn: () => api.get<Session[]>('/pos/sessions?pageSize=50') });
   const products = productsData?.data ?? [];
@@ -80,19 +79,9 @@ export default function PosWorkspace({ canWrite }: { projectId?: string; canWrit
     return q <= 0 ? [] : [{ ...l, quantity: q }];
   }));
 
-  const s = summary?.data;
-
   return (
     <div className="space-y-5">
-      {s && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat label="Total Sales" value={money(s.totalSales)} />
-          <Stat label="VAT Collected" value={money(s.totalVat)} />
-          <Stat label="Transactions" value={String(s.transactions)} />
-          <Stat label="Open Tills" value={String(s.openSessions)} />
-        </div>
-      )}
-
+      {/* KPI cards render above the tabs via the module summary banner (PosSummary). */}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
 
       {!openSession ? (
@@ -209,14 +198,6 @@ export default function PosWorkspace({ canWrite }: { projectId?: string; canWrit
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
-      <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}</p>
-      <p className="font-mono text-xl font-extrabold mt-1 text-brand-primary">{value}</p>
-    </div>
-  );
-}
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
     <div className={`flex justify-between text-xs ${bold ? 'font-extrabold text-brand-primary text-sm' : 'text-brand-on-surface-variant'}`}>

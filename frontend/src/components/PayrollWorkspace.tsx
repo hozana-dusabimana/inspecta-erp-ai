@@ -68,7 +68,6 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
   const [month, setMonth] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: summary } = useQuery({ queryKey: ['/payroll/summary'], queryFn: () => api.get<any>('/payroll/summary') });
   const { data: runsData, isLoading } = useQuery({ queryKey: ['/payroll/runs'], queryFn: () => api.get<Run[]>('/payroll/runs?pageSize=100') });
   const runs = runsData?.data ?? [];
   const invalidate = () => {
@@ -92,19 +91,9 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
     onError: (e) => setError(e instanceof Error ? e.message : 'Post failed'),
   });
 
-  const s = summary?.data;
-
   return (
     <div className="space-y-5">
-      {s && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat label="Active Employees" value={String(s.activeEmployees)} />
-          <Stat label="Payroll Runs" value={String(s.totalRuns)} />
-          <Stat label="Latest Net Pay" value={money(s.latestRun?.totalNet)} />
-          <Stat label="Latest PAYE" value={money(s.latestRun?.totalPaye)} />
-        </div>
-      )}
-
+      {/* KPI cards render above the tabs via the module summary banner (PayrollSummary). */}
       {canWrite && (
         <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 p-4 flex flex-wrap items-end gap-3">
           <div className="space-y-1">
@@ -177,11 +166,3 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
-      <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}</p>
-      <p className="font-mono text-xl font-extrabold mt-1 text-brand-primary">{value}</p>
-    </div>
-  );
-}

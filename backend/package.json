@@ -15,6 +15,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
+    "import:dataset": "tsx prisma/import-dataset.ts",
     "db:setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "lint": "tsc --noEmit",
     "test": "jest --passWithNoTests"

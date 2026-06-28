@@ -710,6 +710,7 @@ model Supplier {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  category       String?  // supplier specialty, e.g. 'Cement & Concrete'
   contactName    String?
   email          String?
   phone          String?
@@ -728,12 +729,13 @@ model Supplier {
 }
 
 model PurchaseOrder {
-  id             String   @id @default(cuid())
-  organizationId String
-  supplierId     String
-  projectId      String?
-  number         String
-  status         PoStatus @default(DRAFT)
+  id                String   @id @default(cuid())
+  organizationId    String
+  supplierId        String
+  projectId         String?
+  purchaseRequestId String?  // PR that triggered this PO (Excel chain PR→PO→GRN)
+  number            String
+  status            PoStatus @default(DRAFT)
   total          Decimal  @default(0) @db.Decimal(18, 2)
   orderDate      DateTime @default(now())
   expectedDate   DateTime?
@@ -1152,6 +1154,9 @@ model Employee {
   fullName       String
   nationalId     String?  // Rwanda national ID
   tradeId        String?
+  // Convenience denormalized assignments (employee's home crew & project).
+  crewId         String?
+  projectId      String?
   phone          String?
   email          String?
   status         String   @default("ACTIVE") // active | on_leave | terminated
@@ -1205,6 +1210,7 @@ model Crew {
   organizationId String
   projectId      String?
   name           String
+  foremanId      String?  // lead/foreman employee for the crew
   description    String?
   createdBy String?
   updatedBy String?
@@ -1284,6 +1290,7 @@ model Equipment {
   code            String?
   name            String
   categoryId      String?
+  primaryProjectId String? // equipment's home/base project
   ownershipStatus String   @default("OWNED") // OWNED | RENTED | LEASED
   status          String   @default("AVAILABLE") // AVAILABLE | IN_USE | MAINTENANCE
   fuelType        String   @default("diesel") // diesel | petrol | electric | none

@@ -527,6 +527,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'employeeNo', label: 'Employee No.' },
           { name: 'nationalId', label: 'National ID' },
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
+          { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'phone', label: 'Phone' },
           { name: 'email', label: 'Email' },
           { name: 'status', label: 'Status', type: 'select', options: opt(['active', 'on_leave', 'terminated']) },
@@ -579,6 +581,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'name', label: 'Crew Name', required: true },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'foremanId', label: 'Foreman', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName },
           { name: 'description', label: 'Description', type: 'textarea' },
         ],
       },
@@ -729,6 +732,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'ownershipStatus', label: 'Ownership', type: 'select', options: opt(['OWNED', 'RENTED', 'LEASED']) },
           { name: 'status', label: 'Status', type: 'select', options: opt(['AVAILABLE', 'IN_USE', 'MAINTENANCE']) },
           { name: 'fuelType', label: 'Fuel Type', type: 'select', options: opt(['diesel', 'petrol', 'electric', 'none']) },
+          { name: 'primaryProjectId', label: 'Primary Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'hourlyRate', label: 'Hourly Rate', type: 'number' },
           { name: 'dailyRate', label: 'Daily Rate', type: 'number' },
         ],
@@ -1163,7 +1167,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'leadTimeDays', label: 'Lead (days)', align: 'right' },
         ],
         fields: [
-          { name: 'name', label: 'Name', required: true }, { name: 'contactName', label: 'Contact Name' },
+          { name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category', placeholder: 'Cement & Concrete' },
+          { name: 'contactName', label: 'Contact Name' },
           { name: 'email', label: 'Email' }, { name: 'phone', label: 'Phone' },
           { name: 'tinNumber', label: 'TIN Number' }, { name: 'paymentTerms', label: 'Payment Terms', placeholder: 'Net 30' },
           { name: 'rating', label: 'Rating (0-5)', type: 'number' }, { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number' },
@@ -1183,6 +1188,8 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'number', label: 'PO Number', required: true },
           { name: 'supplierId', label: 'Supplier', optionsEndpoint: '/procurement/suppliers', optionLabel: (s) => s.name, required: true },
+          { name: 'purchaseRequestId', label: 'From Purchase Request', type: 'select', optionsEndpoint: '/procurement/purchase-requests', optionLabel: (r) => r.number },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'ISSUED', 'PARTIAL', 'RECEIVED', 'CANCELLED']) },
           { name: 'expectedDate', label: 'Expected Date', type: 'date' },
         ],

@@ -20,6 +20,7 @@ const stamp = (data: Record<string, unknown>, req: Request) => {
 // ── Suppliers (with scoring + lead time) ──────────────────────
 const supplierCreate = z.object({
   name: z.string().min(1),
+  category: z.string().optional(),
   contactName: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
@@ -56,6 +57,7 @@ const poItem = z.object({
 const poCreate = z.object({
   supplierId: z.string(),
   projectId: z.string().optional(),
+  purchaseRequestId: z.string().optional(),
   number: z.string().min(1),
   status: z.nativeEnum(PoStatus).optional(),
   orderDate: z.string().datetime().optional(),

@@ -33,6 +33,8 @@ const employeeSchema = z.object({
   fullName: z.string().min(2),
   nationalId: z.string().optional(),
   tradeId: z.string().optional(),
+  crewId: z.string().optional(),
+  projectId: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional().or(z.literal('')),
   status: z.enum(['active', 'on_leave', 'terminated']).optional(),
@@ -78,6 +80,7 @@ const wageRates = createCrudRouter({
 const crewSchema = z.object({
   projectId: z.string().optional(),
   name: z.string().min(1),
+  foremanId: z.string().optional(),
   description: z.string().optional(),
 });
 const crews = createCrudRouter({

@@ -29,6 +29,7 @@ const equipmentSchema = z.object({
   ownershipStatus: z.enum(['OWNED', 'RENTED', 'LEASED']).optional(),
   status: z.enum(['AVAILABLE', 'IN_USE', 'MAINTENANCE']).optional(),
   fuelType: z.enum(['diesel', 'petrol', 'electric', 'none']).optional(),
+  primaryProjectId: z.string().optional(),
   hourlyRate: z.number().nonnegative().optional(),
   dailyRate: z.number().nonnegative().optional(),
 });

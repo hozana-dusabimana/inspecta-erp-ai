@@ -51,6 +51,49 @@ router.post(
   }),
 );
 
+// ── Streaming chat (SSE) — streams the answer progressively ───
+router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const body = chatSchema.parse(req.body);
+  const orgId = req.user!.orgId;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+  const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  // Compute the grounded answer (tools + RAG + provider/offline), then stream it.
+  const answer = await service.ask(orgId, body.prompt, {
+    provider: body.provider, projectId: body.projectId, pageContext: body.pageContext,
+  });
+
+  // Persist conversation memory.
+  let conversationId = body.conversationId;
+  if (conversationId) {
+    const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId: req.user!.id } });
+    if (!conv) conversationId = undefined;
+  }
+  if (!conversationId) {
+    const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId: req.user!.id, title: body.prompt.slice(0, 80) } });
+    conversationId = conv.id;
+  } else {
+    await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+  }
+  await prisma.aiMessage.createMany({ data: [
+    { conversationId, role: 'user', content: body.prompt },
+    { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
+  ] });
+
+  // Stream the text in small chunks for a token-by-token feel.
+  const tokens = answer.text.split(/(\s+)/);
+  for (let i = 0; i < tokens.length; i += 3) {
+    send({ delta: tokens.slice(i, i + 3).join('') });
+    await new Promise((r) => setTimeout(r, 12));
+  }
+  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline });
+  res.end();
+}));
+
 // ── Conversation history (per user, org-scoped) ───────────────
 router.get('/conversations', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   const list = await prisma.aiConversation.findMany({

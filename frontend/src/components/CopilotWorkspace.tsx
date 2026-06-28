@@ -38,6 +38,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [listeningTimer, setListeningTimer] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,43 +55,37 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
 
   const fetchAiResponse = async (userText: string) => {
     setIsLoading(true);
+    setStreamingText('');
+    let acc = '';
     try {
-      // Real backend Copilot — grounded strictly on the organization's live data.
-      const res = await api.post<{
-        text: string;
-        confidence: number;
-        provider: string;
-        model: string;
-        offline: boolean;
-        conversationId?: string;
-        sources?: { source: string; snippet: string }[];
-      }>('/ai/chat', { prompt: userText, conversationId: conversationId ?? undefined, pageContext });
-      if (res.data.conversationId) setConversationId(res.data.conversationId);
-      const sourceNote = res.data.sources?.length
-        ? `\n\nSources: ${res.data.sources.map((s) => s.source).join(' · ')}`
-        : '';
-
-      const confidenceNote =
-        typeof res.data.confidence === 'number'
-          ? `\n\n— ${res.data.offline ? 'Direct data read' : `${res.data.provider} · ${res.data.model}`} · Confidence ${res.data.confidence}%`
-          : '';
-
-      onAddMessage({
-        id: Math.random().toString(),
-        sender: 'assistant',
-        text: res.data.text + sourceNote + confidenceNote,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      // Streamed Copilot — grounded strictly on the organization's live data (SSE).
+      await api.stream('/ai/chat/stream', { prompt: userText, conversationId: conversationId ?? undefined, pageContext }, (evt) => {
+        if (evt.delta) { acc += evt.delta; setStreamingText(acc); }
+        else if (evt.done) {
+          if (evt.conversationId) setConversationId(evt.conversationId);
+          const sourceNote = evt.sources?.length ? `\n\nSources: ${evt.sources.map((s: any) => s.source).join(' · ')}` : '';
+          const confidenceNote = typeof evt.confidence === 'number'
+            ? `\n\n— ${evt.offline ? 'Direct data read' : `${evt.provider} · ${evt.model}`} · Confidence ${evt.confidence}%`
+            : '';
+          onAddMessage({
+            id: Math.random().toString(),
+            sender: 'assistant',
+            text: acc + sourceNote + confidenceNote,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+          setStreamingText('');
+        }
       });
     } catch (err) {
       onAddMessage({
         id: Math.random().toString(),
         sender: 'assistant',
-        text:
-          err instanceof Error
-            ? `I couldn't reach the analysis service: ${err.message}. Please ensure the backend is running and you are signed in.`
-            : 'The Copilot service is currently unavailable.',
+        text: err instanceof Error
+          ? `I couldn't reach the analysis service: ${err.message}. Please ensure the backend is running and you are signed in.`
+          : 'The Copilot service is currently unavailable.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
+      setStreamingText('');
     } finally {
       setIsLoading(false);
     }
@@ -349,13 +344,19 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               <div className="w-8 h-8 rounded-full bg-brand-primary-container/10 border border-brand-primary/10 flex items-center justify-center text-brand-primary shrink-0">
                 <Bot className="w-4.5 h-4.5" />
               </div>
-              <div className="bg-brand-surface-container-lowest text-brand-on-surface rounded-2xl rounded-tl-none border border-brand-outline-variant/20 shadow-sm p-4 flex items-center gap-3">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"></span>
-                  <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                  <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce [animation-delay:0.4s]"></span>
-                </div>
-                <span className="text-[11px] font-medium text-brand-on-surface-variant">Thinking... consulting construction files...</span>
+              <div className="bg-brand-surface-container-lowest text-brand-on-surface rounded-2xl rounded-tl-none border border-brand-outline-variant/20 shadow-sm p-4 max-w-xl">
+                {streamingText ? (
+                  <p className="text-xs leading-relaxed whitespace-pre-wrap">{streamingText}<span className="inline-block w-1.5 h-3.5 bg-brand-primary/70 ml-0.5 align-middle animate-pulse" /></p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce"></span>
+                      <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                      <span className="w-1.5 h-1.5 bg-brand-primary rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                    </div>
+                    <span className="text-[11px] font-medium text-brand-on-surface-variant">Thinking... consulting construction files...</span>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

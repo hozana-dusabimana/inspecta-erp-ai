@@ -120,6 +120,29 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  /** POST and consume a Server-Sent-Events stream. Calls onEvent per data frame. */
+  async stream(path: string, body: unknown, onEvent: (evt: any) => void): Promise<void> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const access = tokenStore.access;
+    if (access) headers.Authorization = `Bearer ${access}`;
+    const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok || !res.body) throw new ApiError(res.status, `Stream failed (${res.status})`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const frames = buf.split('\n\n');
+      buf = frames.pop() ?? '';
+      for (const f of frames) {
+        const line = f.split('\n').find((l) => l.startsWith('data: '));
+        if (line) { try { onEvent(JSON.parse(line.slice(6))); } catch { /* ignore */ } }
+      }
+    }
+  },
+
   /** Upload a file as the raw request body (e.g. .xlsx import). */
   async upload<T>(path: string, file: File): Promise<ApiEnvelope<T>> {
     const headers: Record<string, string> = {

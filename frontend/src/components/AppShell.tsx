@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { HardHat, Bot, Bell, Search, LogOut, Menu, X } from 'lucide-react';
+import { HardHat, Bot, Bell, Search, LogOut, Menu, X, HelpCircle } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useViewNavigate, viewForPath } from '../lib/routes';
 import { NAV } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
+import OnboardingTour from './OnboardingTour';
 
 function initials(name: string) {
   return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -100,7 +101,7 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
   );
 }
 
-function TopHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+function TopHeader({ onOpenSidebar, onStartTour }: { onOpenSidebar: () => void; onStartTour: () => void }) {
   const { user } = useAuth();
   const navigateView = useViewNavigate();
 
@@ -133,6 +134,7 @@ function TopHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
       <div className="flex items-center gap-4">
         <button
+          id="tour-ask-ai"
           onClick={() => navigateView(AppView.COPILOT)}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary/5 text-brand-primary font-bold text-xs hover:bg-brand-primary/10 transition-all border border-brand-primary/10 cursor-pointer"
         >
@@ -140,9 +142,20 @@ function TopHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
           <span className="hidden sm:inline">Ask AI</span>
         </button>
 
+        <button
+          id="tour-help"
+          onClick={onStartTour}
+          className="p-2 rounded-full hover:bg-brand-surface transition-colors text-brand-on-surface-variant"
+          aria-label="Take the product tour"
+          title="Take the product tour"
+        >
+          <HelpCircle className="w-4.5 h-4.5" />
+        </button>
+
         <ThemeToggle />
 
         <button
+          id="tour-notifications"
           onClick={() => navigateView(AppView.NOTIFICATIONS)}
           className="p-2 rounded-full hover:bg-brand-surface transition-colors relative"
           aria-label="Notifications"
@@ -178,10 +191,29 @@ function TopHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
  */
 export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const navigateView = useViewNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  // First-run walkthrough: auto-start once per user (until they finish/skip it).
+  const tourKey = user ? `inspecta.tour.v1.${user.id}` : null;
+  useEffect(() => {
+    if (!tourKey) return;
+    if (localStorage.getItem(tourKey)) return;
+    const t = setTimeout(() => setTourOpen(true), 900); // let the shell settle first
+    return () => clearTimeout(t);
+  }, [tourKey]);
+
+  const closeTour = () => {
+    setTourOpen(false);
+    if (tourKey) localStorage.setItem(tourKey, 'done');
+  };
+  const startTour = () => {
+    setSidebarOpen(false);
+    setTourOpen(true);
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -195,7 +227,7 @@ export default function AppShell() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        <TopHeader onOpenSidebar={() => setSidebarOpen(true)} />
+        <TopHeader onOpenSidebar={() => setSidebarOpen(true)} onStartTour={startTour} />
 
         {/* Only the page content animates — the chrome above is untouched. */}
         <AnimatePresence mode="wait">
@@ -211,6 +243,8 @@ export default function AppShell() {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <OnboardingTour open={tourOpen} onClose={closeTour} />
     </div>
   );
 }

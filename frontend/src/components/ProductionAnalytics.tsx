@@ -184,9 +184,11 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
               )}
               <Card title="Delayed Activities">
                 {!d?.activities?.length ? <p className="text-xs text-brand-on-surface-variant">No delayed activities. 🎉</p> : (
-                  <table className="w-full text-xs"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-3 py-2 font-bold">Code</th><th className="px-3 py-2 font-bold">Name</th><th className="px-3 py-2 font-bold text-right">Progress</th><th className="px-3 py-2 font-bold text-right">Days Late</th><th className="px-3 py-2 font-bold">Critical</th></tr></thead>
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-[560px]"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-3 py-2 font-bold">Code</th><th className="px-3 py-2 font-bold">Name</th><th className="px-3 py-2 font-bold text-right">Progress</th><th className="px-3 py-2 font-bold text-right">Days Late</th><th className="px-3 py-2 font-bold">Critical</th></tr></thead>
                     <tbody>{d.activities.map((x: any) => (<tr key={x.code} className={`border-b border-brand-outline-variant/10 last:border-0 ${x.critical ? 'bg-red-50/40' : ''}`}><td className="px-3 py-2 font-mono font-bold text-brand-primary">{x.code}</td><td className="px-3 py-2">{x.name}</td><td className="px-3 py-2 text-right">{x.progressPct}%</td><td className="px-3 py-2 text-right font-bold">{x.daysDelayed}</td><td className="px-3 py-2">{x.critical ? <span className="text-red-600 font-bold">● Yes</span> : 'No'}</td></tr>))}</tbody>
                   </table>
+                  </div>
                 )}
               </Card>
             </div>

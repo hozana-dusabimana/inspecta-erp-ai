@@ -125,9 +125,11 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
       {tab === 'wbs' && w && (
         <Card title="Budget vs Actual by WBS">
           {(w.rows ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No WBS-linked budget or cost yet.</p> : (
-            <table className="w-full text-xs"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-3 py-2 font-bold">Code</th><th className="px-3 py-2 font-bold">Activity</th><th className="px-3 py-2 font-bold text-right">Budget</th><th className="px-3 py-2 font-bold text-right">Actual</th><th className="px-3 py-2 font-bold text-right">Variance</th></tr></thead>
+            <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[560px]"><thead><tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/15"><th className="px-3 py-2 font-bold">Code</th><th className="px-3 py-2 font-bold">Activity</th><th className="px-3 py-2 font-bold text-right">Budget</th><th className="px-3 py-2 font-bold text-right">Actual</th><th className="px-3 py-2 font-bold text-right">Variance</th></tr></thead>
               <tbody>{w.rows.map((r: any) => (<tr key={r.wbsItemId} className="border-b border-brand-outline-variant/10 last:border-0"><td className="px-3 py-2 font-mono font-bold text-brand-primary">{r.code}</td><td className="px-3 py-2">{r.name}</td><td className="px-3 py-2 text-right font-mono">{money(r.budget)}</td><td className="px-3 py-2 text-right font-mono">{money(r.actual)}</td><td className={`px-3 py-2 text-right font-mono font-bold ${r.variance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(r.variance)}</td></tr>))}</tbody>
             </table>
+            </div>
           )}
         </Card>
       )}

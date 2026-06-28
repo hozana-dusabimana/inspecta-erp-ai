@@ -47,7 +47,7 @@ function toPie(obj: Record<string, number> | undefined) {
 function BaselineTab({ projectId }: { projectId: string }) {
   const { data } = useQuery({ queryKey: ['dash-baseline', projectId], queryFn: () => api.get<any>(`/dashboards/baseline${projectId ? `?projectId=${projectId}` : ''}`) });
   const d = data?.data;
-  if (!d) return null;
+  if (!d) return <p className="text-xs text-brand-on-surface-variant animate-pulse p-3">Loading…</p>;
   const chart = [{ name: 'BOQ', Cost: d.boqCost, Budget: d.boqBudget }];
   return (
     <div className="space-y-6">
@@ -77,7 +77,7 @@ function BaselineTab({ projectId }: { projectId: string }) {
 function ResourcesTab() {
   const { data } = useQuery({ queryKey: ['dash-resources'], queryFn: () => api.get<any>('/dashboards/resources') });
   const d = data?.data;
-  if (!d) return null;
+  if (!d) return <p className="text-xs text-brand-on-surface-variant animate-pulse p-3">Loading…</p>;
   const trades = toPie(d.employeesByTrade);
   const ownership = toPie(d.equipmentByOwnership);
   return (
@@ -115,7 +115,7 @@ function ResourcesTab() {
 function ProcurementTab({ projectId }: { projectId: string }) {
   const { data } = useQuery({ queryKey: ['dash-procurement', projectId], queryFn: () => api.get<any>(`/dashboards/procurement${projectId ? `?projectId=${projectId}` : ''}`) });
   const d = data?.data;
-  if (!d) return null;
+  if (!d) return <p className="text-xs text-brand-on-surface-variant animate-pulse p-3">Loading…</p>;
   const prChart = toPie(d.purchaseRequests.byStatus);
   return (
     <div className="space-y-6">
@@ -143,7 +143,7 @@ function ProcurementTab({ projectId }: { projectId: string }) {
 function BudgetTab({ projectId }: { projectId: string }) {
   const { data } = useQuery({ queryKey: ['dash-budget', projectId], queryFn: () => api.get<any>(`/dashboards/budget${projectId ? `?projectId=${projectId}` : ''}`) });
   const d = data?.data;
-  if (!d) return null;
+  if (!d) return <p className="text-xs text-brand-on-surface-variant animate-pulse p-3">Loading…</p>;
   const chart = [{ name: 'Planned', value: d.plannedCost }, { name: 'Actual', value: d.actualCost }];
   return (
     <div className="space-y-6">

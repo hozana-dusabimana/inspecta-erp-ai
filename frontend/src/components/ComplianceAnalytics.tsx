@@ -45,7 +45,8 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
   const { data: ai } = useQuery({ queryKey: ['/compliance/ai-risk', projectId], queryFn: () => api.get<any>(`/compliance/ai-risk?projectId=${projectId}`), enabled: enabled && mode === 'quality' });
 
   if (!projectId) return <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-6 text-sm text-brand-on-surface-variant mb-6">Select a project to view {mode} analytics.</div>;
-  const k = data?.data; if (!k) return null;
+  const k = data?.data;
+  if (!k) return <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-6 text-sm text-brand-on-surface-variant mb-6 animate-pulse">Loading {mode} analytics…</div>;
   const a = ai?.data;
 
   return (

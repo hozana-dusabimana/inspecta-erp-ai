@@ -81,10 +81,13 @@ const ALL: Permission[] = [
   'ai:use',
 ];
 
-// Everyone authenticated can read dashboards, notifications, documents, portfolio, AI.
+// Baseline every authenticated role gets. NOTE: `ai:use` (AI Copilot + Executive
+// Intelligence) and `report:read` (cross-module exports) are deliberately NOT
+// here — they expose cross-project financial/compliance data and are granted
+// only to SYSTEM_ADMIN, PROJECT_MANAGER and QUANTITY_SURVEYOR below.
 const COMMON: Permission[] = [
-  'project:read', 'dashboard:read', 'notification:read', 'document:read', 'report:read',
-  'portfolio:read', 'scheduling:read', 'fieldops:read', 'approval:read', 'ai:use',
+  'project:read', 'dashboard:read', 'notification:read', 'document:read',
+  'portfolio:read', 'scheduling:read', 'fieldops:read', 'approval:read',
 ];
 
 const matrix: Record<Role, Permission[]> = {
@@ -113,6 +116,7 @@ const matrix: Record<Role, Permission[]> = {
     'fieldops:write',
     'approval:write',
     'audit:read',
+    'report:read', 'ai:use', // performance review, exports & AI Copilot / Executive Intelligence
   ],
 
   SITE_ENGINEER: [
@@ -151,6 +155,7 @@ const matrix: Record<Role, Permission[]> = {
     'equipment:read',
     'profitability:read',
     'approval:write',
+    'report:read', 'ai:use', // cost/profit monitoring, exports & AI Copilot / Executive Intelligence
   ],
 
   STOREKEEPER: [

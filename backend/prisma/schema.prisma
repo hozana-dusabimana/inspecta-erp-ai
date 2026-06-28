@@ -271,7 +271,7 @@ model Contract {
   type           ContractType   @default(LUMP_SUM)
   status         ContractStatus @default(DRAFT)
   value          Decimal        @default(0) @db.Decimal(18, 2)
-  currency       String         @default("USD")
+  currency       String         @default("RWF")
   startDate      DateTime?
   endDate        DateTime?
   contractDate         DateTime?
@@ -315,7 +315,7 @@ model Project {
   status         ProjectStatus @default(PLANNING)
   health         ProjectHealth @default(OPTIMAL)
   budget         Decimal       @default(0) @db.Decimal(18, 2)
-  currency       String        @default("USD")
+  currency       String        @default("RWF")
   progressPct    Float         @default(0)
   startDate      DateTime?
   endDate        DateTime?
@@ -1190,7 +1190,7 @@ model WageRate {
   tradeId        String
   rateType       String   @default("DAILY") // DAILY | HOURLY
   amount         Decimal  @db.Decimal(18, 2)
-  currency       String   @default("USD")
+  currency       String   @default("RWF")
   effectiveDate  DateTime?
   createdBy String?
   updatedBy String?

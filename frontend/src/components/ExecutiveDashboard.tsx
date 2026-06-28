@@ -10,7 +10,7 @@ interface Props {
   onLogout: () => void;
 }
 
-const money = (n: unknown) => '$' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const numf = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 function light(ok: boolean, warn = false) { return warn ? 'bg-amber-500' : ok ? 'bg-emerald-500' : 'bg-red-500'; }

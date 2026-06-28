@@ -4,7 +4,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import ErpLayout from './ErpLayout';
 
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 const healthDot = (h: string) =>
   h === 'CRITICAL' ? 'bg-red-500' : h === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500';

@@ -76,7 +76,7 @@ interface Props {
   summaryCards?: SummaryCardDef[];
 }
 
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const numFmt = (n: unknown) => Number(n ?? 0).toLocaleString();
 
 function emptyForm(fields: Field[]): Record<string, string> {

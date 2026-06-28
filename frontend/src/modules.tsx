@@ -14,7 +14,7 @@ import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const num = (n: unknown) => Number(n ?? 0).toLocaleString();
 const date = (d: unknown) => (d ? String(d).slice(0, 10) : '—');
 
@@ -400,7 +400,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'clientId', label: 'Client', type: 'select', optionsEndpoint: '/clients', optionLabel: (r) => r.name },
           { name: 'managerId', label: 'Project Manager', type: 'select', optionsEndpoint: '/users', optionLabel: (r) => r.fullName },
           { name: 'budget', label: 'Contract Value', type: 'number' },
-          { name: 'currency', label: 'Currency (e.g. USD)' },
+          { name: 'currency', label: 'Currency (e.g. RWF)' },
           { name: 'plannedProfitMargin', label: 'Planned Profit Margin %', type: 'number' },
           { name: 'startDate', label: 'Start Date', type: 'date' },
           { name: 'endDate', label: 'Planned End Date', type: 'date' },
@@ -447,7 +447,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'type', label: 'Contract Type', type: 'select', options: opt(['LUMP_SUM', 'UNIT_PRICE', 'COST_PLUS', 'TIME_AND_MATERIAL']) },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'ACTIVE', 'CLOSED']) },
           { name: 'value', label: 'Contract Value', type: 'number' },
-          { name: 'currency', label: 'Currency (e.g. USD)' },
+          { name: 'currency', label: 'Currency (e.g. RWF)' },
           { name: 'contractDate', label: 'Contract Date', type: 'date' },
           { name: 'commencementDate', label: 'Commencement Date', type: 'date' },
           { name: 'startDate', label: 'Start Date', type: 'date' },
@@ -596,7 +596,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name, required: true },
           { name: 'rateType', label: 'Rate Type', type: 'select', options: opt(['DAILY', 'HOURLY']) },
           { name: 'amount', label: 'Amount', type: 'number', required: true },
-          { name: 'currency', label: 'Currency (e.g. USD)' },
+          { name: 'currency', label: 'Currency (e.g. RWF)' },
           { name: 'effectiveDate', label: 'Effective Date', type: 'date' },
         ],
       },

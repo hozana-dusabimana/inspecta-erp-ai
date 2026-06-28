@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShoppingCart, Plus, Minus, Trash2, Receipt, LockOpen, Lock } from 'lucide-react';
 import { api } from '../lib/api';
 
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const dt = (d: unknown) => (d ? new Date(String(d)).toLocaleString() : '—');
 
 interface Product { id: string; name: string; unit: string; unitPrice: number; vatApplicable: boolean; productType: string }

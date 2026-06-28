@@ -7,7 +7,7 @@ interface Version { id: string; versionNo: number; label: string | null; totalCo
 interface CompareRow { code: string; description: string; fromCost: number; toCost: number; costDelta: number; budgetDelta: number; status: string }
 interface Compare { rows: CompareRow[]; fromTotalCost: number; toTotalCost: number; fromTotalBudget: number; toTotalBudget: number; changed: number }
 
-const money = (n: unknown) => '$' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const delta = (n: number) => (n > 0 ? '+' : '') + money(n);
 const STATUS_TONE: Record<string, string> = {
   ADDED: 'bg-emerald-100 text-emerald-700', REMOVED: 'bg-red-100 text-red-700',

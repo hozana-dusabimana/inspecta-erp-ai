@@ -101,15 +101,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   SUBCONTRACTOR: '#7c9cff', OVERHEAD: '#c4c6d3', OTHER: '#9aa0b4',
 };
 
-// Compact currency for the KPI mini-grid (e.g. 1450000 -> "$1.5M").
+// Compact currency for the KPI mini-grid (e.g. 1450000 -> "RWF 1.5M").
 function compactMoney(n: number): string {
   const v = Number(n || 0);
   const a = Math.abs(v);
   const sign = v < 0 ? '-' : '';
-  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(1)}K`;
-  return `${sign}$${a.toFixed(0)}`;
+  if (a >= 1e9) return `${sign}RWF ${(a / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${sign}RWF ${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${sign}RWF ${(a / 1e3).toFixed(1)}K`;
+  return `${sign}RWF ${a.toFixed(0)}`;
 }
 
 export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
@@ -406,7 +406,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
                   <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : '—'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">
-                    {execFinance ? `${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
+                    {execFinance ? `RWF ${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
                   </span>
                 </div>
                 <p className="text-[10px] text-brand-on-surface-variant mt-3 font-bold">Actual cost vs total budget across the portfolio.</p>

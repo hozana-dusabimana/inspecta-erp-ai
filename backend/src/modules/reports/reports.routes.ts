@@ -125,9 +125,9 @@ router.get(
     };
     doc.fontSize(13).fillColor('#00286a').text('Financials');
     doc.moveDown(0.3);
-    row('Budget:', budget.toLocaleString());
-    row('Actual cost:', actual.toLocaleString());
-    row('Cost variance:', (budget - actual).toLocaleString());
+    row('Budget:', `RWF ${budget.toLocaleString()}`);
+    row('Actual cost:', `RWF ${actual.toLocaleString()}`);
+    row('Cost variance:', `RWF ${(budget - actual).toLocaleString()}`);
     doc.moveDown();
 
     doc.fontSize(13).fillColor('#00286a').text('Production');

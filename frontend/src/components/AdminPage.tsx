@@ -314,7 +314,7 @@ const SETTING_FIELDS: { name: keyof Organization; label: string }[] = [
   { name: 'industry', label: 'Industry' },
   { name: 'country', label: 'Country' },
   { name: 'timezone', label: 'Timezone' },
-  { name: 'currency', label: 'Currency (e.g. USD)' },
+  { name: 'currency', label: 'Currency (e.g. RWF)' },
   { name: 'phone', label: 'Phone' },
   { name: 'logoUrl', label: 'Logo URL' },
 ];

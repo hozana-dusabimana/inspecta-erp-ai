@@ -5,7 +5,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import ErpLayout from './ErpLayout';
 
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate: (v: AppView) => void; onLogout: () => void }) {
   const { data } = useQuery({ queryKey: ['profitability'], queryFn: () => api.get<any>('/profitability/analysis') });

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Calculator, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import { api } from '../lib/api';
 
-const money = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const monthLabel = (d: unknown) => (d ? String(d).slice(0, 7) : '—');
 
 interface Run {

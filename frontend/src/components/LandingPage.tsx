@@ -284,7 +284,7 @@ export default function LandingPage({ onNavigate, onBookDemo }: LandingPageProps
                     </p>
                     <div className="p-3 bg-brand-secondary-container/5 rounded-lg border border-brand-secondary-container/10">
                       <p className="text-[10px] font-bold text-brand-secondary-container uppercase mb-1">Recommended Action</p>
-                      <p className="text-xs text-brand-on-surface">Re-sequence backfill from Section 1 to offset labor idle-time. Est. savings: $4,200.</p>
+                      <p className="text-xs text-brand-on-surface">Re-sequence backfill from Section 1 to offset labor idle-time. Est. savings: RWF 4,200,000.</p>
                     </div>
                   </div>
                 </div>

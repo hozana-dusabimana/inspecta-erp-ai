@@ -13,7 +13,7 @@ interface Props {
   onLogout: () => void;
 }
 
-const money = (n: unknown) => '$' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const num = (n: unknown) => Number(n ?? 0).toLocaleString();
 const PIE = ['#00286a', '#ff8a00', '#48c768', '#7c9cff', '#b2c5ff', '#c4c6d3', '#9aa0b4'];
 

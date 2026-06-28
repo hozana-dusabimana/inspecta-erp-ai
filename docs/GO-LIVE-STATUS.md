@@ -39,7 +39,7 @@ should be scheduled early.
 
 | # | Sev | Area | Issue | Suggested fix |
 |---|-----|------|-------|---------------|
-| 1 | Med | Scheduling | Dependency rows can reference activities from a **different project within the same org** (cross-project edges). Mitigated at read time — CPM ignores deps whose predecessor isn't in the project. | Validate `activity.projectId === predecessor.projectId === body.projectId` before create (needs an async cross-field check outside the generic CRUD helper). |
+| ~~1~~ | ~~Med~~ | Scheduling | ✅ **RESOLVED** — dependencies now reject cross-project edges, project mismatch, and self-references via a new reusable `validate` hook on `createCrudRouter`. | Done (commit `6adf675`). |
 | 2 | Med | HSE | `/hse/kpis` "PPE expiring soon" counts **org-wide** PPE, not project-scoped, while sibling metrics are project-scoped (wrong number, not a leak). | Decide intended scope; add `projectId` to the `ppeIssue` query or document org-wide intent. |
 | 3 | Low | RBAC | `/compliance/ai-risk` is gated on `qaqc:read` but also surfaces HSE/incident aggregates. | Require an HSE permission too, or introduce a dedicated `compliance:read`. |
 | 4 | Low | Validation | Several analytics endpoints read `?projectId` / action bodies without zod (value always lands in an org-scoped `where`, so no leak — worst case a 500 on an array-valued param). | Add `z.string()` parsing for hygiene. |

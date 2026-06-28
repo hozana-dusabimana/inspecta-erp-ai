@@ -4,3 +4,6 @@ dist
 .env.local
 *.log
 coverage
+# Datasets contain PII (national IDs, salaries, payslips) — never commit them.
+*.xlsx
+prisma/sample-data/

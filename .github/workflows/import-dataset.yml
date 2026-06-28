@@ -1,0 +1,62 @@
+name: Import Sample Dataset (manual)
+
+# Manual-only. Loads a dataset workbook into the PRODUCTION database by running the
+# importer inside the running backend container.
+#
+# The workbook contains PII (national IDs, salaries, payslips) so it is NOT stored
+# in the repo. Upload it to the server first, then run this workflow:
+#   scp "inspecta data excel.xlsx" root@176.126.87.142:/home/inspectaapi/app/dataset.xlsx
+#
+# ⚠️ This WIPES the organization's existing business data and replaces it with the
+# dataset. Requires typing the confirmation phrase to run.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type WIPE-AND-LOAD to confirm replacing org data with the dataset'
+        required: true
+        default: ''
+      server_file:
+        description: 'Path to the uploaded workbook on the server'
+        required: true
+        default: '/home/inspectaapi/app/dataset.xlsx'
+
+concurrency:
+  group: backend-deploy   # never overlap with a backend deploy
+  cancel-in-progress: false
+
+jobs:
+  import:
+    name: Load dataset into production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify confirmation phrase
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "WIPE-AND-LOAD" ]; then
+            echo "::error::Confirmation phrase not matched — aborting (nothing changed)."
+            exit 1
+          fi
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Copy workbook into the container, import, then clean up
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOST: 176.126.87.142
+          USER: root
+          SRV_FILE: ${{ github.event.inputs.server_file }}
+        run: |
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          sshpass -e ssh $OPTS "$USER@$HOST" "
+            set -e
+            cd /home/inspectaapi/app
+            if [ ! -f '$SRV_FILE' ]; then echo 'Uploaded file not found: $SRV_FILE'; exit 1; fi
+            echo 'Copying workbook into the backend container…'
+            docker compose -f docker-compose.prod.yml cp '$SRV_FILE' backend:/tmp/dataset.xlsx
+            echo 'Importing into production (wipe & load)…'
+            docker compose -f docker-compose.prod.yml exec -T backend npx tsx prisma/import-dataset.ts /tmp/dataset.xlsx --confirm
+            echo 'Cleaning up temp copy…'
+            docker compose -f docker-compose.prod.yml exec -T backend rm -f /tmp/dataset.xlsx
+            rm -f '$SRV_FILE'
+          "

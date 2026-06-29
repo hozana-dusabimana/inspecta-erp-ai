@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, ChevronDown, GripVertical, CornerLeftUp } from 'lucide-react';
+import { ChevronRight, ChevronDown, GripVertical, CornerLeftUp, Activity, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface WbsRow {
@@ -12,6 +12,18 @@ interface WbsRow {
   progressPct: number;
 }
 interface Node extends WbsRow { children: Node[] }
+
+interface Rollup {
+  id: string;
+  progress: number;
+  budget: number;
+  fromProduction: boolean;
+  isLeaf: boolean;
+  childWeightSum: number | null;
+}
+
+const money = (n: number) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const barColor = (p: number) => (p >= 80 ? 'bg-emerald-500' : p >= 40 ? 'bg-amber-500' : 'bg-red-500');
 
 function buildTree(rows: WbsRow[]): Node[] {
   const byId = new Map<string, Node>(rows.map((r) => [r.id, { ...r, children: [] }]));
@@ -42,10 +54,24 @@ export default function WbsTree({ projectId, canWrite }: { projectId?: string; c
   const tree = useMemo(() => buildTree(rows), [rows]);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
 
+  // Computed roll-up (progress derived from production + children, budget summed).
+  const { data: rollupData } = useQuery({
+    queryKey: ['/planning/wbs/rollup', projectId ?? 'none'],
+    queryFn: () => api.get<{ items: Rollup[] }>(`/planning/wbs/rollup?projectId=${projectId}`),
+    enabled: Boolean(projectId),
+  });
+  const rollupById = useMemo(
+    () => new Map((rollupData?.data.items ?? []).map((r) => [r.id, r])),
+    [rollupData],
+  );
+
   const move = useMutation({
     mutationFn: ({ id, parentId, level }: { id: string; parentId: string | null; level: number }) =>
       api.put(`/planning/wbs/${id}`, { parentId, level }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['/planning/wbs'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/planning/wbs'] });
+      qc.invalidateQueries({ queryKey: ['/planning/wbs/rollup'] });
+    },
     onError: (e) => setErr(e instanceof Error ? e.message : 'Move failed'),
   });
 
@@ -102,7 +128,32 @@ export default function WbsTree({ projectId, canWrite }: { projectId?: string; c
           </button>
           <span className="text-xs font-bold text-brand-primary font-mono shrink-0">{n.code}</span>
           <span className="text-xs text-brand-on-surface truncate flex-1">{n.name}</span>
-          <span className="text-[10px] font-bold text-brand-on-surface-variant shrink-0">{n.progressPct}%</span>
+          {(() => {
+            const r = rollupById.get(n.id);
+            const progress = r ? r.progress : n.progressPct;
+            const weightOff = r && r.childWeightSum != null && Math.abs(r.childWeightSum - 100) > 0.5;
+            return (
+              <div className="flex items-center gap-2 shrink-0">
+                {weightOff && (
+                  <span title={`Child weights sum to ${r!.childWeightSum}% (should be 100%)`} className="text-amber-500">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                {r?.fromProduction && (
+                  <span title="Progress derived from production data" className="text-brand-secondary-container">
+                    <Activity className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                {r && r.budget > 0 && (
+                  <span className="text-[10px] font-mono text-brand-on-surface-variant hidden sm:inline w-28 text-right">{money(r.budget)}</span>
+                )}
+                <div className="w-20 h-1.5 rounded-full bg-brand-surface-container overflow-hidden hidden sm:block">
+                  <div className={`h-full rounded-full ${barColor(progress)}`} style={{ width: `${Math.min(100, progress)}%` }} />
+                </div>
+                <span className="text-[10px] font-bold text-brand-on-surface-variant w-9 text-right">{Math.round(progress)}%</span>
+              </div>
+            );
+          })()}
         </div>
         {hasKids && !isCollapsed && n.children.map((c) => renderNode(c, depth + 1))}
       </React.Fragment>
@@ -113,7 +164,11 @@ export default function WbsTree({ projectId, canWrite }: { projectId?: string; c
     <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
       <div className="px-5 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between gap-3">
         <h3 className="font-bold text-brand-primary text-sm">WBS Tree</h3>
-        <span className="text-[11px] text-brand-on-surface-variant">{canWrite ? 'Drag a node onto another to re-parent it' : 'Read-only'} {err && <em className="text-red-600 ml-2">{err}</em>}</span>
+        <span className="text-[11px] text-brand-on-surface-variant flex items-center gap-2">
+          <span className="flex items-center gap-1"><Activity className="w-3 h-3 text-brand-secondary-container" /> from production</span>
+          <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-amber-500" /> weights ≠ 100%</span>
+          {err && <em className="text-red-600 ml-1">{err}</em>}
+        </span>
       </div>
 
       {canWrite && (

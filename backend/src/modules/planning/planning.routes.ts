@@ -331,6 +331,99 @@ verRouter.get('/:id', requirePermission('planning:read'), asyncHandler(async (re
 }));
 
 const router = Router();
+
+/**
+ * WBS roll-up: returns every WBS item with computed progress & budget.
+ * - Leaf progress: derived from production (Σ actualQty ÷ Σ plannedQty, capped
+ *   100%) when production exists, else the manually-entered progressPct.
+ * - Parent progress: weight-weighted average of children (falls back to a plain
+ *   average when sibling weights are all zero).
+ * - Budget: leaf = budgetAmount; parent = sum of children's computed budget.
+ * Registered before the /wbs CRUD mount so it isn't captured by /wbs/:id.
+ */
+router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyncHandler(async (req, res) => {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) throw BadRequest('projectId is required');
+  const orgId = req.user!.orgId;
+
+  const [items, prod] = await Promise.all([
+    prisma.wbsItem.findMany({ where: { organizationId: orgId, projectId } }),
+    prisma.productionEntry.groupBy({
+      by: ['wbsItemId'],
+      where: { organizationId: orgId, projectId, wbsItemId: { not: null } },
+      _sum: { plannedQty: true, actualQty: true },
+    }),
+  ]);
+
+  const prodById = new Map(prod.map((p) => [p.wbsItemId as string, p._sum]));
+  const kids = new Map<string, typeof items>();
+  for (const it of items) {
+    const key = it.parentId ?? '__root';
+    const arr = kids.get(key) ?? [];
+    arr.push(it);
+    kids.set(key, arr);
+  }
+
+  const memo = new Map<string, { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean }>();
+  const compute = (it: (typeof items)[number], guard: Set<string>): { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean } => {
+    const cached = memo.get(it.id);
+    if (cached) return cached;
+    if (guard.has(it.id)) return { progress: 0, budget: 0, fromProduction: false, isLeaf: true }; // cycle guard
+    guard.add(it.id);
+    const children = kids.get(it.id) ?? [];
+    let result: { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean };
+    if (children.length === 0) {
+      const sums = prodById.get(it.id);
+      const planned = Number(sums?.plannedQty ?? 0);
+      let progress = it.progressPct;
+      let fromProduction = false;
+      if (planned > 0) {
+        progress = Math.min(100, (Number(sums?.actualQty ?? 0) / planned) * 100);
+        fromProduction = true;
+      }
+      result = { progress, budget: Number(it.budgetAmount ?? 0), fromProduction, isLeaf: true };
+    } else {
+      let weightSum = 0;
+      let weighted = 0;
+      let budget = 0;
+      for (const c of children) {
+        const cr = compute(c, guard);
+        weightSum += c.weightPct;
+        weighted += c.weightPct * cr.progress;
+        budget += cr.budget;
+      }
+      const progress = weightSum > 0
+        ? weighted / weightSum
+        : children.reduce((s, c) => s + compute(c, guard).progress, 0) / children.length;
+      result = { progress, budget, fromProduction: false, isLeaf: false };
+    }
+    memo.set(it.id, result);
+    return result;
+  };
+
+  const out = items.map((it) => {
+    const r = compute(it, new Set());
+    // Weight check: do this node's direct children's weights sum to ~100%?
+    const children = kids.get(it.id) ?? [];
+    const childWeightSum = children.reduce((s, c) => s + c.weightPct, 0);
+    return {
+      id: it.id,
+      code: it.code,
+      name: it.name,
+      parentId: it.parentId,
+      level: it.level,
+      weightPct: it.weightPct,
+      progress: Math.round(r.progress * 10) / 10,
+      budget: r.budget,
+      fromProduction: r.fromProduction,
+      isLeaf: r.isLeaf,
+      childWeightSum: children.length ? Math.round(childWeightSum * 10) / 10 : null,
+    };
+  });
+
+  return ok(res, { items: out });
+}));
+
 router.use('/wbs', wbsRouter);
 router.use('/boq', boqRouter);
 router.use('/boq-versions', verRouter); // separate prefix avoids the /boq/:id route

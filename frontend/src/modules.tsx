@@ -1156,7 +1156,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
-          { name: 'grnNumber', label: 'GRN Number' },
+          { name: 'grnNumber', label: 'GRN Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'quantityReceived', label: 'Quantity Received', type: 'number', required: true },
           { name: 'unitCost', label: 'Unit Cost', type: 'number' },
           { name: 'dateReceived', label: 'Date Received', type: 'date' },

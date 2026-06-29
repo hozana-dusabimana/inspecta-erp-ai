@@ -319,7 +319,7 @@ router.use(
     model: 'delivery', entity: 'delivery',
     readPerm: 'procurement:read', writePerm: 'procurement:write',
     createSchema: deliveryCreate, updateSchema: deliveryCreate.partial(),
-    autoCode: { field: 'number', prefix: 'GRN' },
+    autoCode: { field: 'number', prefix: 'DLV' },
     searchField: 'number', dateField: 'deliveryDate', filterFields: ['status'],
     orderBy: { deliveryDate: 'desc' },
     include: { purchaseOrder: { select: { id: true, number: true } } },

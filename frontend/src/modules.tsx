@@ -557,7 +557,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'fullName', label: 'Full Name', required: true },
-          { name: 'employeeNo', label: 'Employee No.' },
+          { name: 'employeeNo', label: 'Employee No. (auto)', hideOnCreate: true, readOnly: true },
           { name: 'nationalId', label: 'National ID' },
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
           { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },

@@ -50,6 +50,7 @@ const employeeSchema = z.object({
 const employees = createCrudRouter({
   model: 'employee', entity: 'employee', readPerm: 'hr:read', writePerm: 'hr:write',
   createSchema: employeeSchema, updateSchema: employeeSchema.partial(),
+  autoCode: { field: 'employeeNo', prefix: 'EMP' },
   searchField: 'fullName', orderBy: { fullName: 'asc' },
   filterFields: ['status'],
   sumFields: ['grossMonthlySalary'],

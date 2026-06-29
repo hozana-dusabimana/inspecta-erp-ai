@@ -1081,9 +1081,9 @@ model Attendance {
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
+  @@unique([employeeId, date]) // one record per employee per day (spec: attendance_records)
   @@index([organizationId])
   @@index([projectId, date])
-  @@index([employeeId, date])
   @@map("attendances")
 }
 
@@ -1159,7 +1159,7 @@ model Trade {
 model Employee {
   id             String   @id @default(cuid())
   organizationId String
-  employeeNo     String?
+  employeeNo     String?  @unique // auto-generated EMP-#### (spec: employee_code, unique)
   fullName       String
   nationalId     String?  // Rwanda national ID
   tradeId        String?

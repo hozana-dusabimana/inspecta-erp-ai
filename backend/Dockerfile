@@ -24,4 +24,6 @@ RUN npm run build
 EXPOSE 4000
 
 # On container start: apply schema, seed, then run the compiled server.
-CMD ["sh", "-c", "npx prisma db push && npx tsx prisma/seed.ts && node dist/index.js"]
+# --accept-data-loss lets db push apply constraint/index changes non-interactively
+# (this project uses db push, not migrations, as its deploy mechanism).
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx tsx prisma/seed.ts && node dist/index.js"]

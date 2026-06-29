@@ -15,7 +15,8 @@ React/Vite frontend. This is the operational runbook for go-live and ongoing ops
 | Realtime  | WebSocket (per-org channels) | same host as backend |
 
 Deployment is automated via GitHub Actions on push to `main`. The backend
-container `CMD` runs `prisma db push` → `seed` (idempotent) → `node dist`.
+container `CMD` runs `prisma/start.sh` (migrate deploy, auto-baselining a
+pre-existing DB) → `seed` (idempotent) → `node dist`.
 
 The deployed commit SHA is exposed for verification:
 - Frontend: `<meta name="x-build">` tag in `index.html`.
@@ -123,9 +124,15 @@ backup is not a backup.
 
 ## 6. Operational notes
 
-- **Migrations**: production uses `prisma db push` (schema-sync) on boot. All
-  recent changes are additive (new indexes/columns) and safe. For destructive
-  schema changes, take a backup first and review the generated SQL.
+- **Migrations**: production uses **Prisma Migrate** (`prisma migrate deploy`) on
+  boot, via `prisma/start.sh`. On a database that predates migration history
+  (built earlier by `db push`), the startup script auto-baselines the `0_init`
+  migration (`prisma/db-state.js` detects "schema exists, no history") so deploy
+  never recreates tables. To add a schema change: edit `schema.prisma`, run
+  `npx prisma migrate dev --name <change>` locally to generate a migration,
+  commit the `prisma/migrations/**` files, and `migrate deploy` applies them on
+  the next deploy. Migrations are explicit and reviewable — no silent
+  destructive changes (unlike the previous `db push --accept-data-loss`).
 - **Indexes**: Module 1–5 hot paths are covered by composite indexes
   (`(organizationId, projectId)` on finance/compliance tables;
   `(organizationId, materialId, type)` on `stock_movements`). New high-volume

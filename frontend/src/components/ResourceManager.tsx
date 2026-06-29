@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, errorMessage } from '../lib/api';
 
 export interface Field {
   name: string;
@@ -187,13 +187,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
       setForm(emptyForm(fields));
       setError(null);
     },
-    onError: (e) => setError(e instanceof Error ? e.message : 'Save failed'),
+    onError: (e) => setError(errorMessage(e)),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`${endpoint}/${id}`),
     onSuccess: invalidate,
-    onError: (e) => setError(e instanceof Error ? e.message : 'Delete failed'),
+    onError: (e) => setError(errorMessage(e)),
   });
 
   const openCreate = () => {

@@ -25,19 +25,37 @@ export const tokenStore = {
   },
 };
 
+export interface ValidationDetails {
+  formErrors?: string[];
+  fieldErrors?: Record<string, string[]>;
+}
+
 export interface ApiEnvelope<T> {
   success: boolean;
   data: T;
   error?: string;
+  details?: ValidationDetails;
   meta?: { page: number; pageSize: number; total: number };
 }
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  details?: ValidationDetails;
+  constructor(status: number, message: string, details?: ValidationDetails) {
     super(message);
     this.status = status;
+    this.details = details;
   }
+}
+
+/** Human-readable, field-aware message from an ApiError (or any error). */
+export function errorMessage(e: unknown): string {
+  if (e instanceof ApiError && e.details?.fieldErrors) {
+    const parts = Object.entries(e.details.fieldErrors)
+      .map(([field, msgs]) => `${field}: ${(msgs ?? []).join(', ')}`);
+    if (parts.length) return `${e.message} — ${parts.join('; ')}`;
+  }
+  return e instanceof Error ? e.message : 'Something went wrong';
 }
 
 let refreshing: Promise<boolean> | null = null;
@@ -91,7 +109,7 @@ async function request<T>(
 
   const json = (await res.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!res.ok || json.success === false) {
-    throw new ApiError(res.status, json.error || `Request failed (${res.status})`);
+    throw new ApiError(res.status, json.error || `Request failed (${res.status})`, json.details);
   }
   return json;
 }
@@ -153,7 +171,7 @@ export const api = {
     const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: file });
     const json = (await res.json().catch(() => ({}))) as ApiEnvelope<T>;
     if (!res.ok || json.success === false) {
-      throw new ApiError(res.status, json.error || `Upload failed (${res.status})`);
+      throw new ApiError(res.status, json.error || `Upload failed (${res.status})`, json.details);
     }
     return json;
   },

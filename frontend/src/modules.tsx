@@ -405,7 +405,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'managerId', label: 'Project Manager', type: 'select', optionsEndpoint: '/users', optionLabel: (r) => r.fullName },
           { name: 'budget', label: 'Contract Value', type: 'number' },
           { name: 'currency', label: 'Currency (e.g. RWF)' },
-          { name: 'plannedProfitMargin', label: 'Planned Profit Margin %', type: 'number' },
+          { name: 'plannedProfitMargin', label: 'Planned Profit Margin %', type: 'number', placeholder: 'Percentage 0–100 (e.g. 15)' },
           { name: 'startDate', label: 'Start Date', type: 'date' },
           { name: 'endDate', label: 'Planned End Date', type: 'date' },
           { name: 'forecastFinishDate', label: 'Forecast Finish Date', type: 'date', hideOnCreate: true },

@@ -13,6 +13,12 @@ export interface Field {
   optionLabel?: (row: Record<string, any>) => string;
   required?: boolean;
   placeholder?: string;
+  /** Read-only display (e.g. an auto-generated code shown on the edit screen). */
+  readOnly?: boolean;
+  /** Hide this field on the create form (e.g. auto-generated or set-later fields). */
+  hideOnCreate?: boolean;
+  /** Hide this field on the edit form. */
+  hideOnEdit?: boolean;
 }
 
 /** Dropdown filter shown in the toolbar (maps to a backend filterField). */
@@ -403,7 +409,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
             <button onClick={() => setOpen(false)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
             <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{editing ? 'Edit' : 'New'} {entityLabel}</h3>
             <form onSubmit={submit} className="space-y-3">
-              {fields.map((f) => (
+              {fields.filter((f) => (editing ? !f.hideOnEdit : !f.hideOnCreate)).map((f) => (
                 <div key={f.name} className="space-y-1">
                   <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">{f.label}</label>
                   {f.optionsEndpoint ? (
@@ -428,8 +434,10 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
                       step={f.type === 'number' ? 'any' : undefined}
                       value={form[f.name] ?? ''} required={f.required} placeholder={f.placeholder}
+                      readOnly={f.readOnly}
+                      onClick={(e) => { if (f.type === 'date' && !f.readOnly) { try { (e.currentTarget as unknown as { showPicker: () => void }).showPicker(); } catch { /* unsupported */ } } }}
                       onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                      className="w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary"
+                      className={`w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary ${f.type === 'date' ? 'cursor-pointer' : ''} ${f.readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
                     />
                   )}
                 </div>

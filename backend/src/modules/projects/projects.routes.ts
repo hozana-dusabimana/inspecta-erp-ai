@@ -11,7 +11,7 @@ const router = Router();
 router.use(authenticate);
 
 const createSchema = z.object({
-  code: z.string().min(2),
+  code: z.string().min(2).optional(), // auto-generated when omitted
   name: z.string().min(2),
   description: z.string().optional(),
   location: z.string().optional(),
@@ -37,6 +37,21 @@ const createSchema = z.object({
 });
 
 const updateSchema = createSchema.partial();
+
+/**
+ * Auto-generate a sequential, org-scoped project code (PRJ-0001, PRJ-0002, …).
+ * Skips codes already taken (handles gaps left by deleted projects).
+ */
+async function generateProjectCode(orgId: string): Promise<string> {
+  let n = (await prisma.project.count({ where: { organizationId: orgId } })) + 1;
+  for (let i = 0; i < 10000; i++) {
+    const code = `PRJ-${String(n).padStart(4, '0')}`;
+    const taken = await prisma.project.findFirst({ where: { organizationId: orgId, code }, select: { id: true } });
+    if (!taken) return code;
+    n++;
+  }
+  return `PRJ-${Date.now()}`;
+}
 
 async function assertOrgRefs(orgId: string, clientId?: string, managerId?: string) {
   if (clientId) {
@@ -136,11 +151,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = createSchema.parse(req.body);
     await assertOrgRefs(req.user!.orgId, body.clientId, body.managerId);
+    const code = body.code?.trim() || (await generateProjectCode(req.user!.orgId));
 
     const project = await prisma.project.create({
       data: {
         organizationId: req.user!.orgId,
-        code: body.code,
+        code,
         name: body.name,
         description: body.description,
         location: body.location,

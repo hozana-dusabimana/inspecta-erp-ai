@@ -57,6 +57,13 @@ export interface CrudOptions {
   /** Foreign keys to validate as belonging to the caller's org before write. */
   refs?: Array<{ field: string; model: string }>;
   /**
+   * Auto-generate a sequential, org-scoped identifier when the field is omitted
+   * or blank on create. e.g. { field: 'number', prefix: 'NCR' } → NCR-0001,
+   * NCR-0002, … (skips codes freed by deletes). The field must be optional in
+   * `createSchema` so an omitted value passes validation.
+   */
+  autoCode?: { field: string; prefix: string };
+  /**
    * Async cross-field/relational validation that the generic `refs`/project
    * checks can't express (e.g. two FKs must share the same parent). Runs after
    * project + refs validation, before `transform`. Throw (BadRequest) to reject.
@@ -126,6 +133,22 @@ function coerceDates(data: Record<string, unknown>): Record<string, unknown> {
     }
   }
   return out;
+}
+
+/**
+ * Generate a sequential, org-scoped identifier (PREFIX-0001, PREFIX-0002, …),
+ * skipping any value already taken (handles gaps from deleted records).
+ */
+async function generateAutoCode(model: string, orgId: string, field: string, prefix: string): Promise<string> {
+  const delegate = (prisma as unknown as Record<string, Delegate>)[model];
+  let n = (await delegate.count({ where: { organizationId: orgId } })) + 1;
+  for (let i = 0; i < 10000; i++) {
+    const code = `${prefix}-${String(n).padStart(4, '0')}`;
+    const taken = await delegate.findFirst({ where: { organizationId: orgId, [field]: code } });
+    if (!taken) return code;
+    n++;
+  }
+  return `${prefix}-${Date.now()}`;
 }
 
 async function assertProjectInOrg(orgId: string, projectId: unknown) {
@@ -332,6 +355,13 @@ export function createCrudRouter(opts: CrudOptions): Router {
     requirePermission(opts.writePerm),
     asyncHandler(async (req, res) => {
       const parsed = opts.createSchema.parse(req.body) as Record<string, unknown>;
+      if (opts.autoCode) {
+        const { field, prefix } = opts.autoCode;
+        const cur = parsed[field];
+        if (cur === undefined || cur === null || String(cur).trim() === '') {
+          parsed[field] = await generateAutoCode(opts.model, req.user!.orgId, field, prefix);
+        }
+      }
       if (opts.requireProject || parsed.projectId) {
         await assertProjectInOrg(req.user!.orgId, parsed.projectId);
       }

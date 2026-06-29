@@ -70,7 +70,7 @@ router.use('/material-tests', createCrudRouter({
 const ncrCreate = z.object({
   projectId: z.string(),
   inspectionId: z.string().optional(),
-  number: z.string().min(1),
+  number: z.string().min(1).optional(), // auto-generated (NCR-####) when omitted
   description: z.string().min(1),
   wbsItemId: z.string().optional(),
   reworkCost: z.number().nonnegative().optional(),
@@ -88,6 +88,7 @@ const ncrCreate = z.object({
 router.use('/ncrs', createCrudRouter({
   model: 'ncr', entity: 'ncr', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: ncrCreate, updateSchema: ncrCreate.partial(),
+  autoCode: { field: 'number', prefix: 'NCR' },
   searchField: 'description', filterFields: ['status', 'severity'], requireProject: true, orderBy: { createdAt: 'desc' },
   include: { actions: true }, refs: [{ field: 'wbsItemId', model: 'wbsItem' }, { field: 'inspectionId', model: 'inspection' }], transform: stamp,
   afterChange: async (action, record, req) => {

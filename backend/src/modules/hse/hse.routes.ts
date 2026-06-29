@@ -20,6 +20,7 @@ const router = Router();
 // ── Incidents (incl. near-miss + investigation/root cause) ────
 const incidentCreate = z.object({
   projectId: z.string(),
+  number: z.string().min(1).optional(), // auto-generated (INC-####) when omitted
   type: z.nativeEnum(IncidentType).optional(),
   severity: z.nativeEnum(Severity).optional(),
   description: z.string().min(1),
@@ -36,6 +37,7 @@ const incidentCreate = z.object({
 router.use('/incidents', createCrudRouter({
   model: 'incident', entity: 'incident', readPerm: 'hse:read', writePerm: 'hse:write',
   createSchema: incidentCreate, updateSchema: incidentCreate.partial(),
+  autoCode: { field: 'number', prefix: 'INC' },
   searchField: 'description', dateField: 'date', filterFields: ['type', 'severity'],
   requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
   afterChange: async (action, record, req) => {

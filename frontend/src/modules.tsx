@@ -1031,7 +1031,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'issueDate', label: 'Issued', render: (r) => date(r.issueDate) },
         ],
         fields: [
-          { name: 'number', label: 'Number', required: true },
+          { name: 'number', label: 'Invoice Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'description', label: 'Description' },
           { name: 'amount', label: 'Amount (if not an IPC)', type: 'number', required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED']) },
@@ -1062,7 +1062,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'amount', label: 'Amount', align: 'right', sortable: true, render: (r) => money(r.amount) },
         ],
         fields: [
-          { name: 'reference', label: 'Reference', required: true },
+          { name: 'reference', label: 'Reference (auto)', hideOnCreate: true, readOnly: true },
           { name: 'amount', label: 'Amount', type: 'number', required: true },
           { name: 'date', label: 'Date', type: 'date' },
         ],
@@ -1221,7 +1221,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'total', label: 'Total', align: 'right', sortable: true, render: (r) => money(r.total) },
         ],
         fields: [
-          { name: 'number', label: 'PO Number', required: true },
+          { name: 'number', label: 'PO Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'supplierId', label: 'Supplier', optionsEndpoint: '/procurement/suppliers', optionLabel: (s) => s.name, required: true },
           { name: 'purchaseRequestId', label: 'From Purchase Request', type: 'select', optionsEndpoint: '/procurement/purchase-requests', optionLabel: (r) => r.number },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
@@ -1255,7 +1255,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'dueDate', label: 'Due', render: (r) => date(r.dueDate) },
         ],
         fields: [
-          { name: 'number', label: 'RFQ Number', required: true },
+          { name: 'number', label: 'RFQ Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'purchaseRequestId', label: 'From Purchase Request', type: 'select', optionsEndpoint: '/procurement/purchase-requests', optionLabel: (r) => r.number },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SENT', 'AWARDED', 'CLOSED']) },
           { name: 'dueDate', label: 'Due Date', type: 'date' },
@@ -1290,7 +1290,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'deliveryDate', label: 'Date', render: (r) => date(r.deliveryDate) },
         ],
         fields: [
-          { name: 'number', label: 'Delivery Note No.', required: true },
+          { name: 'number', label: 'Delivery Note No. (auto)', hideOnCreate: true, readOnly: true },
           { name: 'purchaseOrderId', label: 'Purchase Order', type: 'select', optionsEndpoint: '/procurement/purchase-orders', optionLabel: (r) => r.number },
           { name: 'status', label: 'Status', type: 'select', options: opt(['PENDING', 'PARTIAL', 'RECEIVED']) },
           { name: 'deliveryDate', label: 'Delivery Date', type: 'date' },
@@ -1358,7 +1358,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'responsiblePerson', label: 'Responsible' },
         ],
         fields: [
-          { name: 'number', label: 'NCR Number', required: true },
+          { name: 'number', label: 'NCR Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'description', label: 'Description', type: 'textarea', required: true },
           { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'severity', label: 'Severity', type: 'select', options: SEVERITY },
@@ -1440,11 +1440,13 @@ export const MODULES: Record<string, ModuleDef> = {
         dateFilter: true, filters: [{ field: 'type', label: 'Type', options: opt(['NEAR_MISS', 'FIRST_AID', 'MEDICAL', 'LOST_TIME', 'FATALITY', 'PROPERTY_DAMAGE']) }, { field: 'severity', label: 'Severity', options: SEVERITY }],
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
+          { key: 'number', label: 'No.', render: (r) => r.number ?? '—' },
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
           { key: 'type', label: 'Type' }, { key: 'severity', label: 'Severity' },
           { key: 'description', label: 'Description' }, { key: 'location', label: 'Location' },
         ],
         fields: [
+          { name: 'number', label: 'Incident Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'type', label: 'Type', type: 'select', options: opt(['NEAR_MISS', 'FIRST_AID', 'MEDICAL', 'LOST_TIME', 'FATALITY', 'PROPERTY_DAMAGE']) },
           { name: 'severity', label: 'Severity', type: 'select', options: SEVERITY },
           { name: 'description', label: 'Description', type: 'textarea', required: true },

@@ -843,6 +843,7 @@ model Incident {
   id             String       @id @default(cuid())
   organizationId String
   projectId      String
+  number         String?
   type           IncidentType @default(NEAR_MISS)
   severity       Severity     @default(LOW)
   description    String

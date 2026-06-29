@@ -58,7 +58,7 @@ const poCreate = z.object({
   supplierId: z.string(),
   projectId: z.string().optional(),
   purchaseRequestId: z.string().optional(),
-  number: z.string().min(1),
+  number: z.string().min(1).optional(), // auto-generated (PO-####) when omitted
   status: z.nativeEnum(PoStatus).optional(),
   orderDate: z.string().datetime().optional(),
   expectedDate: z.string().datetime().optional(),
@@ -78,6 +78,7 @@ router.use(
     writePerm: 'procurement:write',
     createSchema: poCreate,
     updateSchema: poUpdate,
+    autoCode: { field: 'number', prefix: 'PO' },
     searchField: 'number',
     dateField: 'orderDate',
     filterFields: ['status'],
@@ -243,7 +244,7 @@ router.use('/purchase-requests', prRouter);
 const rfqCreate = z.object({
   projectId: z.string().optional(),
   purchaseRequestId: z.string().optional(),
-  number: z.string().min(1),
+  number: z.string().min(1).optional(), // auto-generated (RFQ-####) when omitted
   status: z.enum(['DRAFT', 'SENT', 'AWARDED', 'CLOSED']).optional(),
   dueDate: z.string().datetime().optional(),
   notes: z.string().optional(),
@@ -254,6 +255,7 @@ router.use(
     model: 'rfq', entity: 'rfq',
     readPerm: 'procurement:read', writePerm: 'procurement:write',
     createSchema: rfqCreate, updateSchema: rfqCreate.partial(),
+    autoCode: { field: 'number', prefix: 'RFQ' },
     searchField: 'number', orderBy: { createdAt: 'desc' },
     include: { quotes: true },
     transform: stamp,
@@ -305,7 +307,7 @@ router.use('/rfq-quotes', quoteRouter);
 const deliveryCreate = z.object({
   projectId: z.string().optional(),
   purchaseOrderId: z.string().optional(),
-  number: z.string().min(1),
+  number: z.string().min(1).optional(), // auto-generated (GRN-####) when omitted
   status: z.enum(['PENDING', 'PARTIAL', 'RECEIVED']).optional(),
   deliveryDate: z.string().datetime().optional(),
   receivedBy: z.string().optional(),
@@ -317,6 +319,7 @@ router.use(
     model: 'delivery', entity: 'delivery',
     readPerm: 'procurement:read', writePerm: 'procurement:write',
     createSchema: deliveryCreate, updateSchema: deliveryCreate.partial(),
+    autoCode: { field: 'number', prefix: 'GRN' },
     searchField: 'number', dateField: 'deliveryDate', filterFields: ['status'],
     orderBy: { deliveryDate: 'desc' },
     include: { purchaseOrder: { select: { id: true, number: true } } },

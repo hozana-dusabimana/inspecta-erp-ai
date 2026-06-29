@@ -98,7 +98,7 @@ router.use(
 // ── Client invoices / IPC ─────────────────────────────────────
 const invoiceCreate = z.object({
   projectId: z.string(),
-  number: z.string().min(1),
+  number: z.string().min(1).optional(), // auto-generated (INV-####) when omitted
   description: z.string().optional(),
   amount: z.number().nonnegative(),
   status: z.nativeEnum(InvoiceStatus).optional(),
@@ -127,6 +127,7 @@ router.use(
     writePerm: 'finance:write',
     createSchema: invoiceCreate,
     updateSchema: invoiceCreate.partial(),
+    autoCode: { field: 'number', prefix: 'INV' },
     searchField: 'number',
     dateField: 'issueDate',
     filterFields: ['status'],
@@ -183,7 +184,7 @@ router.use(
 const paymentCreate = z.object({
   projectId: z.string(),
   invoiceId: z.string().optional(),
-  reference: z.string().min(1),
+  reference: z.string().min(1).optional(), // auto-generated (PAY-####) when omitted
   amount: z.number().nonnegative(),
   date: z.string().datetime().optional(),
 });
@@ -196,6 +197,7 @@ router.use(
     writePerm: 'finance:write',
     createSchema: paymentCreate,
     updateSchema: paymentCreate.partial(),
+    autoCode: { field: 'reference', prefix: 'PAY' },
     searchField: 'reference',
     dateField: 'date',
     sumFields: ['amount'],

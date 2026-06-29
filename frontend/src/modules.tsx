@@ -388,6 +388,8 @@ export const MODULES: Record<string, ModuleDef> = {
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
           { key: 'status', label: 'Status' },
+          { key: 'groundSurface', label: 'Ground', align: 'right', render: (r) => r.groundSurface != null ? `${num(r.groundSurface)} ${r.groundSurfaceUnit ?? 'm²'}` : '—' },
+          { key: 'buildingSurface', label: 'Building (m²)', align: 'right', render: (r) => r.buildingSurface != null ? num(r.buildingSurface) : '—' },
           { key: 'budget', label: 'Contract Value', align: 'right', render: (r) => money(r.budget) },
           { key: 'progressPct', label: 'Progress', align: 'right', render: (r) => `${num(r.progressPct)}%` },
         ],

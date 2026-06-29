@@ -27,7 +27,11 @@ router.get(
       { header: 'Code', key: 'code', width: 14 },
       { header: 'Name', key: 'name', width: 30 },
       { header: 'Client', key: 'client', width: 24 },
+      { header: 'Application No', key: 'applicationNumber', width: 18 },
+      { header: 'Permit No', key: 'permitNumber', width: 16 },
       { header: 'Location', key: 'location', width: 20 },
+      { header: 'Ground Surface', key: 'groundSurface', width: 16 },
+      { header: 'Building Surface (m²)', key: 'buildingSurface', width: 18 },
       { header: 'Status', key: 'status', width: 14 },
       { header: 'Health', key: 'health', width: 12 },
       { header: 'Progress %', key: 'progress', width: 12 },
@@ -39,7 +43,11 @@ router.get(
         code: p.code,
         name: p.name,
         client: p.client?.name ?? '',
+        applicationNumber: p.applicationNumber ?? '',
+        permitNumber: p.permitNumber ?? '',
         location: p.location ?? '',
+        groundSurface: p.groundSurface != null ? `${p.groundSurface} ${p.groundSurfaceUnit ?? 'm²'}` : '',
+        buildingSurface: p.buildingSurface ?? '',
         status: p.status,
         health: p.health,
         progress: p.progressPct,
@@ -64,11 +72,15 @@ router.get(
       orderBy: { createdAt: 'desc' },
     });
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const header = ['Code', 'Name', 'Location', 'Status', 'Health', 'Progress %', 'Budget'];
+    const header = ['Code', 'Name', 'Application No', 'Permit No', 'Location', 'Ground Surface', 'Building Surface (m²)', 'Status', 'Health', 'Progress %', 'Budget'];
     const lines = [header.join(',')];
     for (const p of projects) {
       lines.push(
-        [p.code, p.name, p.location, p.status, p.health, p.progressPct, Number(p.budget)].map(esc).join(','),
+        [
+          p.code, p.name, p.applicationNumber, p.permitNumber, p.location,
+          p.groundSurface != null ? `${p.groundSurface} ${p.groundSurfaceUnit ?? 'm²'}` : '',
+          p.buildingSurface, p.status, p.health, p.progressPct, Number(p.budget),
+        ].map(esc).join(','),
       );
     }
     res.setHeader('Content-Type', 'text/csv');
@@ -117,6 +129,14 @@ router.get(
     doc.text(`Client: ${project.client?.name ?? '—'}`);
     doc.text(`Manager: ${project.manager?.fullName ?? '—'}`);
     doc.text(`Location: ${project.location ?? '—'}`);
+    if (project.applicationNumber || project.permitNumber) {
+      doc.text(`Application No: ${project.applicationNumber ?? '—'}    Permit No: ${project.permitNumber ?? '—'}`);
+    }
+    if (project.groundSurface != null || project.buildingSurface != null) {
+      const ground = project.groundSurface != null ? `${project.groundSurface} ${project.groundSurfaceUnit ?? 'm²'}` : '—';
+      const building = project.buildingSurface != null ? `${project.buildingSurface} m²` : '—';
+      doc.text(`Ground Surface: ${ground}    Building Surface: ${building}`);
+    }
     doc.text(`Status: ${project.status}    Health: ${project.health}    Progress: ${project.progressPct}%`);
     doc.moveDown();
 

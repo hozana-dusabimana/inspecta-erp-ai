@@ -768,7 +768,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'code', label: 'Code (auto)', hideOnCreate: true, readOnly: true },
           { name: 'categoryId', label: 'Category', type: 'select', optionsEndpoint: '/equipment/categories', optionLabel: (r) => r.name },
           { name: 'ownershipStatus', label: 'Ownership', type: 'select', options: opt(['OWNED', 'RENTED', 'LEASED']) },
-          { name: 'status', label: 'Status', type: 'select', options: opt(['AVAILABLE', 'IN_USE', 'MAINTENANCE']) },
+          { name: 'status', label: 'Status', type: 'select', options: opt(['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'IDLE', 'DECOMMISSIONED']) },
           { name: 'fuelType', label: 'Fuel Type', type: 'select', options: opt(['diesel', 'petrol', 'electric', 'none']) },
           { name: 'primaryProjectId', label: 'Primary Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'hourlyRate', label: 'Hourly Rate', type: 'number' },

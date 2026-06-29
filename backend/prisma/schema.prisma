@@ -1297,7 +1297,7 @@ model EquipmentCategory {
 model Equipment {
   id              String   @id @default(cuid())
   organizationId  String
-  code            String?
+  code            String?  @unique // auto-generated EQ-#### (spec: equipment_code, unique)
   name            String
   categoryId      String?
   primaryProjectId String? // equipment's home/base project

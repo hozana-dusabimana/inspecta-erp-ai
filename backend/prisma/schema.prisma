@@ -174,7 +174,7 @@ model Organization {
   industry  String?
   country   String?
   timezone  String?
-  currency  String?
+  currency  String   @default("RWF")
   phone     String?
   address   String?
   logoUrl   String?
@@ -276,7 +276,8 @@ model Contract {
   endDate        DateTime?
   contractDate         DateTime?
   commencementDate     DateTime?
-  defectsLiabilityDays Int?
+  signedDate           DateTime?
+  defectsLiabilityMonths Int?    // defects liability period in months (spec: defects_liability_months)
   retentionPct         Decimal?  @db.Decimal(5, 2)
   advancePayment       Decimal?  @db.Decimal(18, 2)
   documentsUrl         String?

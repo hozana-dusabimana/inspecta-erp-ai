@@ -66,7 +66,8 @@ const updateSchema = z.object({
   industry: optStr,
   country: optStr,
   timezone: optStr,
-  currency: optStr.transform((v) => (v ? v.toUpperCase().slice(0, 8) : v)),
+  // currency is NOT NULL — leave unchanged when blank (never set to null).
+  currency: z.string().trim().max(8).optional().transform((v) => (v ? v.toUpperCase() : undefined)),
   phone: optStr,
   address: z.string().trim().max(400).optional().transform((v) => (v === undefined || v === '' ? null : v)),
   logoUrl: optStr,

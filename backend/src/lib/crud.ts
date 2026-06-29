@@ -90,6 +90,7 @@ const DATE_FIELDS = new Set([
   'actualEndDate',
   'contractDate',
   'commencementDate',
+  'signedDate',
   'effectiveDate',
   'periodStart',
   'periodEnd',

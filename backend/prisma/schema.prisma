@@ -308,6 +308,8 @@ model Project {
   location       String?
   projectType         String?
   category            String?
+  applicationNumber   String?
+  permitNumber        String?
   timezone            String?
   gpsLat              Float?
   gpsLng              Float?

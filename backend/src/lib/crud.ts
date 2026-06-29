@@ -104,6 +104,7 @@ const DATE_FIELDS = new Set([
   'completedDate',
   'requiredByDate',
   'neededByDate',
+  'dateRequested',
   'deliveryDate',
   'reportDate',
   'sampleDate',

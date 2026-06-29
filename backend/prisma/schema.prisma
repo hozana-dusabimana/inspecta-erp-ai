@@ -754,6 +754,7 @@ model PurchaseOrder {
   items    PurchaseOrderItem[]
   deliveries Delivery[]
 
+  @@unique([organizationId, number]) // spec: po_number UNIQUE (scoped per tenant)
   @@index([organizationId])
   @@map("purchase_orders")
 }
@@ -1414,6 +1415,7 @@ model PurchaseRequest {
   number         String
   title          String?
   status         PrStatus @default(DRAFT)
+  dateRequested  DateTime? @default(now()) // spec: date_requested
   neededByDate   DateTime?
   requestedById  String?
   approvedById   String?

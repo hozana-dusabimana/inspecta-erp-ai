@@ -1246,6 +1246,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'number', label: 'PR Number', required: true },
           { name: 'title', label: 'Title' },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'dateRequested', label: 'Date Requested', type: 'date' },
           { name: 'neededByDate', label: 'Needed By', type: 'date' },
           { name: 'notes', label: 'Notes', type: 'textarea' },
         ],

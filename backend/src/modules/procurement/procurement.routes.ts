@@ -118,6 +118,7 @@ const prCreate = z.object({
   projectId: z.string().optional(),
   number: z.string().min(1),
   title: z.string().optional(),
+  dateRequested: z.string().datetime().optional(),
   neededByDate: z.string().datetime().optional(),
   notes: z.string().optional(),
   items: z.array(prItem).default([]),

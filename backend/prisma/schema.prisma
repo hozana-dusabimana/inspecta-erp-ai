@@ -310,6 +310,9 @@ model Project {
   category            String?
   applicationNumber   String?
   permitNumber        String?
+  groundSurface       Float?
+  groundSurfaceUnit   String?       @default("m²")
+  buildingSurface     Float?
   timezone            String?
   gpsLat              Float?
   gpsLng              Float?

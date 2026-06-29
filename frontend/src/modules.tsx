@@ -1588,6 +1588,7 @@ export const MODULES: Record<string, ModuleDef> = {
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
+          { key: 'wbsItem', label: 'WBS', render: (r) => (r.wbsItem ? `${r.wbsItem.code}` : '—') },
           { key: 'milestone', label: 'Type', render: (r) => (r.milestone ? '◆ Milestone' : 'Task') },
           { key: 'durationDays', label: 'Duration', align: 'right' },
           { key: 'startDate', label: 'Start', render: (r) => date(r.startDate) },
@@ -1597,6 +1598,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
+          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'durationDays', label: 'Duration (days)', type: 'number', required: true },
           { name: 'startDate', label: 'Start Date', type: 'date' },
           { name: 'milestone', label: 'Milestone?', type: 'select', options: [{ value: 'false', label: 'Task' }, { value: 'true', label: 'Milestone' }] },

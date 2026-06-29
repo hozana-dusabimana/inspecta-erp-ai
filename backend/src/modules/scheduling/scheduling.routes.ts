@@ -18,6 +18,7 @@ const boolish = z.preprocess(
 
 const activitySchema = z.object({
   projectId: z.string(),
+  wbsItemId: z.string().optional(),
   code: z.string().min(1),
   name: z.string().min(1),
   durationDays: z.number().int().positive(),
@@ -39,6 +40,20 @@ const crud = createCrudRouter({
   searchField: 'name',
   requireProject: true,
   orderBy: { code: 'asc' },
+  include: { wbsItem: { select: { id: true, code: true, name: true } } },
+  refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
+  // A linked WBS item must belong to the same project as the activity.
+  validate: async (data, req) => {
+    const wbsItemId = data.wbsItemId as string | undefined;
+    const projectId = data.projectId as string | undefined;
+    if (!wbsItemId) return;
+    const wbs = await prisma.wbsItem.findFirst({
+      where: { id: wbsItemId, organizationId: req.user!.orgId },
+      select: { projectId: true },
+    });
+    if (!wbs) throw BadRequest('wbsItemId does not belong to your organization');
+    if (projectId && wbs.projectId !== projectId) throw BadRequest('WBS item must belong to the same project as the activity');
+  },
   // Baseline finish = start + duration (calendar days); recomputed on each save.
   transform: (data) => {
     const start = data.startDate as Date | undefined;

@@ -410,6 +410,7 @@ model WbsItem {
   parent   WbsItem?  @relation("WbsTree", fields: [parentId], references: [id], onDelete: SetNull)
   children WbsItem[] @relation("WbsTree")
   boqItems BoqItem[]
+  scheduleActivities ScheduleActivity[]
 
   @@index([organizationId])
   @@index([projectId])
@@ -970,6 +971,7 @@ model ScheduleActivity {
   id             String   @id @default(cuid())
   organizationId String
   projectId      String
+  wbsItemId      String?
   code           String
   name           String
   durationDays   Int      @default(1)
@@ -987,6 +989,7 @@ model ScheduleActivity {
   updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsItem WbsItem? @relation(fields: [wbsItemId], references: [id], onDelete: SetNull)
   dependencies ScheduleDependency[] @relation("ActivityDeps")
   dependents   ScheduleDependency[] @relation("PredecessorDeps")
 

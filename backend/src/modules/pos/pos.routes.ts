@@ -43,7 +43,7 @@ router.use('/products', createCrudRouter({
 
 // ── Service invoices (billed services outside the project IPC flow) ──
 const serviceInvoiceSchema = z.object({
-  invoiceNumber: z.string().min(1),
+  invoiceNumber: z.string().min(1).optional(), // auto-generated SI-#### when omitted
   clientId: z.string().optional(),
   clientNameFreetext: z.string().optional(),
   description: z.string().min(1),
@@ -56,6 +56,7 @@ router.use('/service-invoices', createCrudRouter({
   model: 'serviceInvoice', entity: 'service-invoice',
   readPerm: 'pos:read', writePerm: 'pos:write',
   createSchema: serviceInvoiceSchema, updateSchema: serviceInvoiceSchema.partial(),
+  autoCode: { field: 'invoiceNumber', prefix: 'SI' },
   searchField: 'invoiceNumber', orderBy: { createdAt: 'desc' },
   dateField: 'dueDate',
   filterFields: ['status'],

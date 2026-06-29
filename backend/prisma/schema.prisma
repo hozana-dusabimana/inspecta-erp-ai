@@ -630,6 +630,7 @@ model Invoice {
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   payments Payment[]
 
+  @@unique([organizationId, certificateNumber]) // spec: ipc_number UNIQUE (IPC certificates)
   @@index([organizationId])
   @@index([projectId])
   @@index([organizationId, projectId])
@@ -835,6 +836,7 @@ model Ncr {
   inspection Inspection? @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
   actions    CorrectiveAction[]
 
+  @@unique([organizationId, number]) // spec: ncr_number UNIQUE
   @@index([organizationId])
   @@index([projectId, status])
   @@map("ncrs")
@@ -1942,6 +1944,7 @@ model PosTransaction {
   tillSession TillSession          @relation(fields: [tillSessionId], references: [id], onDelete: Cascade)
   lines       PosTransactionLine[]
 
+  @@unique([organizationId, receiptNumber]) // spec: receipt_number UNIQUE
   @@index([organizationId])
   @@index([tillSessionId])
   @@map("pos_transactions")
@@ -1984,6 +1987,7 @@ model ServiceInvoice {
 
   client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, invoiceNumber]) // spec: invoice_number UNIQUE (SI-####)
   @@index([organizationId])
   @@map("service_invoices")
 }

@@ -17,6 +17,13 @@ type Delegate = {
   delete: (args: unknown) => Promise<Record<string, unknown>>;
 };
 
+interface AutoCodeSpec {
+  field: string;
+  prefix: string;
+  /** Only generate when this returns true for the parsed body (e.g. IPC-only). */
+  when?: (data: Record<string, unknown>) => boolean;
+}
+
 export interface CrudOptions {
   /** Prisma model accessor, e.g. "productionEntry". */
   model: string;
@@ -60,9 +67,11 @@ export interface CrudOptions {
    * Auto-generate a sequential, org-scoped identifier when the field is omitted
    * or blank on create. e.g. { field: 'number', prefix: 'NCR' } → NCR-0001,
    * NCR-0002, … (skips codes freed by deletes). The field must be optional in
-   * `createSchema` so an omitted value passes validation.
+   * `createSchema` so an omitted value passes validation. Pass an array to
+   * generate several. `when` restricts generation to rows matching a predicate
+   * (e.g. only assign an IPC number when the invoice is an IPC).
    */
-  autoCode?: { field: string; prefix: string };
+  autoCode?: AutoCodeSpec | AutoCodeSpec[];
   /**
    * Async cross-field/relational validation that the generic `refs`/project
    * checks can't express (e.g. two FKs must share the same parent). Runs after
@@ -143,7 +152,10 @@ function coerceDates(data: Record<string, unknown>): Record<string, unknown> {
  */
 async function generateAutoCode(model: string, orgId: string, field: string, prefix: string): Promise<string> {
   const delegate = (prisma as unknown as Record<string, Delegate>)[model];
-  let n = (await delegate.count({ where: { organizationId: orgId } })) + 1;
+  // Count rows that already carry a value with this prefix — gives a correct
+  // per-prefix sequence and works whether the field is nullable or not (handles
+  // fields only set on a subset of rows, e.g. an IPC number on the invoice table).
+  let n = (await delegate.count({ where: { organizationId: orgId, [field]: { startsWith: `${prefix}-` } } })) + 1;
   for (let i = 0; i < 10000; i++) {
     const code = `${prefix}-${String(n).padStart(4, '0')}`;
     const taken = await delegate.findFirst({ where: { organizationId: orgId, [field]: code } });
@@ -358,10 +370,13 @@ export function createCrudRouter(opts: CrudOptions): Router {
     asyncHandler(async (req, res) => {
       const parsed = opts.createSchema.parse(req.body) as Record<string, unknown>;
       if (opts.autoCode) {
-        const { field, prefix } = opts.autoCode;
-        const cur = parsed[field];
-        if (cur === undefined || cur === null || String(cur).trim() === '') {
-          parsed[field] = await generateAutoCode(opts.model, req.user!.orgId, field, prefix);
+        const codes = Array.isArray(opts.autoCode) ? opts.autoCode : [opts.autoCode];
+        for (const ac of codes) {
+          if (ac.when && !ac.when(parsed)) continue;
+          const cur = parsed[ac.field];
+          if (cur === undefined || cur === null || String(cur).trim() === '') {
+            parsed[ac.field] = await generateAutoCode(opts.model, req.user!.orgId, ac.field, ac.prefix);
+          }
         }
       }
       if (opts.requireProject || parsed.projectId) {

@@ -736,7 +736,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'status', label: 'Status' },
         ],
         fields: [
-          { name: 'invoiceNumber', label: 'Invoice Number', required: true },
+          { name: 'invoiceNumber', label: 'Invoice Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'clientId', label: 'Client', type: 'select', optionsEndpoint: '/clients', optionLabel: (r) => r.name },
           { name: 'clientNameFreetext', label: 'Client Name (one-off)' },
           { name: 'description', label: 'Description', type: 'textarea', required: true },
@@ -1039,7 +1039,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'amount', label: 'Amount (if not an IPC)', type: 'number', required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED']) },
           { name: 'isIpc', label: 'Is IPC?', type: 'select', options: [{ value: 'false', label: 'Invoice' }, { value: 'true', label: 'IPC / Certificate' }] },
-          { name: 'certificateNumber', label: 'Certificate No.' },
+          { name: 'certificateNumber', label: 'Certificate No. (auto for IPC)', hideOnCreate: true, readOnly: true },
           { name: 'periodStart', label: 'Period Start (IPC)', type: 'date' },
           { name: 'periodEnd', label: 'Period End (IPC)', type: 'date' },
           { name: 'grossValuation', label: 'Gross Valuation (IPC)', type: 'number' },

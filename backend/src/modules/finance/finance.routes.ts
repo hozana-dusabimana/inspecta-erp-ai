@@ -127,7 +127,10 @@ router.use(
     writePerm: 'finance:write',
     createSchema: invoiceCreate,
     updateSchema: invoiceCreate.partial(),
-    autoCode: { field: 'number', prefix: 'INV' },
+    autoCode: [
+      { field: 'number', prefix: 'INV' },
+      { field: 'certificateNumber', prefix: 'IPC', when: (d) => d.isIpc === true }, // IPC certificates only
+    ],
     searchField: 'number',
     dateField: 'issueDate',
     filterFields: ['status'],

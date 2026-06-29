@@ -582,7 +582,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'name', label: 'Trade Name', required: true },
-          { name: 'code', label: 'Code' },
+          { name: 'code', label: 'Code (auto)', hideOnCreate: true, readOnly: true },
           { name: 'description', label: 'Description', type: 'textarea' },
         ],
       },
@@ -762,7 +762,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'name', label: 'Equipment Name', required: true },
-          { name: 'code', label: 'Code' },
+          { name: 'code', label: 'Code (auto)', hideOnCreate: true, readOnly: true },
           { name: 'categoryId', label: 'Category', type: 'select', optionsEndpoint: '/equipment/categories', optionLabel: (r) => r.name },
           { name: 'ownershipStatus', label: 'Ownership', type: 'select', options: opt(['OWNED', 'RENTED', 'LEASED']) },
           { name: 'status', label: 'Status', type: 'select', options: opt(['AVAILABLE', 'IN_USE', 'MAINTENANCE']) },
@@ -780,7 +780,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'name', label: 'Category Name', required: true },
-          { name: 'code', label: 'Code' },
+          { name: 'code', label: 'Code (auto)', hideOnCreate: true, readOnly: true },
           { name: 'description', label: 'Description', type: 'textarea' },
         ],
       },

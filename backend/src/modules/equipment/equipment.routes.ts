@@ -18,6 +18,7 @@ const categories = createCrudRouter({
   model: 'equipmentCategory', entity: 'equipment-category',
   readPerm: 'equipment:read', writePerm: 'equipment:write',
   createSchema: categorySchema, updateSchema: categorySchema.partial(),
+  autoCode: { field: 'code', prefix: 'CAT' },
   searchField: 'name', orderBy: { name: 'asc' }, transform: stamp,
 });
 
@@ -37,6 +38,7 @@ const register = createCrudRouter({
   model: 'equipment', entity: 'equipment',
   readPerm: 'equipment:read', writePerm: 'equipment:write',
   createSchema: equipmentSchema, updateSchema: equipmentSchema.partial(),
+  autoCode: { field: 'code', prefix: 'EQ' },
   searchField: 'name', orderBy: { name: 'asc' },
   include: { category: { select: { id: true, name: true } } },
   refs: [{ field: 'categoryId', model: 'equipmentCategory' }],

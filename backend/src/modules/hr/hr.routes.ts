@@ -24,6 +24,7 @@ const tradeSchema = z.object({
 const trades = createCrudRouter({
   model: 'trade', entity: 'trade', readPerm: 'hr:read', writePerm: 'hr:write',
   createSchema: tradeSchema, updateSchema: tradeSchema.partial(),
+  autoCode: { field: 'code', prefix: 'TRD' },
   searchField: 'name', orderBy: { name: 'asc' }, transform: stamp,
 });
 

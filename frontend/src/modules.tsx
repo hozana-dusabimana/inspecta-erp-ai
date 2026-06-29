@@ -442,6 +442,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'type', label: 'Type', render: (r) => String(r.type).replace(/_/g, ' ') },
           { key: 'status', label: 'Status' },
           { key: 'value', label: 'Value', align: 'right', render: (r) => money(r.value) },
+          { key: 'signedDate', label: 'Signed', render: (r) => date(r.signedDate) },
+          { key: 'defectsLiabilityMonths', label: 'Defects Liab.', align: 'right', render: (r) => (r.defectsLiabilityMonths != null ? `${r.defectsLiabilityMonths} mo` : '—') },
         ],
         fields: [
           { name: 'reference', label: 'Reference', required: true },

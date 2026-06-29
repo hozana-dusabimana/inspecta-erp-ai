@@ -10,6 +10,8 @@ export interface Field {
   options?: { value: string; label: string }[];
   /** Populate a select from a live API list (foreign-key pickers). */
   optionsEndpoint?: string;
+  /** Append the current projectId to optionsEndpoint so the picker only lists this project's records. */
+  scopeToProject?: boolean;
   optionLabel?: (row: Record<string, any>) => string;
   required?: boolean;
   placeholder?: string;
@@ -35,10 +37,15 @@ export interface SummaryCardDef {
   money?: boolean;
 }
 
-function DynamicSelect({ field, value, onChange, required }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean }) {
+function DynamicSelect({ field, value, onChange, required, projectId }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean; projectId?: string }) {
+  const url = useMemo(() => {
+    let u = field.optionsEndpoint!;
+    if (field.scopeToProject && projectId) u += (u.includes('?') ? '&' : '?') + 'projectId=' + projectId;
+    return u;
+  }, [field.optionsEndpoint, field.scopeToProject, projectId]);
   const { data } = useQuery({
-    queryKey: ['options', field.optionsEndpoint],
-    queryFn: () => api.get<Record<string, any>[]>(field.optionsEndpoint!),
+    queryKey: ['options', url],
+    queryFn: () => api.get<Record<string, any>[]>(url),
   });
   const rows = data?.data ?? [];
   return (
@@ -413,7 +420,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                 <div key={f.name} className="space-y-1">
                   <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">{f.label}</label>
                   {f.optionsEndpoint ? (
-                    <DynamicSelect field={f} value={form[f.name] ?? ''} required={f.required} onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))} />
+                    <DynamicSelect field={f} value={form[f.name] ?? ''} required={f.required} projectId={projectId} onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))} />
                   ) : f.type === 'textarea' ? (
                     <textarea
                       value={form[f.name] ?? ''} required={f.required}

@@ -346,16 +346,29 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
   if (!projectId) throw BadRequest('projectId is required');
   const orgId = req.user!.orgId;
 
-  const [items, prod] = await Promise.all([
+  const [items, prod, acts] = await Promise.all([
     prisma.wbsItem.findMany({ where: { organizationId: orgId, projectId } }),
     prisma.productionEntry.groupBy({
       by: ['wbsItemId'],
       where: { organizationId: orgId, projectId, wbsItemId: { not: null } },
       _sum: { plannedQty: true, actualQty: true },
     }),
+    // Linked schedule activities — for date roll-up onto WBS branches.
+    prisma.scheduleActivity.findMany({
+      where: { organizationId: orgId, projectId, wbsItemId: { not: null } },
+      select: { wbsItemId: true, startDate: true, finishDate: true },
+    }),
   ]);
 
   const prodById = new Map(prod.map((p) => [p.wbsItemId as string, p._sum]));
+  const actsByWbs = new Map<string, { start: number | null; finish: number | null }[]>();
+  for (const a of acts) {
+    const arr = actsByWbs.get(a.wbsItemId as string) ?? [];
+    arr.push({ start: a.startDate ? a.startDate.getTime() : null, finish: a.finishDate ? a.finishDate.getTime() : null });
+    actsByWbs.set(a.wbsItemId as string, arr);
+  }
+  const minOf = (xs: (number | null)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? Math.min(...v) : null; };
+  const maxOf = (xs: (number | null)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? Math.max(...v) : null; };
   const kids = new Map<string, typeof items>();
   for (const it of items) {
     const key = it.parentId ?? '__root';
@@ -364,14 +377,19 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
     kids.set(key, arr);
   }
 
-  const memo = new Map<string, { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean }>();
-  const compute = (it: (typeof items)[number], guard: Set<string>): { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean } => {
+  type Computed = { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean; start: number | null; finish: number | null };
+  const memo = new Map<string, Computed>();
+  const compute = (it: (typeof items)[number], guard: Set<string>): Computed => {
     const cached = memo.get(it.id);
     if (cached) return cached;
-    if (guard.has(it.id)) return { progress: 0, budget: 0, fromProduction: false, isLeaf: true }; // cycle guard
+    if (guard.has(it.id)) return { progress: 0, budget: 0, fromProduction: false, isLeaf: true, start: null, finish: null }; // cycle guard
     guard.add(it.id);
     const children = kids.get(it.id) ?? [];
-    let result: { progress: number; budget: number; fromProduction: boolean; isLeaf: boolean };
+    // This node's own linked schedule activities contribute dates at any level.
+    const own = actsByWbs.get(it.id) ?? [];
+    const starts: (number | null)[] = own.map((a) => a.start);
+    const finishes: (number | null)[] = own.map((a) => a.finish);
+    let result: Computed;
     if (children.length === 0) {
       const sums = prodById.get(it.id);
       const planned = Number(sums?.plannedQty ?? 0);
@@ -381,7 +399,7 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
         progress = Math.min(100, (Number(sums?.actualQty ?? 0) / planned) * 100);
         fromProduction = true;
       }
-      result = { progress, budget: Number(it.budgetAmount ?? 0), fromProduction, isLeaf: true };
+      result = { progress, budget: Number(it.budgetAmount ?? 0), fromProduction, isLeaf: true, start: minOf(starts), finish: maxOf(finishes) };
     } else {
       let weightSum = 0;
       let weighted = 0;
@@ -391,11 +409,13 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
         weightSum += c.weightPct;
         weighted += c.weightPct * cr.progress;
         budget += cr.budget;
+        starts.push(cr.start);
+        finishes.push(cr.finish);
       }
       const progress = weightSum > 0
         ? weighted / weightSum
         : children.reduce((s, c) => s + compute(c, guard).progress, 0) / children.length;
-      result = { progress, budget, fromProduction: false, isLeaf: false };
+      result = { progress, budget, fromProduction: false, isLeaf: false, start: minOf(starts), finish: maxOf(finishes) };
     }
     memo.set(it.id, result);
     return result;
@@ -417,6 +437,8 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
       budget: r.budget,
       fromProduction: r.fromProduction,
       isLeaf: r.isLeaf,
+      plannedStart: r.start != null ? new Date(r.start).toISOString() : null,
+      plannedFinish: r.finish != null ? new Date(r.finish).toISOString() : null,
       childWeightSum: children.length ? Math.round(childWeightSum * 10) / 10 : null,
     };
   });

@@ -19,10 +19,13 @@ interface Rollup {
   budget: number;
   fromProduction: boolean;
   isLeaf: boolean;
+  plannedStart: string | null;
+  plannedFinish: string | null;
   childWeightSum: number | null;
 }
 
 const money = (n: number) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const shortDate = (s: string | null) => (s ? new Date(s).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: '2-digit' }) : '');
 const barColor = (p: number) => (p >= 80 ? 'bg-emerald-500' : p >= 40 ? 'bg-amber-500' : 'bg-red-500');
 
 function buildTree(rows: WbsRow[]): Node[] {
@@ -132,8 +135,14 @@ export default function WbsTree({ projectId, canWrite }: { projectId?: string; c
             const r = rollupById.get(n.id);
             const progress = r ? r.progress : n.progressPct;
             const weightOff = r && r.childWeightSum != null && Math.abs(r.childWeightSum - 100) > 0.5;
+            const dateRange = r && (r.plannedStart || r.plannedFinish)
+              ? `${shortDate(r.plannedStart)} → ${shortDate(r.plannedFinish)}`
+              : null;
             return (
               <div className="flex items-center gap-2 shrink-0">
+                {dateRange && (
+                  <span className="text-[10px] font-mono text-brand-on-surface-variant hidden md:inline w-36 text-right" title="Planned schedule window (from linked activities)">{dateRange}</span>
+                )}
                 {weightOff && (
                   <span title={`Child weights sum to ${r!.childWeightSum}% (should be 100%)`} className="text-amber-500">
                     <AlertTriangle className="w-3.5 h-3.5" />

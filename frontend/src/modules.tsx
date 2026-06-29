@@ -1598,7 +1598,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
-          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'durationDays', label: 'Duration (days)', type: 'number', required: true },
           { name: 'startDate', label: 'Start Date', type: 'date' },
           { name: 'milestone', label: 'Milestone?', type: 'select', options: [{ value: 'false', label: 'Task' }, { value: 'true', label: 'Milestone' }] },
@@ -1616,8 +1616,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'lagDays', label: 'Lag (days)', align: 'right' },
         ],
         fields: [
-          { name: 'activityId', label: 'Activity', type: 'select', optionsEndpoint: '/scheduling', optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
-          { name: 'predecessorId', label: 'Predecessor (depends on)', type: 'select', optionsEndpoint: '/scheduling', optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
+          { name: 'activityId', label: 'Activity', type: 'select', optionsEndpoint: '/scheduling', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
+          { name: 'predecessorId', label: 'Predecessor (depends on)', type: 'select', optionsEndpoint: '/scheduling', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}`, required: true },
           { name: 'type', label: 'Relationship', type: 'select', options: [
             { value: 'FS', label: 'Finish → Start (FS)' },
             { value: 'SS', label: 'Start → Start (SS)' },

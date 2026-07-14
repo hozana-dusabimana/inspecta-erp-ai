@@ -7,6 +7,11 @@ import { useOnlineStatus } from './lib/useOnlineStatus';
 import { useViewNavigate, pathForView } from './lib/routes';
 import { ChatProvider, useChat } from './lib/chat';
 import LandingPage from './components/LandingPage';
+import AboutPage from './components/marketing/About';
+import ServicePage from './components/marketing/ServicePage';
+import InspectaErpPage from './components/marketing/InspectaErp';
+import TeamPage from './components/marketing/Team';
+import ContactPage from './components/marketing/Contact';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
 import DailyEntry from './components/DailyEntry';
@@ -50,15 +55,8 @@ function RequireAuth() {
 
 function LandingRoute() {
   const { user, loading } = useAuth();
-  const navigateView = useViewNavigate();
-  const [demoOpen, setDemoOpen] = useState(false);
   if (!loading && user) return <Navigate to="/dashboard" replace />;
-  return (
-    <>
-      <LandingPage onNavigate={navigateView} onBookDemo={() => setDemoOpen(true)} />
-      <BookDemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
-    </>
-  );
+  return <LandingPage />;
 }
 
 function LoginRoute() {
@@ -115,6 +113,13 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingRoute />} />
         <Route path="/login" element={<LoginRoute />} />
+
+        {/* Public marketing site */}
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/services/:slug" element={<ServicePage />} />
+        <Route path="/inspecta-erp" element={<InspectaErpPage />} />
+        <Route path="/team" element={<TeamPage />} />
+        <Route path="/contact" element={<ContactPage />} />
 
         <Route element={<RequireAuth />}>
           {/* Full-screen pages (own chrome) */}

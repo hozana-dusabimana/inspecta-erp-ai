@@ -43,4 +43,32 @@ router.post(
   }),
 );
 
+const contactSchema = z.object({
+  name: z.string().min(2).max(120),
+  email: z.string().email(),
+  phone: z.string().max(40).optional(),
+  company: z.string().max(160).optional(),
+  service: z.string().max(80).optional(),
+  message: z.string().min(1).max(4000),
+});
+
+// POST /api/public/contact — website contact form (emails the team).
+router.post(
+  '/contact',
+  demoLimiter,
+  asyncHandler(async (req, res) => {
+    const b = contactSchema.parse(req.body);
+    const to = env.smtp.fallbackTo || env.smtp.user;
+    if (isEmailConfigured() && to) {
+      await sendMail({
+        to,
+        subject: `Website enquiry — ${b.service || 'General'} — ${b.name}`,
+        text: `Name: ${b.name}\nEmail: ${b.email}\nPhone: ${b.phone ?? '—'}\nCompany: ${b.company ?? '—'}\nService: ${b.service ?? '—'}\n\n${b.message}\n\nReceived via inspecta.isiri.rw`,
+        html: `<h3>New website enquiry</h3><ul><li><b>Name:</b> ${b.name}</li><li><b>Email:</b> ${b.email}</li><li><b>Phone:</b> ${b.phone ?? '—'}</li><li><b>Company:</b> ${b.company ?? '—'}</li><li><b>Service:</b> ${b.service ?? '—'}</li></ul><p>${b.message}</p><p style="color:#99a;font-size:11px">via inspecta.isiri.rw</p>`,
+      });
+    }
+    return ok(res, { received: true, emailed: isEmailConfigured() && Boolean(to) }, 201);
+  }),
+);
+
 export default router;

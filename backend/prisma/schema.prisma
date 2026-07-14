@@ -2090,6 +2090,7 @@ model GoodsReceipt {
   receivedBy      String?
   supplierName    String?
   grnNumber       String?
+  confirmed       Boolean  @default(false) // requires a signed delivery note to confirm (Memo §6)
   note            String?
   createdBy String?
   updatedBy String?
@@ -2112,6 +2113,7 @@ model MaterialIssue {
   dateIssued     DateTime @default(now())
   issuedTo       String?
   issueNumber    String?
+  confirmed      Boolean  @default(false) // requires a signed issue slip to confirm (Memo §6)
   note           String?
   createdBy String?
   updatedBy String?

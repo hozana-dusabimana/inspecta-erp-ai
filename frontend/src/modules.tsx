@@ -1154,6 +1154,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'dateReceived', label: 'Received', render: (r) => date(r.dateReceived) },
           { key: 'quantityReceived', label: 'Qty', align: 'right', render: (r) => num(r.quantityReceived) },
           { key: 'supplierName', label: 'Supplier' },
+          { key: 'confirmed', label: 'Status', render: (r) => (r.confirmed ? <span className="text-emerald-600 font-semibold">✓ Confirmed</span> : <span className="text-amber-600 font-semibold">⚠ Unconfirmed</span>) },
         ],
         fields: [
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
@@ -1164,6 +1165,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'purchaseOrderId', label: 'Purchase Order', type: 'select', optionsEndpoint: '/procurement/purchase-orders', optionLabel: (r) => r.number },
           { name: 'supplierName', label: 'Supplier Name' },
           { name: 'receivedBy', label: 'Received By' },
+          { name: 'confirmed', label: 'Confirmed (needs signed delivery note attached)', type: 'select', options: [{ value: 'false', label: 'No — pending evidence' }, { value: 'true', label: 'Yes — confirm' }] },
           { name: 'note', label: 'Note' },
         ],
       },
@@ -1177,6 +1179,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'dateIssued', label: 'Issued', render: (r) => date(r.dateIssued) },
           { key: 'quantityIssued', label: 'Qty', align: 'right', render: (r) => num(r.quantityIssued) },
           { key: 'issuedTo', label: 'Issued To' },
+          { key: 'confirmed', label: 'Status', render: (r) => (r.confirmed ? <span className="text-emerald-600 font-semibold">✓ Confirmed</span> : <span className="text-amber-600 font-semibold">⚠ Unconfirmed</span>) },
         ],
         fields: [
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
@@ -1185,6 +1188,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'wbsItemId', label: 'WBS Item (cost allocation)' },
           { name: 'dateIssued', label: 'Date Issued', type: 'date' },
           { name: 'issuedTo', label: 'Issued To' },
+          { name: 'confirmed', label: 'Confirmed (needs signed issue slip attached)', type: 'select', options: [{ value: 'false', label: 'No — pending evidence' }, { value: 'true', label: 'Yes — confirm' }] },
           { name: 'note', label: 'Note' },
         ],
       },

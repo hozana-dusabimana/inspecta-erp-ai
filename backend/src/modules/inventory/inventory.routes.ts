@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { MovementType } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
+import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
@@ -191,6 +192,7 @@ const grnCreate = z.object({
   receivedBy: z.string().optional(),
   supplierName: z.string().optional(),
   grnNumber: z.string().optional(),
+  confirmed: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
   note: z.string().optional(),
 });
 router.use('/grn', createCrudRouter({
@@ -200,6 +202,17 @@ router.use('/grn', createCrudRouter({
   autoCode: { field: 'grnNumber', prefix: 'GRN' },
   searchField: 'grnNumber',
   dateField: 'dateReceived',
+  // Evidence gate: a GRN can't be confirmed without a signed delivery note.
+  validate: async (data, req) => {
+    if (!data.confirmed) return;
+    if (!data.id) throw BadRequest('Create the GRN, attach the signed delivery note, then confirm.');
+    const docs = await prisma.projectDocument.findMany({
+      where: { organizationId: req.user!.orgId, module: 'grn', recordId: String(data.id), deletedAt: null },
+      select: { documentCategory: true, fileType: true },
+    });
+    const hasNote = docs.some((d) => d.documentCategory === 'delivery_note' || d.documentCategory === 'signed_receipt' || d.fileType === 'pdf' || d.fileType === 'photo');
+    if (!hasNote) throw BadRequest('Cannot confirm this GRN without a signed delivery note or storekeeper receipt attached.');
+  },
   sumFields: ['quantityReceived'],
   orderBy: { dateReceived: 'desc' },
   refs: [{ field: 'materialId', model: 'material' }],
@@ -249,6 +262,7 @@ const issueCreate = z.object({
   dateIssued: z.string().datetime().optional(),
   issuedTo: z.string().optional(),
   issueNumber: z.string().optional(),
+  confirmed: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
   note: z.string().optional(),
 });
 router.use('/material-issues', createCrudRouter({
@@ -260,6 +274,17 @@ router.use('/material-issues', createCrudRouter({
   sumFields: ['quantityIssued'],
   requireProject: true, orderBy: { dateIssued: 'desc' },
   refs: [{ field: 'materialId', model: 'material' }, { field: 'wbsItemId', model: 'wbsItem' }],
+  // Evidence gate: a material issue can't be confirmed without a signed issue slip.
+  validate: async (data, req) => {
+    if (!data.confirmed) return;
+    if (!data.id) throw BadRequest('Create the issue, attach the signed issue slip, then confirm.');
+    const docs = await prisma.projectDocument.findMany({
+      where: { organizationId: req.user!.orgId, module: 'material_issue', recordId: String(data.id), deletedAt: null },
+      select: { documentCategory: true, fileType: true },
+    });
+    const hasSlip = docs.some((d) => d.documentCategory === 'issue_slip' || d.documentCategory === 'signed_receipt' || d.fileType === 'pdf' || d.fileType === 'photo');
+    if (!hasSlip) throw BadRequest('Cannot confirm this material issue without a signed issue slip attached.');
+  },
   transform: (data, req) => {
     if (!('id' in data)) data.createdBy = req.user!.id;
     data.updatedBy = req.user!.id;

@@ -21,6 +21,57 @@ const fileTypeFor = (mime: string): Doc['fileType'] => (mime.startsWith('image/'
 const prettyCat = (c?: string | null) => (c ? c.replace(/_/g, ' ') : '—');
 const kb = (n?: number | null) => (n ? `${Math.round(n / 1024)} KB` : '');
 
+// Client-side compression so a 10–20MB phone photo doesn't choke a weak site
+// connection. HEIC/HEIF is stored as-is (browsers can't reliably decode it).
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || /heic|heif/i.test(file.type)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxDim = 1920;
+    let { width, height } = bitmap;
+    if (Math.max(width, height) > maxDim) {
+      const s = maxDim / Math.max(width, height);
+      width = Math.round(width * s); height = Math.round(height * s);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    for (const q of [0.8, 0.6, 0.45, 0.3]) {
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', q));
+      if (blob && (blob.size <= 2 * 1024 * 1024 || q === 0.3)) {
+        return new File([blob], file.name.replace(/\.(png|heic|heif|webp|jpeg)$/i, '.jpg'), { type: 'image/jpeg' });
+      }
+    }
+    return file;
+  } catch {
+    return file;
+  }
+}
+
+// PUT with per-file progress (fetch can't report upload progress).
+function putWithProgress(url: string, blob: Blob, contentType: string, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status})`)));
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(blob);
+  });
+}
+
+// Retry flaky steps (site internet is unreliable) with a short backoff.
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (e) { lastErr = e; await new Promise((r) => setTimeout(r, 500 * (i + 1))); }
+  }
+  throw lastErr;
+}
+
 /**
  * Reusable evidence panel (Developer Memo §5.1). Lists documents attached to a
  * specific record and lets authorized users upload more. Embed at the bottom of
@@ -32,7 +83,7 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
   const canWrite = hasPermission('document:write');
   const [category, setCategory] = useState('progress_photo');
   const [description, setDescription] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Record<string, number>>({}); // fileName → %
   const [error, setError] = useState<string | null>(null);
 
   const key = ['/project-documents', module, recordId];
@@ -48,29 +99,30 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
     onError: (e) => setError(errorMessage(e)),
   });
 
-  async function upload(file: File) {
+  async function upload(original: File) {
     setError(null);
-    setBusy(file.name);
+    const file = await compressImage(original); // resize/HEIC-passthrough before upload
+    const name = file.name;
+    const contentType = file.type || 'application/octet-stream';
+    setProgress((p) => ({ ...p, [name]: 0 }));
     try {
-      // 1. signed upload URL  2. PUT the file  3. register the metadata row
-      const signed = await api.post<{ uploadUrl: string; storagePath: string }>(
-        '/project-documents/upload-url',
-        { module, recordId, projectId, fileName: file.name },
-      );
-      const put = await fetch(signed.data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
-      if (!put.ok) throw new Error(`Upload failed (${put.status})`);
-      await api.post('/project-documents', {
+      // 1. signed upload URL  2. PUT the file (with progress)  3. register metadata — each retried
+      const signed = await withRetry(() => api.post<{ uploadUrl: string; storagePath: string }>(
+        '/project-documents/upload-url', { module, recordId, projectId, fileName: name },
+      ));
+      await withRetry(() => putWithProgress(signed.data.uploadUrl, file, contentType, (pct) => setProgress((p) => ({ ...p, [name]: pct }))));
+      await withRetry(() => api.post('/project-documents', {
         module, recordId, projectId,
-        fileName: file.name, fileType: fileTypeFor(file.type), mimeType: file.type || 'application/octet-stream',
+        fileName: name, fileType: fileTypeFor(contentType), mimeType: contentType,
         fileSizeBytes: file.size, storagePath: signed.data.storagePath,
         documentCategory: category, description: description || undefined,
-      });
+      }));
       setDescription('');
       qc.invalidateQueries({ queryKey: key });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
-      setBusy(null);
+      setProgress((p) => { const n = { ...p }; delete n[name]; return n; });
     }
   }
 
@@ -134,8 +186,16 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
               <Camera className="w-3.5 h-3.5" /> Take photo
               <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onPick} />
             </label>
-            {busy && <span className="text-[11px] text-brand-on-surface-variant self-center animate-pulse">Uploading {busy}…</span>}
           </div>
+          {Object.entries(progress).map(([name, pct]) => (
+            <div key={name} className="flex items-center gap-2">
+              <span className="text-[10px] text-brand-on-surface-variant truncate max-w-[140px]">{name}</span>
+              <div className="flex-1 h-1.5 rounded-full bg-brand-surface-container overflow-hidden">
+                <div className="h-full rounded-full bg-brand-primary transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="text-[10px] font-mono text-brand-on-surface-variant w-9 text-right">{pct}%</span>
+            </div>
+          ))}
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-700 flex items-center justify-between"><span>{error}</span><button type="button" onClick={() => setError(null)}><X className="w-3 h-3" /></button></div>}
         </div>
       )}

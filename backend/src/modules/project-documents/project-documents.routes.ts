@@ -20,6 +20,21 @@ function supabaseConfigured(): boolean {
   return Boolean(env.supabase.url && env.supabase.serviceKey);
 }
 
+// Auto-provision the private evidence bucket on first use (idempotent) so the
+// only manual setup is pasting SUPABASE_URL/SERVICE_KEY into the env.
+let bucketReady = false;
+async function ensureDocBucket(): Promise<void> {
+  if (bucketReady || !supabaseConfigured()) return;
+  const res = await fetch(`${env.supabase.url}/storage/v1/bucket`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.supabase.serviceKey}`, apikey: env.supabase.serviceKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: env.supabase.docBucket, name: env.supabase.docBucket, public: false, file_size_limit: 52428800 }),
+  });
+  // 200 = created; 400/409 = already exists — all fine. Anything else: let the
+  // subsequent sign call surface the real error.
+  if (res.ok || res.status === 400 || res.status === 409) bucketReady = true;
+}
+
 // ── LIST — polymorphic + filterable (excludes soft-deleted) ──────
 router.get(
   '/',
@@ -65,6 +80,7 @@ router.post(
     if (!supabaseConfigured()) {
       throw BadRequest('Supabase storage is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_KEY and SUPABASE_DOC_BUCKET in backend/.env.');
     }
+    await ensureDocBucket();
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const stamp = Date.now();
     const objectPath = `${req.user!.orgId}/${projectId ?? 'org'}/${module}/${recordId}/${safeName}_${stamp}`;

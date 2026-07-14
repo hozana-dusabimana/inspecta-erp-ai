@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
 import WbsTree from './components/WbsTree';
+import DocumentRegister from './components/DocumentRegister';
 import BoqVersions from './components/BoqVersions';
 import ProductionAnalytics from './components/ProductionAnalytics';
 import FinanceAnalytics from './components/FinanceAnalytics';
@@ -1691,8 +1692,13 @@ export const MODULES: Record<string, ModuleDef> = {
   [AppView.DOCUMENTS]: {
     view: AppView.DOCUMENTS,
     title: 'Documents',
-    subtitle: 'Drawings, contracts & reports register (Module 7)',
+    subtitle: 'Evidence register + document library (Module 7)',
     tabs: [
+      {
+        key: 'register', label: 'Evidence Register', endpoint: '/project-documents', entityLabel: 'Document',
+        projectScoped: true, readPerm: 'document:read', writePerm: 'document:write',
+        component: DocumentRegister, columns: [], fields: [],
+      },
       {
         key: 'documents', label: 'Documents', endpoint: '/documents', entityLabel: 'Document',
         readPerm: 'document:read', writePerm: 'document:write',

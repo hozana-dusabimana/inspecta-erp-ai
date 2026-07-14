@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import ExcelJS from 'exceljs';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { asyncHandler, ok, paginated } from '../../lib/http';
@@ -153,6 +154,50 @@ router.delete(
     await prisma.projectDocument.update({ where: { id: doc.id }, data: { deletedAt: new Date() } });
     await auditFromRequest(req, 'DELETE', 'project-document', doc.id, { oldValues: doc });
     return ok(res, { deleted: true });
+  }),
+);
+
+// ── Export the register as Excel (metadata only, not the files) ──
+router.get(
+  '/export.xlsx',
+  requirePermission('document:read'),
+  asyncHandler(async (req, res) => {
+    const { projectId, module, documentCategory, fileType } = req.query as Record<string, string | undefined>;
+    const where: Record<string, unknown> = { organizationId: req.user!.orgId, deletedAt: null };
+    if (projectId) where.projectId = projectId;
+    if (module) where.module = module;
+    if (documentCategory) where.documentCategory = documentCategory;
+    if (fileType) where.fileType = fileType;
+    const docs = await prisma.projectDocument.findMany({ where, orderBy: { createdAt: 'desc' } });
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'INSPECTA BUILDOS';
+    const ws = wb.addWorksheet('Document Register');
+    ws.columns = [
+      { header: 'Module', key: 'module', width: 16 },
+      { header: 'Record ID', key: 'recordId', width: 26 },
+      { header: 'File Name', key: 'fileName', width: 30 },
+      { header: 'Type', key: 'fileType', width: 10 },
+      { header: 'Category', key: 'documentCategory', width: 18 },
+      { header: 'Description', key: 'description', width: 30 },
+      { header: 'Size (KB)', key: 'sizeKb', width: 12 },
+      { header: 'Client Visible', key: 'isClientVisible', width: 14 },
+      { header: 'Uploaded By', key: 'uploadedBy', width: 26 },
+      { header: 'Uploaded At', key: 'createdAt', width: 22 },
+    ];
+    ws.getRow(1).font = { bold: true };
+    docs.forEach((d) => ws.addRow({
+      module: d.module, recordId: d.recordId, fileName: d.fileName, fileType: d.fileType,
+      documentCategory: d.documentCategory ?? '', description: d.description ?? '',
+      sizeKb: d.fileSizeBytes ? Math.round(d.fileSizeBytes / 1024) : '',
+      isClientVisible: d.isClientVisible ? 'Yes' : 'No', uploadedBy: d.uploadedBy ?? '',
+      createdAt: d.createdAt.toISOString(),
+    }));
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="document-register.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
   }),
 );
 

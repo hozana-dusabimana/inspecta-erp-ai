@@ -91,6 +91,20 @@ router.use('/ncrs', createCrudRouter({
   autoCode: { field: 'number', prefix: 'NCR' },
   searchField: 'description', filterFields: ['status', 'severity'], requireProject: true, orderBy: { createdAt: 'desc' },
   include: { actions: true }, refs: [{ field: 'wbsItemId', model: 'wbsItem' }, { field: 'inspectionId', model: 'inspection' }], transform: stamp,
+  // Evidence hard-gate (Developer Memo §6): an NCR cannot be CLOSED without a
+  // test result/certificate and a rectification photo attached.
+  validate: async (data, req) => {
+    if (data.status !== 'CLOSED' || !data.id) return;
+    const docs = await prisma.projectDocument.findMany({
+      where: { organizationId: req.user!.orgId, module: 'ncr', recordId: String(data.id), deletedAt: null },
+      select: { fileType: true, documentCategory: true },
+    });
+    const hasTest = docs.some((d) => d.documentCategory === 'test_result' || d.fileType === 'pdf');
+    const hasPhoto = docs.some((d) => d.fileType === 'photo');
+    if (!hasTest || !hasPhoto) {
+      throw BadRequest('Cannot close this NCR without evidence: attach a test result/certificate and a rectification photo first.');
+    }
+  },
   afterChange: async (action, record, req) => {
     if (action === 'CREATE' || (action === 'UPDATE' && record.severity === 'CRITICAL')) {
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: (record.severity as Severity) ?? 'MEDIUM', title: `NCR ${record.number}`, message: String(record.description), link: `/projects/${record.projectId}` });

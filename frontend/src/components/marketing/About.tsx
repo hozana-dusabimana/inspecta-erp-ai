@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Target, Compass, CheckCircle2, ArrowRight } from 'lucide-react';
 import MarketingLayout, { PageHero, CORAL, INK } from './MarketingLayout';
+import { MEDIA } from './media';
 
 const values = [
   ['Integrity', 'Our test results and professional opinions are independent, accurate, and impartial.'],
@@ -13,7 +14,8 @@ export default function About() {
   return (
     <MarketingLayout>
       <PageHero eyebrow="About Us" title="Your Quality Control Partner in Construction"
-        subtitle="Inspecta Ltd is a Kigali-based company combining a materials testing laboratory, a structural design office, and ERP-driven project management." />
+        subtitle="Inspecta Ltd is a Kigali-based company combining a materials testing laboratory, a structural design office, and ERP-driven project management."
+        image={MEDIA.aboutImage} />
 
       <section className="px-5 md:px-10 pb-8 max-w-3xl mx-auto space-y-5 text-[#161616]/75 leading-relaxed">
         <p>Inspecta Ltd is a Rwandan construction-sector company built around one promise: <strong style={{ color: INK }}>quality you can verify.</strong> We serve developers, contractors, consultants, public institutions, and homeowners as an independent quality control partner — combining a civil engineering materials testing laboratory, a structural design office, and technology-enabled project management under one roof.</p>

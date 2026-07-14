@@ -1,11 +1,13 @@
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { CheckCircle2, ArrowRight } from 'lucide-react';
 import MarketingLayout, { PageHero, CORAL, INK } from './MarketingLayout';
+import { MEDIA } from './media';
 
 interface ServiceDef {
   eyebrow: string;
   title: string;
   subtitle: string;
+  image: string;
   headline: string;
   intro: string;
   listTitle: string;
@@ -20,6 +22,7 @@ const SERVICES: Record<string, ServiceDef> = {
     eyebrow: 'Materials Testing Laboratory',
     title: 'Know Your Ground. Trust Your Materials.',
     subtitle: 'Soil, concrete, aggregates, and steel testing plus geotechnical site investigations — accurate, standards-based laboratory results.',
+    image: MEDIA.materialsImage,
     headline: 'Verified data, before problems reach your building',
     intro: 'Every strong structure starts with verified data. Our civil engineering laboratory tests the ground you build on and the materials you build with — before, during, and after construction — so problems are caught in the lab, not discovered in your building.',
     listTitle: 'Laboratory & Field Testing Services',
@@ -39,6 +42,7 @@ const SERVICES: Record<string, ServiceDef> = {
     eyebrow: 'Structural Design',
     title: 'Engineering You Can Stand On.',
     subtitle: 'Structural analysis and design for residential, commercial, industrial, and institutional buildings — grounded in real geotechnical data.',
+    image: MEDIA.structuralImage,
     headline: 'Designs grounded in your actual site',
     intro: 'Our structural design office translates test data and architectural intent into safe, economical structures. Because we run our own geotechnical laboratory, our foundation designs are grounded in real measurements from your actual site — not assumptions.',
     listTitle: 'What We Design',
@@ -57,6 +61,7 @@ const SERVICES: Record<string, ServiceDef> = {
     eyebrow: 'Project Management',
     title: 'Your Project, Under Control — In Real Time.',
     subtitle: 'Transparent, technology-enabled construction project management in Rwanda — schedules, budgets, quality, and documents in one system.',
+    image: MEDIA.projectImage,
     headline: 'One platform connecting site, lab, and office',
     intro: 'Inspecta manages construction projects on a modern ERP platform that connects site, laboratory, and office. While others manage projects through scattered spreadsheets and phone calls, our clients see live dashboards of progress, cost, and quality — at any moment, from anywhere.',
     listTitle: 'What You Get',
@@ -80,7 +85,7 @@ export default function ServicePage() {
 
   return (
     <MarketingLayout>
-      <PageHero eyebrow={svc.eyebrow} title={svc.title} subtitle={svc.subtitle} />
+      <PageHero eyebrow={svc.eyebrow} title={svc.title} subtitle={svc.subtitle} image={svc.image} />
 
       <section className="px-5 md:px-10 pb-8 max-w-3xl mx-auto">
         <h2 className="text-xl md:text-2xl font-extrabold mb-3" style={{ color: INK }}>{svc.headline}</h2>

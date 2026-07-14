@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="104" fill="#FC6061"/>
+  <!-- building body -->
+  <rect x="146" y="120" width="220" height="300" rx="10" fill="#ffffff"/>
+  <!-- windows (coral) -->
+  <g fill="#FC6061">
+    <rect x="176" y="156" width="42" height="42" rx="6"/>
+    <rect x="238" y="156" width="42" height="42" rx="6"/>
+    <rect x="300" y="156" width="42" height="42" rx="6"/>
+    <rect x="176" y="220" width="42" height="42" rx="6"/>
+    <rect x="238" y="220" width="42" height="42" rx="6"/>
+    <rect x="300" y="220" width="42" height="42" rx="6"/>
+    <rect x="176" y="284" width="42" height="42" rx="6"/>
+    <rect x="300" y="284" width="42" height="42" rx="6"/>
+    <!-- door -->
+    <rect x="238" y="284" width="42" height="136" rx="8"/>
+  </g>
+</svg>

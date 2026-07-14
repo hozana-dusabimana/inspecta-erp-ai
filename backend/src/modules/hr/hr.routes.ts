@@ -127,8 +127,24 @@ const availability = createCrudRouter({
   transform: stamp,
 });
 
+// Website team profiles — shown on the public /team page.
+const teamSchema = z.object({
+  name: z.string().min(1),
+  title: z.string().min(1),
+  bio: z.string().optional(),
+  photoUrl: z.string().optional(),
+  sortOrder: z.number().int().optional(),
+  published: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
+});
+const teamMembers = createCrudRouter({
+  model: 'teamMember', entity: 'team-member', readPerm: 'hr:read', writePerm: 'hr:write',
+  createSchema: teamSchema, updateSchema: teamSchema.partial(),
+  searchField: 'name', orderBy: { sortOrder: 'asc' },
+});
+
 const router = Router();
 router.use('/trades', trades);
+router.use('/team-members', teamMembers);
 router.use('/employees', employees);
 router.use('/wage-rates', wageRates);
 router.use('/crews', crews);

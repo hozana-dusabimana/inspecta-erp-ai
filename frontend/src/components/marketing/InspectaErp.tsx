@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Sparkles, ArrowRight, CheckCircle2, LayoutDashboard, Wallet, ShoppingCart, ClipboardCheck, Users, BarChart3 } from 'lucide-react';
 import MarketingLayout, { CORAL, INK, MAROON } from './MarketingLayout';
+import { MEDIA } from './media';
 
 const asks = ['"What\'s the budget status of Site B?"', '"Generate this week\'s progress report."', '"Which concrete tests failed this month?"', '"How much cement did we buy in June, and from whom?"'];
 
@@ -35,6 +36,11 @@ export default function InspectaErp() {
             <Link to="/login" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm border-2 border-white/30 hover:bg-white/10 transition-all">Client Login</Link>
           </div>
         </div>
+      </section>
+
+      {/* Showcase */}
+      <section className="px-5 md:px-10 -mt-10 relative z-10">
+        <div className="max-w-4xl mx-auto"><img src={MEDIA.erpImage} alt="Team using Inspecta ERP" loading="lazy" className="w-full h-56 md:h-80 object-cover rounded-2xl shadow-2xl border-4 border-white" /></div>
       </section>
 
       {/* Problem / solution */}

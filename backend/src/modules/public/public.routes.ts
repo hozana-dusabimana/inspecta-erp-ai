@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { asyncHandler, ok } from '../../lib/http';
+import { prisma } from '../../lib/prisma';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
 
@@ -68,6 +69,19 @@ router.post(
       });
     }
     return ok(res, { received: true, emailed: isEmailConfigured() && Boolean(to) }, 201);
+  }),
+);
+
+// GET /api/public/team — published team profiles for the public website.
+router.get(
+  '/team',
+  asyncHandler(async (_req, res) => {
+    const members = await prisma.teamMember.findMany({
+      where: { published: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, name: true, title: true, bio: true, photoUrl: true },
+    });
+    return ok(res, members);
   }),
 );
 

@@ -103,16 +103,21 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   );
 }
 
-/** Simple page hero used across marketing sub-pages. */
-export function PageHero({ eyebrow, title, subtitle }: { eyebrow?: string; title: string; subtitle?: string }) {
+/** Simple page hero used across marketing sub-pages. Optional banner image. */
+export function PageHero({ eyebrow, title, subtitle, image }: { eyebrow?: string; title: string; subtitle?: string; image?: string }) {
   return (
-    <section className="relative overflow-hidden px-5 md:px-10 pt-14 pb-12 md:pt-20 md:pb-16 text-center">
+    <section className="relative overflow-hidden px-5 md:px-10 pt-14 pb-10 md:pt-20 md:pb-12 text-center">
       <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full opacity-10 blur-3xl" style={{ background: CORAL }} />
       <div className="max-w-3xl mx-auto relative">
         {eyebrow && <span className="text-xs font-bold uppercase tracking-widest" style={{ color: CORAL }}>{eyebrow}</span>}
         <h1 className="mt-3 text-3xl md:text-5xl font-extrabold tracking-tight" style={{ color: INK }}>{title}</h1>
         {subtitle && <p className="mt-4 text-[#161616]/70 text-base md:text-lg leading-relaxed">{subtitle}</p>}
       </div>
+      {image && (
+        <div className="max-w-4xl mx-auto mt-10">
+          <img src={image} alt="" loading="lazy" className="w-full h-56 md:h-80 object-cover rounded-2xl shadow-lg" />
+        </div>
+      )}
     </section>
   );
 }

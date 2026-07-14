@@ -591,6 +591,23 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
+        key: 'website-team', label: 'Website Team', endpoint: '/hr/team-members', entityLabel: 'Team Member',
+        readPerm: 'hr:read', writePerm: 'hr:write',
+        columns: [
+          { key: 'sortOrder', label: 'Order', align: 'right' },
+          { key: 'name', label: 'Name', sortable: true }, { key: 'title', label: 'Title' },
+          { key: 'published', label: 'Published', render: (r) => (r.published ? '✓' : '—') },
+        ],
+        fields: [
+          { name: 'name', label: 'Full Name', required: true },
+          { name: 'title', label: 'Title / Role', required: true },
+          { name: 'bio', label: 'Short Bio', type: 'textarea' },
+          { name: 'photoUrl', label: 'Photo URL (upload to /public or paste a link)' },
+          { name: 'sortOrder', label: 'Display Order', type: 'number' },
+          { name: 'published', label: 'Show on website?', type: 'select', options: [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] },
+        ],
+      },
+      {
         key: 'wages', label: 'Wage Rates', endpoint: '/hr/wage-rates', entityLabel: 'Wage Rate',
         readPerm: 'hr:read', writePerm: 'hr:write',
         columns: [

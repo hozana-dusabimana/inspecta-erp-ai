@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { FlaskConical, DraftingCompass, LayoutDashboard, ArrowRight, ShieldCheck, CheckCircle2, Phone, Mail, MessageCircle, Sparkles, MapPin } from 'lucide-react';
 import MarketingLayout, { CORAL, INK, MAROON, WHATSAPP } from './marketing/MarketingLayout';
+import { MEDIA } from './marketing/media';
 
 const services = [
   { icon: FlaskConical, to: '/services/materials-testing', title: 'Materials Testing Laboratory', body: 'Geotechnical investigations, soil, concrete, aggregates, and steel testing — accurate results that verify your ground and materials meet specification.' },
@@ -34,6 +35,9 @@ export default function LandingPage() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to="/contact" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white text-sm shadow-lg transition-all hover:opacity-90" style={{ background: CORAL }}>Request a Quote <ArrowRight className="w-4 h-4" /></Link>
             <a href="#services" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm border-2 transition-all hover:bg-black/[0.03]" style={{ borderColor: INK, color: INK }}>Explore Our Services</a>
+          </div>
+          <div className="mt-12 max-w-4xl mx-auto">
+            <img src={MEDIA.heroImage} alt="Inspecta engineers on a construction site" loading="lazy" className="w-full h-64 md:h-96 object-cover rounded-3xl shadow-xl" />
           </div>
         </div>
       </section>

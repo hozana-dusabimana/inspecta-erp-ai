@@ -973,6 +973,24 @@ model ProjectDocument {
   @@map("project_documents")
 }
 
+/// Website team profiles — managed in-app (HR → Website Team), shown on the
+/// public /team page. Editable by staff so they set their own names/bios/photos.
+model TeamMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  title          String
+  bio            String?
+  photoUrl       String?
+  sortOrder      Int      @default(0)
+  published      Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("team_members")
+}
+
 // ──────────────────── M9 — Notifications ─────────────────────
 
 model Notification {

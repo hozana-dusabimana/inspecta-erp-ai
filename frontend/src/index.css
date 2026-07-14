@@ -33,6 +33,27 @@
   --color-brand-surface-ai: #f8fafc;
 }
 
+/* Marketing site palette (public pages). Flips with html.dark; the coral/maroon
+   brand accents stay constant, only background/text/surfaces change. */
+:root {
+  --mk-bg: #ffffff;
+  --mk-fg: #14141a;
+  --mk-muted: #5c5f66;
+  --mk-surface: #ffffff;
+  --mk-border: rgba(0, 0, 0, 0.08);
+  --mk-tint: rgba(252, 96, 97, 0.06);
+  --mk-maroon: #471519;
+}
+html.dark {
+  --mk-bg: #0d1016;
+  --mk-fg: #f3f4f6;
+  --mk-muted: #9aa1ac;
+  --mk-surface: #171b22;
+  --mk-border: rgba(255, 255, 255, 0.10);
+  --mk-tint: rgba(252, 96, 97, 0.10);
+  --mk-maroon: #e88f8f;
+}
+
 /* ─────────────────────────── Dark theme ───────────────────────────
    Token override only: every `*-brand-*` utility resolves to these vars,
    so flipping them re-themes the whole app. `html.dark` outranks `:root`.

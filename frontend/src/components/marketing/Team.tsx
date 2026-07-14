@@ -26,7 +26,7 @@ export default function Team() {
       <section className="px-5 md:px-10 py-10 max-w-5xl mx-auto">
         <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
           {members.map((m) => (
-            <div key={m.id} className="rounded-2xl border border-black/8 p-6 text-center">
+            <div key={m.id} className="rounded-2xl border border-[var(--mk-border)] p-6 text-center">
               {m.photoUrl ? (
                 <img src={m.photoUrl} alt={m.name} loading="lazy" className="w-24 h-24 rounded-full mx-auto mb-4 object-cover" />
               ) : (
@@ -36,14 +36,14 @@ export default function Team() {
               )}
               <h3 className="font-bold" style={{ color: INK }}>{m.name}</h3>
               <p className="text-sm font-semibold" style={{ color: CORAL }}>{m.title}</p>
-              {m.bio && <p className="mt-2 text-sm text-[#161616]/70">{m.bio}</p>}
+              {m.bio && <p className="mt-2 text-sm text-[var(--mk-muted)]">{m.bio}</p>}
             </div>
           ))}
         </div>
-        <p className="mt-8 text-center text-xs text-[#161616]/50 italic">Manage these profiles in the app: Human Resources → Website Team.</p>
+        <p className="mt-8 text-center text-xs text-[var(--mk-muted)] italic">Manage these profiles in the app: Human Resources → Website Team.</p>
       </section>
 
-      <section className="px-5 md:px-10 py-12 text-center" style={{ background: '#FC60610a' }}>
+      <section className="px-5 md:px-10 py-12 text-center" style={{ background: 'var(--mk-tint)' }}>
         <h2 className="text-2xl font-extrabold" style={{ color: INK }}>Behind every Inspecta report is a professional who signs it — and stands by it.</h2>
         <Link to="/contact" className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90" style={{ background: CORAL }}>Get in Touch <ArrowRight className="w-4 h-4" /></Link>
       </section>

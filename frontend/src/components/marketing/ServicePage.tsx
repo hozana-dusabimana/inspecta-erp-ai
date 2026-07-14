@@ -89,24 +89,24 @@ export default function ServicePage() {
 
       <section className="px-5 md:px-10 pb-8 max-w-3xl mx-auto">
         <h2 className="text-xl md:text-2xl font-extrabold mb-3" style={{ color: INK }}>{svc.headline}</h2>
-        <p className="text-[#161616]/75 leading-relaxed">{svc.intro}</p>
+        <p className="text-[var(--mk-muted)] leading-relaxed">{svc.intro}</p>
       </section>
 
       <section className="px-5 md:px-10 py-10 max-w-3xl mx-auto">
         <h3 className="text-lg font-bold mb-4" style={{ color: INK }}>{svc.listTitle}</h3>
         <ul className="space-y-3">
           {svc.list.map((item) => (
-            <li key={item} className="flex items-start gap-3 text-sm text-[#161616]/80">
+            <li key={item} className="flex items-start gap-3 text-sm text-[var(--mk-muted)]">
               <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" style={{ color: CORAL }} /> {item}
             </li>
           ))}
         </ul>
       </section>
 
-      <section className="px-5 md:px-10 py-12 md:py-14" style={{ background: '#FC60610a' }}>
+      <section className="px-5 md:px-10 py-12 md:py-14" style={{ background: 'var(--mk-tint)' }}>
         <div className="max-w-3xl mx-auto">
           <h3 className="text-lg font-bold mb-2" style={{ color: INK }}>{svc.extraTitle}</h3>
-          <p className="text-[#161616]/75 leading-relaxed text-sm md:text-base">{svc.extra}</p>
+          <p className="text-[var(--mk-muted)] leading-relaxed text-sm md:text-base">{svc.extra}</p>
         </div>
       </section>
 

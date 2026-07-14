@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageCircle, ChevronDown, Menu, X } from 'lucide-react';
+import { MessageCircle, ChevronDown, Menu, X, Sun, Moon } from 'lucide-react';
+import { useTheme } from '../../lib/theme';
+
+function ThemeButton() {
+  const { theme, toggle } = useTheme();
+  const dark = theme === 'dark';
+  return (
+    <button onClick={toggle} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} title={dark ? 'Light mode' : 'Dark mode'}
+      className="p-2 rounded-full hover:bg-[var(--mk-tint)] transition-colors text-[var(--mk-muted)] hover:text-[#FC6061]">
+      {dark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+    </button>
+  );
+}
 
 export const CORAL = '#FC6061';
-export const INK = '#161616';
-export const MAROON = '#471519';
+export const INK = 'var(--mk-fg)';     // theme-aware primary text
+export const MAROON = 'var(--mk-maroon)'; // theme-aware maroon accent
+export const DARK = '#141821';         // constant dark (for intentionally-dark banners)
 export const WHATSAPP = 'https://wa.me/250788500266';
 
 const serviceLinks = [
@@ -16,9 +29,9 @@ const serviceLinks = [
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [mobile, setMobile] = useState(false);
   return (
-    <div className="min-h-screen bg-white text-[#161616] font-sans">
+    <div className="min-h-screen bg-[var(--mk-bg)] text-[var(--mk-fg)] font-sans">
       {/* ── Nav ── */}
-      <nav className="h-16 w-full sticky top-0 z-40 bg-white/90 backdrop-blur-md flex justify-between items-center px-5 md:px-10 border-b border-black/5">
+      <nav className="h-16 w-full sticky top-0 z-40 bg-[var(--mk-bg)] backdrop-blur-md flex justify-between items-center px-5 md:px-10 border-b border-[var(--mk-border)]">
         <Link to="/" className="flex items-center"><img src="/inspecta-logo.png" alt="Inspecta" className="h-9 w-auto" /></Link>
 
         <div className="hidden md:flex items-center gap-6 text-sm font-semibold">
@@ -27,7 +40,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <div className="relative group">
             <button className="inline-flex items-center gap-1 hover:text-[#FC6061] transition-colors">Services <ChevronDown className="w-3.5 h-3.5" /></button>
             <div className="absolute left-0 top-full pt-2 hidden group-hover:block">
-              <div className="bg-white rounded-xl shadow-xl border border-black/8 py-2 w-60">
+              <div className="bg-[var(--mk-surface)] rounded-xl shadow-xl border border-[var(--mk-border)] py-2 w-60">
                 {serviceLinks.map(([to, label]) => (
                   <Link key={to} to={to} className="block px-4 py-2 text-[13px] hover:bg-black/[0.03] hover:text-[#FC6061]">{label}</Link>
                 ))}
@@ -40,7 +53,8 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="flex items-center gap-2">
-          <Link to="/login" className="hidden sm:inline px-4 py-2 text-sm font-semibold hover:bg-black/5 rounded-lg transition-all">Client Login</Link>
+          <ThemeButton />
+          <Link to="/login" className="hidden sm:inline px-4 py-2 text-sm font-semibold hover:bg-[var(--mk-tint)] rounded-lg transition-all">Client Login</Link>
           <Link to="/contact" className="hidden sm:inline px-4 py-2 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90" style={{ background: CORAL }}>Request a Quote</Link>
           <button className="md:hidden p-2" onClick={() => setMobile((v) => !v)} aria-label="Menu">{mobile ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</button>
         </div>
@@ -48,7 +62,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
 
       {/* Mobile menu */}
       {mobile && (
-        <div className="md:hidden border-b border-black/5 bg-white px-5 py-3 space-y-1 text-sm font-semibold">
+        <div className="md:hidden border-b border-[var(--mk-border)] bg-[var(--mk-surface)] px-5 py-3 space-y-1 text-sm font-semibold">
           {[['/', 'Home'], ['/about', 'About'], ...serviceLinks, ['/inspecta-erp', 'Inspecta ERP'], ['/team', 'Team'], ['/contact', 'Contact'], ['/login', 'Client Login']].map(([to, label]) => (
             <Link key={to} to={to} onClick={() => setMobile(false)} className="block py-2 hover:text-[#FC6061]">{label}</Link>
           ))}
@@ -58,15 +72,15 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <main>{children}</main>
 
       {/* ── Footer ── */}
-      <footer className="bg-white border-t border-black/8 px-5 md:px-10 py-12">
+      <footer className="bg-[var(--mk-surface)] border-t border-[var(--mk-border)] px-5 md:px-10 py-12">
         <div className="max-w-6xl mx-auto grid sm:grid-cols-2 md:grid-cols-4 gap-8 text-sm">
           <div>
             <img src="/inspecta-logo.png" alt="Inspecta" className="h-8 w-auto mb-3" />
-            <p className="text-[#161616]/60 leading-relaxed">Your quality control partner. Materials testing, structural design, and ERP-driven project management — Kigali, Rwanda.</p>
+            <p className="text-[var(--mk-muted)] leading-relaxed">Your quality control partner. Materials testing, structural design, and ERP-driven project management — Kigali, Rwanda.</p>
           </div>
           <div>
             <h5 className="font-bold mb-3">Quick Links</h5>
-            <ul className="space-y-1.5 text-[#161616]/70">
+            <ul className="space-y-1.5 text-[var(--mk-muted)]">
               <li><Link to="/" className="hover:text-[#FC6061]">Home</Link></li>
               <li><Link to="/about" className="hover:text-[#FC6061]">About Us</Link></li>
               <li><Link to="/inspecta-erp" className="hover:text-[#FC6061]">Inspecta ERP</Link></li>
@@ -76,20 +90,20 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           </div>
           <div>
             <h5 className="font-bold mb-3">Services</h5>
-            <ul className="space-y-1.5 text-[#161616]/70">
+            <ul className="space-y-1.5 text-[var(--mk-muted)]">
               {serviceLinks.map(([to, label]) => <li key={to}><Link to={to} className="hover:text-[#FC6061]">{label}</Link></li>)}
             </ul>
           </div>
           <div>
             <h5 className="font-bold mb-3">Contact</h5>
-            <ul className="space-y-1.5 text-[#161616]/70">
+            <ul className="space-y-1.5 text-[var(--mk-muted)]">
               <li>+250 788 500 266</li>
               <li>inspectafrica@gmail.com</li>
               <li>Kigali, Rwanda</li>
             </ul>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-black/5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#161616]/50">
+        <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-[var(--mk-border)] flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[var(--mk-muted)]">
           <span>© 2026 Inspecta Ltd. All rights reserved.</span>
           <span className="italic font-semibold" style={{ color: MAROON }}>your quality control partner</span>
         </div>
@@ -111,7 +125,7 @@ export function PageHero({ eyebrow, title, subtitle, image }: { eyebrow?: string
       <div className="max-w-3xl mx-auto relative">
         {eyebrow && <span className="text-xs font-bold uppercase tracking-widest" style={{ color: CORAL }}>{eyebrow}</span>}
         <h1 className="mt-3 text-3xl md:text-5xl font-extrabold tracking-tight" style={{ color: INK }}>{title}</h1>
-        {subtitle && <p className="mt-4 text-[#161616]/70 text-base md:text-lg leading-relaxed">{subtitle}</p>}
+        {subtitle && <p className="mt-4 text-[var(--mk-muted)] text-base md:text-lg leading-relaxed">{subtitle}</p>}
       </div>
       {image && (
         <div className="max-w-4xl mx-auto mt-10">

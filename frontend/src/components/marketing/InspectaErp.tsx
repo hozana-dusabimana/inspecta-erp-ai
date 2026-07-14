@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Sparkles, ArrowRight, CheckCircle2, LayoutDashboard, Wallet, ShoppingCart, ClipboardCheck, Users, BarChart3 } from 'lucide-react';
-import MarketingLayout, { CORAL, INK, MAROON } from './MarketingLayout';
+import MarketingLayout, { CORAL, INK, MAROON, DARK } from './MarketingLayout';
 import { MEDIA } from './media';
 
 const asks = ['"What\'s the budget status of Site B?"', '"Generate this week\'s progress report."', '"Which concrete tests failed this month?"', '"How much cement did we buy in June, and from whom?"'];
@@ -25,7 +25,7 @@ export default function InspectaErp() {
   return (
     <MarketingLayout>
       {/* Hero */}
-      <section className="relative overflow-hidden px-5 md:px-10 pt-16 pb-16 md:pt-24 text-white" style={{ background: INK }}>
+      <section className="relative overflow-hidden px-5 md:px-10 pt-16 pb-16 md:pt-24 text-white" style={{ background: DARK }}>
         <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full opacity-20 blur-3xl" style={{ background: CORAL }} />
         <div className="max-w-4xl mx-auto text-center relative">
           <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-full" style={{ background: CORAL }}><Sparkles className="w-3.5 h-3.5" /> Inspecta ERP</span>
@@ -47,24 +47,24 @@ export default function InspectaErp() {
       <section className="px-5 md:px-10 py-14 max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
         <div>
           <h3 className="text-lg font-bold mb-2" style={{ color: MAROON }}>The Problem</h3>
-          <p className="text-sm text-[#161616]/75 leading-relaxed">Most construction companies still run on Excel sheets, WhatsApp messages, and paper files. The result: budget overruns discovered too late, missing test records, endless report-writing, and directors who never quite know what's happening on site.</p>
+          <p className="text-sm text-[var(--mk-muted)] leading-relaxed">Most construction companies still run on Excel sheets, WhatsApp messages, and paper files. The result: budget overruns discovered too late, missing test records, endless report-writing, and directors who never quite know what's happening on site.</p>
         </div>
         <div>
           <h3 className="text-lg font-bold mb-2" style={{ color: CORAL }}>The Solution</h3>
-          <p className="text-sm text-[#161616]/75 leading-relaxed">Inspecta ERP puts your entire operation in one place — and its built-in AI Copilot means anyone on your team can use it from day one, simply by asking.</p>
+          <p className="text-sm text-[var(--mk-muted)] leading-relaxed">Inspecta ERP puts your entire operation in one place — and its built-in AI Copilot means anyone on your team can use it from day one, simply by asking.</p>
         </div>
       </section>
 
       {/* Ask anything */}
-      <section className="px-5 md:px-10 py-12 md:py-16" style={{ background: '#FC60610a' }}>
+      <section className="px-5 md:px-10 py-12 md:py-16" style={{ background: 'var(--mk-tint)' }}>
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-extrabold" style={{ color: INK }}>Ask Anything. Get Instant Answers.</h2>
           <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
             {asks.map((q) => (
-              <div key={q} className="bg-white rounded-xl border border-black/8 px-4 py-3 text-sm font-medium text-[#161616]/80">{q}</div>
+              <div key={q} className="bg-[var(--mk-surface)] rounded-xl border border-[var(--mk-border)] px-4 py-3 text-sm font-medium text-[var(--mk-muted)]">{q}</div>
             ))}
           </div>
-          <p className="mt-6 text-sm text-[#161616]/60">The Copilot answers from your live project data — in seconds, with the numbers to back it up.</p>
+          <p className="mt-6 text-sm text-[var(--mk-muted)]">The Copilot answers from your live project data — in seconds, with the numbers to back it up.</p>
         </div>
       </section>
 
@@ -75,10 +75,10 @@ export default function InspectaErp() {
           {modules.map(([Icon, title, body]) => {
             const I = Icon as typeof LayoutDashboard;
             return (
-              <div key={title as string} className="rounded-2xl border border-black/8 p-6">
+              <div key={title as string} className="rounded-2xl border border-[var(--mk-border)] p-6">
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4" style={{ background: '#FC60611a' }}><I className="w-5 h-5" style={{ color: CORAL }} /></div>
                 <h3 className="font-bold" style={{ color: INK }}>{title as string}</h3>
-                <p className="mt-1 text-sm text-[#161616]/70">{body as string}</p>
+                <p className="mt-1 text-sm text-[var(--mk-muted)]">{body as string}</p>
               </div>
             );
           })}
@@ -86,14 +86,14 @@ export default function InspectaErp() {
       </section>
 
       {/* Why different */}
-      <section className="px-5 md:px-10 py-14" style={{ background: '#FC60610a' }}>
+      <section className="px-5 md:px-10 py-14" style={{ background: 'var(--mk-tint)' }}>
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl md:text-3xl font-extrabold text-center mb-10" style={{ color: INK }}>Why It's Different</h2>
           <div className="grid sm:grid-cols-2 gap-5">
             {different.map(([t, b]) => (
-              <div key={t} className="flex items-start gap-3 bg-white rounded-xl p-5 border border-black/5">
+              <div key={t} className="flex items-start gap-3 bg-[var(--mk-surface)] rounded-xl p-5 border border-[var(--mk-border)]">
                 <CheckCircle2 className="w-6 h-6 shrink-0 mt-0.5" style={{ color: CORAL }} />
-                <div><h4 className="font-bold">{t}</h4><p className="text-sm text-[#161616]/70 mt-0.5">{b}</p></div>
+                <div><h4 className="font-bold">{t}</h4><p className="text-sm text-[var(--mk-muted)] mt-0.5">{b}</p></div>
               </div>
             ))}
           </div>
@@ -103,7 +103,7 @@ export default function InspectaErp() {
       {/* Final CTA */}
       <section className="px-5 md:px-10 py-16 md:py-20 text-center">
         <h2 className="text-2xl md:text-3xl font-extrabold" style={{ color: INK }}>See your project answer back.</h2>
-        <p className="mt-3 text-[#161616]/70 max-w-xl mx-auto">Book a free 30-minute demo — bring your toughest project question and watch the Copilot answer it.</p>
+        <p className="mt-3 text-[var(--mk-muted)] max-w-xl mx-auto">Book a free 30-minute demo — bring your toughest project question and watch the Copilot answer it.</p>
         <p className="mt-2 text-xs font-semibold" style={{ color: MAROON }}>Founding Clients offer: the first 10 customers get 3 months at 50% off.</p>
         <Link to="/contact" className="mt-7 inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-white text-sm transition-all hover:opacity-90" style={{ background: CORAL }}>Book a Free Demo <ArrowRight className="w-4 h-4" /></Link>
       </section>

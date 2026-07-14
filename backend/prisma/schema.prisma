@@ -192,6 +192,7 @@ model Organization {
   materials     Material[]
   suppliers     Supplier[]
   documents     Document[]
+  projectDocuments ProjectDocument[]
   notifications Notification[]
 
   @@map("organizations")
@@ -352,6 +353,7 @@ model Project {
   toolboxTalks      ToolboxTalk[]
   risks             Risk[]
   documents         Document[]
+  projectDocuments  ProjectDocument[]
   scheduleActivities ScheduleActivity[]
   siteDiaries        SiteDiary[]
   fieldTasks         FieldTask[]
@@ -938,6 +940,37 @@ model Document {
   @@index([organizationId])
   @@index([projectId])
   @@map("documents")
+}
+
+/// Central polymorphic evidence store — a document/photo attached to any record
+/// in any module (Developer Memo: project_documents). Files live in Supabase
+/// Storage; this row holds the metadata + storage path. Soft-delete only.
+model ProjectDocument {
+  id               String   @id @default(cuid())
+  organizationId   String   // company_id
+  projectId        String?  // usually set; null for company-level records
+  module           String   // e.g. 'daily_report','ncr','grn','incident','ipc'
+  recordId         String   // id of the record in the module's table (polymorphic)
+  fileName         String
+  fileType         String   // 'photo' | 'pdf' | 'excel'
+  mimeType         String
+  fileSizeBytes    Int?
+  storagePath      String   // Supabase Storage object path
+  documentCategory String?  // 'test_result','delivery_note','progress_photo',...
+  description      String?
+  isClientVisible  Boolean  @default(false)
+  uploadedBy       String?  // user id of the uploader
+  deletedAt        DateTime? // soft delete only — never hard-deleted
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([module, recordId])
+  @@map("project_documents")
 }
 
 // ──────────────────── M9 — Notifications ─────────────────────

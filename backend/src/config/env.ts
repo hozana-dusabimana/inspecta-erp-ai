@@ -45,6 +45,8 @@ export const env = {
     url: process.env.SUPABASE_URL ?? '',
     serviceKey: process.env.SUPABASE_SERVICE_KEY ?? '',
     bucket: process.env.SUPABASE_BUCKET ?? 'documents',
+    // Private bucket for per-record evidence attachments (Developer Memo).
+    docBucket: process.env.SUPABASE_DOC_BUCKET ?? 'project-documents',
   },
 
   smtp: {

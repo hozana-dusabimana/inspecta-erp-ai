@@ -30,6 +30,7 @@ import qaqcRoutes from './modules/qaqc/qaqc.routes';
 import hseRoutes from './modules/hse/hse.routes';
 import riskRoutes from './modules/risk/risk.routes';
 import documentsRoutes from './modules/documents/documents.routes';
+import projectDocumentsRoutes from './modules/project-documents/project-documents.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import dashboardsRoutes from './modules/dashboards/dashboards.routes';
@@ -124,6 +125,7 @@ export function createApp() {
   app.use('/api/hse', hseRoutes); // M6
   app.use('/api/risk', riskRoutes); // M24
   app.use('/api/documents', documentsRoutes); // M7
+  app.use('/api/project-documents', projectDocumentsRoutes); // per-record evidence (Developer Memo)
   app.use('/api/notifications', notificationsRoutes); // M9
   app.use('/api/reports', reportsRoutes); // M8
   app.use('/api/dashboards', dashboardsRoutes); // M12 + M15

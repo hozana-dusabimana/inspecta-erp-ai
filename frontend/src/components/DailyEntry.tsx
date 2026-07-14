@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AppView, DailyProductionEntry } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import DocumentAttachments from './DocumentAttachments';
 
 interface DailyEntryProps {
   onNavigate: (view: AppView) => void;
@@ -61,6 +62,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
   // Status states
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null); // real production-entry id for attaching evidence
   const [productivityIndex, setProductivityIndex] = useState(1.05);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -167,7 +169,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
 
     try {
       // Real synchronization to the ERP production module.
-      await api.post('/production', {
+      const res = await api.post<{ id: string }>('/production', {
         projectId,
         date: new Date(entryDate).toISOString(),
         wbsActivity: `${selectedWbs.code} - ${selectedWbs.name}`,
@@ -182,6 +184,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
         photos: photoPreviews.filter((p) => p.startsWith('http')),
       });
 
+      setCreatedId(res.data.id); // enables the evidence panel in the success modal
       setShowSuccessModal(true);
       onSubmitSuccess({
         id: Math.random().toString(),
@@ -569,16 +572,22 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-brand-surface-container-lowest max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl relative"
+              className="bg-brand-surface-container-lowest max-w-md w-full rounded-2xl p-6 text-center shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-500 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              
+
               <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Ledger Sync Successful</h3>
-              <p className="text-brand-on-surface-variant text-xs leading-relaxed mb-6">
-                Your daily production records have been safely recorded, timestamped, and reconciled with the corporate Spanner ledger nodes.
+              <p className="text-brand-on-surface-variant text-xs leading-relaxed mb-4">
+                Entry recorded. Attach a <strong>progress photo</strong> of the work as proof of evidence.
               </p>
+
+              {createdId && (
+                <div className="text-left mb-4">
+                  <DocumentAttachments module="daily_report" recordId={createdId} projectId={projectId} />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <button 
@@ -596,6 +605,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
                   type="button"
                   onClick={() => {
                     setShowSuccessModal(false);
+                    setCreatedId(null);
                     setRemarks('');
                     setActualQty('0');
                     setLaborHours('0');

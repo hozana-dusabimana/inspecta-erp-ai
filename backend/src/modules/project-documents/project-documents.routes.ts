@@ -66,6 +66,20 @@ router.get(
   }),
 );
 
+// ── Coverage — which records (for a module) already have evidence attached ──
+router.get(
+  '/coverage',
+  requirePermission('document:read'),
+  asyncHandler(async (req, res) => {
+    const { module, projectId } = req.query as Record<string, string | undefined>;
+    if (!module) throw BadRequest('module is required');
+    const where: Record<string, unknown> = { organizationId: req.user!.orgId, module, deletedAt: null };
+    if (projectId) where.projectId = projectId;
+    const rows = await prisma.projectDocument.findMany({ where, select: { recordId: true }, distinct: ['recordId'] });
+    return ok(res, { recordIds: rows.map((r) => r.recordId) });
+  }),
+);
+
 // ── Signed upload URL (path convention {org}/{project}/{module}/{record}/{name}_{ts}) ──
 const uploadSchema = z.object({
   module: z.string().min(1),

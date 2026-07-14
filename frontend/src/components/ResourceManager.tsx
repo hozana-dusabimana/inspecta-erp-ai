@@ -180,6 +180,14 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   });
   const rows = data?.data ?? [];
   const meta = data?.meta;
+
+  // Evidence coverage — which listed records already have a document attached.
+  const { data: coverageData } = useQuery({
+    queryKey: ['/project-documents/coverage', attachModule, projectId],
+    queryFn: () => api.get<{ recordIds: string[] }>(`/project-documents/coverage?module=${attachModule}${projectId ? `&projectId=${projectId}` : ''}`),
+    enabled: Boolean(attachModule),
+  });
+  const covered = useMemo(() => new Set(coverageData?.data.recordIds ?? []), [coverageData]);
   const total = meta?.total ?? rows.length;
   const sums = (meta as any)?.sums as Record<string, number> | undefined;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -370,12 +378,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       ) : c.label}
                     </th>
                   ))}
+                  {attachModule && <th className="px-5 py-2.5">Evidence</th>}
                   {canWrite && <th className="px-5 py-2.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={columns.length + 1} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
+                  <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + (canWrite ? 1 : 0)} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
                 )}
                 {rows.map((row) => (
                   <tr key={row.id} className="border-b border-brand-outline-variant/10 hover:bg-brand-surface/40">
@@ -384,6 +393,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                         {c.render ? c.render(row) : String(row[c.key] ?? '—')}
                       </td>
                     ))}
+                    {attachModule && (
+                      <td className="px-5 py-2.5">
+                        {covered.has(row.id)
+                          ? <span className="text-emerald-600 font-bold" title="Documents attached">✓</span>
+                          : <span className="text-amber-600 font-bold" title="No documents attached">⚠</span>}
+                      </td>
+                    )}
                     {canWrite && (
                       <td className="px-5 py-2.5 text-right whitespace-nowrap">
                         <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></button>

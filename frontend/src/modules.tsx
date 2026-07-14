@@ -884,7 +884,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <ProductionAnalytics projectId={pid} />,
     tabs: [
       {
-        key: 'reports', label: 'Daily Reports', endpoint: '/production/daily-reports', entityLabel: 'Daily Report',
+        key: 'reports', label: 'Daily Reports', endpoint: '/production/daily-reports', entityLabel: 'Daily Report', attachModule: 'daily_report',
         projectScoped: true, readPerm: 'production:read', writePerm: 'production:write',
         columns: [
           { key: 'reportNumber', label: 'Number' },

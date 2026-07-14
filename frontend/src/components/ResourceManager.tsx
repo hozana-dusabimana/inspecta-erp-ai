@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
+import DocumentAttachments from './DocumentAttachments';
 
 export interface Field {
   name: string;
@@ -87,6 +88,8 @@ interface Props {
   filters?: FilterDef[];
   /** Summation cards from backend meta.sums (+ '__count' for the total). */
   summaryCards?: SummaryCardDef[];
+  /** When set, show a document-attachments panel on the edit form (project_documents module key). */
+  attachModule?: string;
 }
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -112,7 +115,7 @@ function buildPayload(fields: Field[], form: Record<string, string>, projectId?:
 
 const PAGE_SIZE = 25;
 
-export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards }: Props) {
+export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -457,6 +460,9 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                 </button>
               </div>
             </form>
+            {attachModule && editing && (
+              <DocumentAttachments module={attachModule} recordId={editing} projectId={projectScoped ? projectId : undefined} />
+            )}
           </div>
         </div>
       )}

@@ -1023,7 +1023,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'invoices', label: 'Invoices / IPC', endpoint: '/finance/invoices', entityLabel: 'Invoice',
+        key: 'invoices', label: 'Invoices / IPC', endpoint: '/finance/invoices', entityLabel: 'Invoice', attachModule: 'ipc',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED']) }],
         summaryCards: [{ key: 'amount', label: 'Billed', money: true }, { key: 'netAmount', label: 'Net (IPC)', money: true }, { key: '__count', label: 'Invoices' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1144,7 +1144,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'grn', label: 'Goods Received (GRN)', endpoint: '/inventory/grn', entityLabel: 'GRN',
+        key: 'grn', label: 'Goods Received (GRN)', endpoint: '/inventory/grn', entityLabel: 'GRN', attachModule: 'grn',
         dateFilter: true,
         summaryCards: [{ key: 'quantityReceived', label: 'Total Received' }, { key: '__count', label: 'GRNs' }],
         readPerm: 'inventory:read', writePerm: 'inventory:write',
@@ -1167,7 +1167,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'issues', label: 'Material Issues', endpoint: '/inventory/material-issues', entityLabel: 'Material Issue',
+        key: 'issues', label: 'Material Issues', endpoint: '/inventory/material-issues', entityLabel: 'Material Issue', attachModule: 'material_issue',
         dateFilter: true,
         summaryCards: [{ key: 'quantityIssued', label: 'Total Issued' }, { key: '__count', label: 'Issues' }],
         projectScoped: true, readPerm: 'inventory:read', writePerm: 'inventory:write',
@@ -1213,7 +1213,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'pos', label: 'Purchase Orders', endpoint: '/procurement/purchase-orders', entityLabel: 'Purchase Order',
+        key: 'pos', label: 'Purchase Orders', endpoint: '/procurement/purchase-orders', entityLabel: 'Purchase Order', attachModule: 'purchase_order',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'ISSUED', 'PARTIAL', 'RECEIVED', 'CANCELLED']) }],
         summaryCards: [{ key: 'total', label: 'Total PO Value', money: true }, { key: '__count', label: 'POs' }],
         readPerm: 'procurement:read', writePerm: 'procurement:write',
@@ -1312,7 +1312,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <ComplianceAnalytics projectId={pid} mode="quality" />,
     tabs: [
       {
-        key: 'inspections', label: 'Inspections', endpoint: '/qaqc/inspections', entityLabel: 'Inspection',
+        key: 'inspections', label: 'Inspections', endpoint: '/qaqc/inspections', entityLabel: 'Inspection', attachModule: 'inspection',
         dateFilter: true, filters: [{ field: 'result', label: 'Result', options: opt(['PASS', 'FAIL', 'PENDING']) }],
         projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
         columns: [
@@ -1353,7 +1353,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'ncrs', label: 'NCR Register', endpoint: '/qaqc/ncrs', entityLabel: 'NCR',
+        key: 'ncrs', label: 'NCR Register', endpoint: '/qaqc/ncrs', entityLabel: 'NCR', attachModule: 'ncr',
         filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'OPEN', 'IN_PROGRESS', 'INVESTIGATING', 'CORRECTIVE_ACTION', 'CLOSED']) }, { field: 'severity', label: 'Severity', options: SEVERITY }],
         projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
         columns: [
@@ -1440,7 +1440,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <ComplianceAnalytics projectId={pid} mode="safety" />,
     tabs: [
       {
-        key: 'incidents', label: 'Incidents', endpoint: '/hse/incidents', entityLabel: 'Incident',
+        key: 'incidents', label: 'Incidents', endpoint: '/hse/incidents', entityLabel: 'Incident', attachModule: 'incident',
         dateFilter: true, filters: [{ field: 'type', label: 'Type', options: opt(['NEAR_MISS', 'FIRST_AID', 'MEDICAL', 'LOST_TIME', 'FATALITY', 'PROPERTY_DAMAGE']) }, { field: 'severity', label: 'Severity', options: SEVERITY }],
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [

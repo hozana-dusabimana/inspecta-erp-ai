@@ -21,6 +21,8 @@ export interface TabDef {
   dateFilter?: boolean;
   filters?: FilterDef[];
   summaryCards?: SummaryCardDef[];
+  /** Enable per-record document attachments on the edit form (project_documents module key, e.g. 'ncr'). */
+  attachModule?: string;
   /** Optional custom renderer; when set it replaces the generic ResourceManager. */
   component?: React.ComponentType<{ projectId?: string; canWrite: boolean }>;
 }
@@ -115,6 +117,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               dateFilter={current.dateFilter}
               filters={current.filters}
               summaryCards={current.summaryCards}
+              attachModule={current.attachModule}
             />
           )}
         </React.Fragment>

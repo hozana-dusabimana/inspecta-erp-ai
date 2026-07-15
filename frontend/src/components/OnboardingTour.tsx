@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from 'react';
 import { X, ChevronLeft, ChevronRight, Sparkles, HardHat } from 'lucide-react';
+import { revealNav } from '../lib/navUi';
 
 /**
  * First-run guided walkthrough. Each step optionally targets an element by CSS
  * selector (the sidebar nav items expose stable ids like `#nav-finance`, and key
- * header controls expose `#tour-*` ids). Steps whose target isn't in the DOM
+ * header controls expose `#tour-*` ids). A nav target inside a collapsed sidebar
+ * category is revealed first. Steps whose target isn't in the DOM
  * (permission-gated module, or hidden sidebar on mobile) are skipped gracefully,
  * falling back to a centered card. Nothing here mutates app data.
  */
@@ -61,14 +63,18 @@ function getRect(selector?: string): Rect | null {
 export default function OnboardingTour({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [i, setI] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
+  const [tick, setTick] = useState(0);
   const steps = TOUR_STEPS;
 
   // Resolve the current step's target, skipping steps whose element is absent.
+  // A nav target inside a collapsed category is expanded first — that only takes
+  // effect on the next render, so it reports `retry` instead of a rect.
   const resolve = useCallback((index: number, dir: 1 | -1) => {
     let idx = index;
     while (idx >= 0 && idx < steps.length) {
       const s = steps[idx];
       if (!s.selector) return { idx, r: null };
+      if (s.selector.startsWith('#nav-') && revealNav(s.selector.slice(1))) return { idx, r: null, retry: true };
       const r = getRect(s.selector);
       if (r) return { idx, r };
       idx += dir; // gated/hidden target — skip in the travel direction
@@ -80,9 +86,14 @@ export default function OnboardingTour({ open, onClose }: { open: boolean; onClo
     if (!open) return;
     const found = resolve(i, i === 0 ? 1 : 1);
     if (!found) { onClose(); return; }
+    if (found.retry) {
+      if (found.idx !== i) setI(found.idx);
+      const raf = requestAnimationFrame(() => setTick((t) => t + 1)); // re-measure once the category has expanded
+      return () => cancelAnimationFrame(raf);
+    }
     if (found.idx !== i) { setI(found.idx); return; }
     setRect(found.r);
-  }, [open, i, resolve, onClose]);
+  }, [open, i, tick, resolve, onClose]);
 
   // Keep the spotlight aligned on resize/scroll.
   useEffect(() => {

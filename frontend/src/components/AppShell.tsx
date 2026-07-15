@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { HardHat, Bot, Bell, Search, LogOut, Menu, X, HelpCircle } from 'lucide-react';
+import { HardHat, Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useViewNavigate, viewForPath } from '../lib/routes';
-import { NAV } from './ErpLayout';
+import { getOpenGroups, revealNav, subscribeOpenGroups, toggleGroup } from '../lib/navUi';
+import { NAV_TREE, NavItem, isGroup } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
 import OnboardingTour from './OnboardingTour';
 
@@ -26,11 +27,44 @@ export interface ShellChrome {
   onLogout: () => void;
 }
 
+function NavLink({ item, active, nested, onSelect }: {
+  item: NavItem;
+  active: boolean;
+  nested?: boolean;
+  onSelect: (view: AppView) => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <button
+      id={item.id}
+      onClick={() => onSelect(item.view)}
+      className={`w-full flex items-center gap-3 py-2.5 rounded-lg transition-all text-xs text-left ${nested ? 'pl-8 pr-4' : 'px-4'} ${
+        active
+          ? 'text-white border-l-4 border-brand-secondary-container bg-white/10 font-semibold'
+          : 'text-brand-on-primary-container/85 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-brand-secondary-container' : ''}`} />
+      <span>{item.label}</span>
+    </button>
+  );
+}
+
 function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => void; onLogout: () => void }) {
   const { hasPermission } = useAuth();
   const navigateView = useViewNavigate();
   const location = useLocation();
   const active = viewForPath(location.pathname);
+  const openGroups = useSyncExternalStore(subscribeOpenGroups, getOpenGroups);
+
+  const visible = (item: NavItem) => !item.perm || hasPermission(item.perm);
+
+  // Keep the category holding the current page open, so a fresh session (or a
+  // deep link into a collapsed category) never hides where the user actually is.
+  const activeItemId = NAV_TREE.flatMap((e) => (isGroup(e) ? e.children : [e])).find((i) => i.view === active)?.id;
+  useEffect(() => {
+    if (activeItemId) revealNav(activeItemId);
+  }, [activeItemId]);
 
   const go = (view: AppView) => {
     navigateView(view);
@@ -64,23 +98,45 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
           </div>
 
           <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]">
-            {NAV.filter((n) => !n.perm || hasPermission(n.perm)).map((n) => {
-              const Icon = n.icon;
-              const isActive = n.view === active;
+            {NAV_TREE.map((entry) => {
+              if (!isGroup(entry)) {
+                return visible(entry)
+                  ? <NavLink key={entry.id} item={entry} active={entry.view === active} onSelect={go} />
+                  : null;
+              }
+
+              const children = entry.children.filter(visible);
+              if (children.length === 0) return null;
+
+              const Icon = entry.icon;
+              const expanded = !!openGroups[entry.id];
+              const hasActive = children.some((c) => c.view === active);
+
               return (
-                <button
-                  key={n.id}
-                  id={n.id}
-                  onClick={() => go(n.view)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-xs text-left ${
-                    isActive
-                      ? 'text-white border-l-4 border-brand-secondary-container bg-white/10 font-semibold'
-                      : 'text-brand-on-primary-container/85 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-brand-secondary-container' : ''}`} />
-                  <span>{n.label}</span>
-                </button>
+                <div key={entry.id}>
+                  <button
+                    id={entry.id}
+                    onClick={() => toggleGroup(entry.id)}
+                    aria-expanded={expanded}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-xs text-left ${
+                      hasActive && !expanded
+                        ? 'text-white bg-white/10 font-semibold'
+                        : 'text-brand-on-primary-container/85 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${hasActive ? 'text-brand-secondary-container' : ''}`} />
+                    <span className="flex-1">{entry.label}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
+                  </button>
+
+                  {expanded && (
+                    <div className="mt-1 space-y-1 border-l border-brand-on-primary-container/15 ml-5">
+                      {children.map((c) => (
+                        <NavLink key={c.id} item={c} active={c.view === active} nested onSelect={go} />
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

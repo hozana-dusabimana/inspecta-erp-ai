@@ -4,47 +4,99 @@ import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
   GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
-  Wallet, Store,
+  Wallet, Store, Package, HardHat, Archive, Wrench,
 } from 'lucide-react';
 import { AppView } from '../types';
+
+type Icon = React.ComponentType<{ className?: string }>;
 
 export interface NavItem {
   id: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: Icon;
   view: AppView;
   perm?: string;
 }
 
+export interface NavGroup {
+  id: string;
+  label: string;
+  icon: Icon;
+  children: NavItem[];
+}
+
+export type NavEntry = NavItem | NavGroup;
+
+export function isGroup(entry: NavEntry): entry is NavGroup {
+  return 'children' in entry;
+}
+
 // Shared sidebar nav — consumed by the persistent AppShell so the navigation
-// (incl. admin-only Administration) is identical on every page.
-export const NAV: NavItem[] = [
+// (incl. admin-only Administration) is identical on every page. Top-level
+// entries are either a direct link or a collapsible category of links.
+export const NAV_TREE: NavEntry[] = [
   { id: 'nav-dashboard', label: 'Dashboard', icon: Layers, view: AppView.DASHBOARD, perm: 'dashboard:read' },
   { id: 'nav-exec', label: 'Executive Intelligence', icon: Bot, view: AppView.EXEC_DASH, perm: 'ai:use' },
   { id: 'nav-portfolio', label: 'Portfolio', icon: Building2, view: AppView.PORTFOLIO, perm: 'portfolio:read' },
-  { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },
-  { id: 'nav-hr', label: 'Human Resources', icon: Users, view: AppView.HR, perm: 'hr:read' },
-  { id: 'nav-payroll', label: 'Payroll', icon: Wallet, view: AppView.PAYROLL, perm: 'payroll:read' },
-  { id: 'nav-pos', label: 'Point of Sale', icon: Store, view: AppView.POS, perm: 'pos:read' },
-  { id: 'nav-equipment', label: 'Equipment', icon: Truck, view: AppView.EQUIPMENT, perm: 'equipment:read' },
-  { id: 'nav-planning-dash', label: 'Planning Dashboards', icon: LayoutDashboard, view: AppView.PLANNING_DASH, perm: 'dashboard:read' },
-  { id: 'nav-scheduling', label: 'Scheduling (CPM)', icon: GanttChartSquare, view: AppView.SCHEDULING, perm: 'scheduling:read' },
-  { id: 'nav-production', label: 'Production', icon: Zap, view: AppView.PRODUCTION, perm: 'production:read' },
-  { id: 'nav-fieldops', label: 'Field Ops', icon: ClipboardList, view: AppView.FIELDOPS, perm: 'fieldops:read' },
-  { id: 'nav-finance', label: 'Finance', icon: DollarSign, view: AppView.FINANCE, perm: 'finance:read' },
-  { id: 'nav-profitability', label: 'Profitability', icon: TrendingUp, view: AppView.PROFITABILITY, perm: 'profitability:read' },
-  { id: 'nav-inventory', label: 'Inventory', icon: Warehouse, view: AppView.INVENTORY, perm: 'inventory:read' },
-  { id: 'nav-procurement', label: 'Procurement', icon: ShoppingCart, view: AppView.PROCUREMENT, perm: 'procurement:read' },
-  { id: 'nav-qaqc', label: 'QA/QC', icon: CheckSquare, view: AppView.QAQC, perm: 'qaqc:read' },
-  { id: 'nav-hse', label: 'HSE', icon: HeartPulse, view: AppView.HSE, perm: 'hse:read' },
-  { id: 'nav-risk', label: 'Risk Register', icon: ShieldAlert, view: AppView.RISK, perm: 'risk:read' },
-  { id: 'nav-approvals', label: 'Approvals', icon: CheckCircle2, view: AppView.APPROVALS, perm: 'approval:read' },
-  { id: 'nav-documents', label: 'Documents', icon: FileText, view: AppView.DOCUMENTS, perm: 'document:read' },
-  { id: 'nav-reports', label: 'Reports', icon: BarChart3, view: AppView.REPORTS, perm: 'report:read' },
+  {
+    id: 'navgrp-planning', label: 'Planning & Scheduling', icon: Calendar, children: [
+      { id: 'nav-planning', label: 'Planning Suite', icon: Calendar, view: AppView.PLANNING, perm: 'planning:read' },
+      { id: 'nav-planning-dash', label: 'Planning Dashboards', icon: LayoutDashboard, view: AppView.PLANNING_DASH, perm: 'dashboard:read' },
+      { id: 'nav-scheduling', label: 'Scheduling (CPM)', icon: GanttChartSquare, view: AppView.SCHEDULING, perm: 'scheduling:read' },
+    ],
+  },
+  {
+    id: 'navgrp-operations', label: 'Operations', icon: Wrench, children: [
+      { id: 'nav-production', label: 'Production', icon: Zap, view: AppView.PRODUCTION, perm: 'production:read' },
+      { id: 'nav-fieldops', label: 'Field Ops', icon: ClipboardList, view: AppView.FIELDOPS, perm: 'fieldops:read' },
+      { id: 'nav-equipment', label: 'Equipment', icon: Truck, view: AppView.EQUIPMENT, perm: 'equipment:read' },
+    ],
+  },
+  {
+    id: 'navgrp-people', label: 'People', icon: Users, children: [
+      { id: 'nav-hr', label: 'Human Resources', icon: Users, view: AppView.HR, perm: 'hr:read' },
+      { id: 'nav-payroll', label: 'Payroll', icon: Wallet, view: AppView.PAYROLL, perm: 'payroll:read' },
+    ],
+  },
+  {
+    id: 'navgrp-finance', label: 'Finance', icon: DollarSign, children: [
+      { id: 'nav-finance', label: 'Finance', icon: DollarSign, view: AppView.FINANCE, perm: 'finance:read' },
+      { id: 'nav-profitability', label: 'Profitability', icon: TrendingUp, view: AppView.PROFITABILITY, perm: 'profitability:read' },
+      { id: 'nav-pos', label: 'Point of Sale', icon: Store, view: AppView.POS, perm: 'pos:read' },
+    ],
+  },
+  {
+    id: 'navgrp-supply', label: 'Supply Chain', icon: Package, children: [
+      { id: 'nav-inventory', label: 'Inventory', icon: Warehouse, view: AppView.INVENTORY, perm: 'inventory:read' },
+      { id: 'nav-procurement', label: 'Procurement', icon: ShoppingCart, view: AppView.PROCUREMENT, perm: 'procurement:read' },
+    ],
+  },
+  {
+    id: 'navgrp-quality', label: 'Quality & Safety', icon: HardHat, children: [
+      { id: 'nav-qaqc', label: 'QA/QC', icon: CheckSquare, view: AppView.QAQC, perm: 'qaqc:read' },
+      { id: 'nav-hse', label: 'HSE', icon: HeartPulse, view: AppView.HSE, perm: 'hse:read' },
+      { id: 'nav-risk', label: 'Risk Register', icon: ShieldAlert, view: AppView.RISK, perm: 'risk:read' },
+    ],
+  },
+  {
+    id: 'navgrp-records', label: 'Workflow & Records', icon: Archive, children: [
+      { id: 'nav-approvals', label: 'Approvals', icon: CheckCircle2, view: AppView.APPROVALS, perm: 'approval:read' },
+      { id: 'nav-documents', label: 'Documents', icon: FileText, view: AppView.DOCUMENTS, perm: 'document:read' },
+      { id: 'nav-reports', label: 'Reports', icon: BarChart3, view: AppView.REPORTS, perm: 'report:read' },
+    ],
+  },
   { id: 'nav-copilot', label: 'AI Copilot', icon: Bot, view: AppView.COPILOT, perm: 'ai:use' },
   // Admin-only: only SYSTEM_ADMIN holds 'user:write'.
   { id: 'nav-admin', label: 'Administration', icon: ShieldCheck, view: AppView.ADMIN, perm: 'user:write' },
 ];
+
+// Flat list of every navigable item, in sidebar order.
+export const NAV: NavItem[] = NAV_TREE.flatMap((e) => (isGroup(e) ? e.children : [e]));
+
+// Maps a leaf nav id to the id of the category holding it (absent for top-level items).
+export const NAV_PARENT: Record<string, string> = Object.fromEntries(
+  NAV_TREE.filter(isGroup).flatMap((g) => g.children.map((c) => [c.id, g.id])),
+);
 
 interface Props {
   title: string;

@@ -361,6 +361,55 @@ function previewFields(data: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+// The whole (normalized) user message must BE one of these to count as a bare
+// confirmation. Kept strict so "create a project X" can't trigger a commit.
+const AFFIRMATIONS = new Set([
+  'y', 'yes', 'yep', 'yeah', 'yup', 'ya', 'ok', 'okay', 'k', 'sure', 'fine',
+  'confirm', 'confirmed', 'confirm it', 'go', 'go ahead', 'do it', 'create it',
+  'save it', 'save', 'proceed', 'please do', 'yes please', 'looks good', 'correct',
+  'yes create it', 'yes save it', 'yes confirm', 'yes do it', 'go for it', 'approved',
+]);
+
+function isAffirmation(prompt: string): boolean {
+  const norm = prompt.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return AFFIRMATIONS.has(norm);
+}
+
+/**
+ * Deterministic confirmation: if the user's message is a bare affirmation and an
+ * unexpired pending action (from a PREVIOUS turn's preview) exists, commit it
+ * server-side — bypassing the model, which is unreliable at the second step.
+ * Every safety property is preserved: the pending action can only exist because
+ * the user was already shown a preview; permission is re-checked here; org is
+ * forced; the frozen args are used. Returns an assistant message, or null to let
+ * the normal agent loop handle the turn.
+ */
+export async function tryConfirmPending(prompt: string, actor: Actor, conversationId: string): Promise<string | null> {
+  if (!isAffirmation(prompt)) return null;
+  const pending = await prisma.aiPendingAction.findFirst({
+    where: { conversationId, userId: actor.id, status: 'pending', expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!pending) return null;
+  const def = DEFS[pending.entity];
+  if (!def) return null;
+  if (!can(actor.role, def.crud.writePerm)) {
+    await prisma.aiPendingAction.update({ where: { id: pending.id }, data: { status: 'cancelled' } });
+    return `You don't have permission to create a ${def.title}, so I didn't save it.`;
+  }
+  let record: Record<string, unknown> | undefined;
+  try {
+    ({ record } = await runCreate(def.crud, actorReq(actor), pending.argsJson as Record<string, unknown>, true));
+  } catch (e) {
+    return `I couldn't save the ${def.title}: ${e instanceof Error ? e.message : 'validation failed'}.`;
+  }
+  await prisma.aiPendingAction.update({ where: { id: pending.id }, data: { status: 'committed' } });
+  const label = (record?.code as string) || (record?.name as string) || (record?.id as string) || '';
+  const fields = previewFields(record ?? {});
+  const lines = Object.entries(fields).map(([k, v]) => `- ${k}: ${v}`).join('\n');
+  return `Done — I've created the ${def.title}${label ? ` (${label})` : ''}.\n${lines}`;
+}
+
 /** Execute one tool call from the agent loop. Never throws — returns a result
  * object (including `{ error }`) that is fed back to the model as a tool message. */
 export async function executeWriteTool(

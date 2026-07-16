@@ -3,7 +3,7 @@ import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
 import { selectTools, runTools } from './tools';
 import { retrieve, RagSource } from './rag';
 import { runAgent } from './agent';
-import { Actor, writeToolSpecs } from './write-tools';
+import { Actor, writeToolSpecs, tryConfirmPending } from './write-tools';
 
 export interface CopilotContext {
   organizationName: string;
@@ -143,7 +143,8 @@ CREATING RECORDS (when tools are available) — follow this workflow EXACTLY:
 - Step 3: Call preview_<entity>, then show the user the previewed fields and ask them to confirm (e.g. "Reply 'yes' to create it").
 - Step 4: When the user confirms (e.g. "yes", "confirm", "ok", "go ahead", "create it", "do it"), you MUST IMMEDIATELY call commit_<entity>. Do NOT ask again and do NOT just repeat the details — call the commit tool.
 - Never confirm on the user's behalf (never preview and commit in the same reply). Never claim something was created unless a commit tool returned created:true.
-- If a tool returns an error (permission, validation), explain it plainly and, when possible, ask for what's needed. When creating records, the "Confidence" line is not required.`;
+- If a tool returns an error (permission, validation), explain it plainly and, when possible, ask for what's needed. When creating records, the "Confidence" line is not required.
+- Use the actual tool-calling mechanism — NEVER write tool calls, function names, or JSON payloads as text in your reply. If you intend to call a tool, call it.`;
 
 export interface CopilotAnswer {
   text: string;
@@ -242,6 +243,25 @@ export async function ask(
       offline: true,
     };
   };
+
+  // Deterministic confirmation: a bare "yes" to a pending preview commits it
+  // server-side, so the create doesn't depend on the model reliably re-calling
+  // commit. Runs before any provider call (fast + robust). Safety is unchanged:
+  // a pending action only exists because the user was already shown a preview.
+  if (opts.actor && opts.conversationId) {
+    const confirmMsg = await tryConfirmPending(prompt, opts.actor, opts.conversationId);
+    if (confirmMsg) {
+      return {
+        text: confirmMsg,
+        confidence: 100,
+        provider: 'copilot',
+        model: 'agentic-commit',
+        groundedOn: { projects: context.projects.length, generatedAt: isoNow },
+        sources: [],
+        offline: false,
+      };
+    }
+  }
 
   const provider = providerName ? getProvider(providerName) : anyConfiguredProvider();
   if (!provider || !provider.isConfigured()) return offlineAnswer();

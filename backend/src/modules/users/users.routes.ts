@@ -61,6 +61,8 @@ router.post(
         fullName: body.fullName,
         role: body.role,
         passwordHash: await hashPassword(body.password),
+        // Vouched for by an admin — no self-service email verification needed.
+        emailVerified: true,
       },
       select: selectPublic,
     });

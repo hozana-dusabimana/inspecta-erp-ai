@@ -23,12 +23,47 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(10),
 });
 
+const verifyEmailSchema = z.object({
+  token: z.string().min(10),
+});
+
+const resendSchema = z.object({
+  email: z.string().email(),
+});
+
 router.post(
   '/register',
   asyncHandler(async (req, res) => {
     const body = registerSchema.parse(req.body);
     const result = await service.registerOrganization(body);
     return ok(res, result, 201);
+  }),
+);
+
+router.post(
+  '/verify-email',
+  asyncHandler(async (req, res) => {
+    const body = verifyEmailSchema.parse(req.body);
+    const result = await service.verifyEmail(body.token);
+    await recordAudit({
+      organizationId: result.user.organizationId,
+      userId: result.user.id,
+      action: 'LOGIN',
+      entity: 'auth',
+      entityId: result.user.id,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
+    return ok(res, result);
+  }),
+);
+
+router.post(
+  '/resend-verification',
+  asyncHandler(async (req, res) => {
+    const body = resendSchema.parse(req.body);
+    const result = await service.resendVerification(body.email);
+    return ok(res, result);
   }),
 );
 

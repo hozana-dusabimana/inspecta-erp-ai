@@ -15,6 +15,11 @@ export const env = {
   isProd: process.env.NODE_ENV === 'production',
   port: Number(process.env.PORT ?? 4000),
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  // Public web app base URL, used to build links in emails (e.g. the email
+  // verification link). Defaults to the first configured CORS origin.
+  webUrl:
+    process.env.APP_URL ??
+    (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',')[0].trim(),
 
   databaseUrl: required('DATABASE_URL'),
 

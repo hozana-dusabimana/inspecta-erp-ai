@@ -8,6 +8,8 @@ import { AppView } from '../types';
 export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.LANDING]: '/',
   [AppView.LOGIN]: '/login',
+  [AppView.SIGNUP]: '/signup',
+  [AppView.VERIFY_EMAIL]: '/verify-email',
   [AppView.DASHBOARD]: '/dashboard',
   [AppView.EXEC_DASH]: '/executive',
   [AppView.PORTFOLIO]: '/portfolio',

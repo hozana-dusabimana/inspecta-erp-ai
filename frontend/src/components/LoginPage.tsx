@@ -144,7 +144,7 @@ export default function LoginPage({ onLoginSuccess, onNavigate }: LoginPageProps
 
           <p className="mt-10 pt-6 border-t border-[var(--mk-border)] text-center text-xs text-[var(--mk-muted)]">
             New to Inspecta?
-            <button onClick={() => onNavigate(AppView.LANDING)} className="font-bold hover:underline ml-1" style={{ color: CORAL }}>Explore our services</button>
+            <button onClick={() => onNavigate(AppView.SIGNUP)} className="font-bold hover:underline ml-1" style={{ color: CORAL }}>Create a company account</button>
           </p>
         </div>
 

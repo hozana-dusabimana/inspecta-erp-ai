@@ -37,13 +37,14 @@ async function main() {
   for (const spec of userSpecs) {
     const u = await prisma.user.upsert({
       where: { organizationId_email: { organizationId: org.id, email: spec.email } },
-      update: { fullName: spec.fullName, role: spec.role },
+      update: { fullName: spec.fullName, role: spec.role, emailVerified: true },
       create: {
         organizationId: org.id,
         email: spec.email,
         fullName: spec.fullName,
         role: spec.role,
         passwordHash: spec.hash,
+        emailVerified: true,
       },
     });
     users[spec.role] = u.id;

@@ -10,6 +10,12 @@ export interface AuthUser {
   permissions: string[];
 }
 
+export interface RegisterResult {
+  verificationRequired: boolean;
+  email: string;
+  emailed: boolean;
+}
+
 interface AuthState {
   user: AuthUser | null;
   loading: boolean;
@@ -19,7 +25,9 @@ interface AuthState {
     fullName: string;
     email: string;
     password: string;
-  }) => Promise<void>;
+  }) => Promise<RegisterResult>;
+  verifyEmail: (token: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
@@ -62,12 +70,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (input: { organizationName: string; fullName: string; email: string; password: string }) => {
-      const res = await api.post<AuthResponse>('/auth/register', input);
-      tokenStore.set(res.data.accessToken, res.data.refreshToken);
-      setUser(res.data.user);
+      // Registration creates a dormant account and emails a verification link;
+      // it does NOT log the user in until they verify.
+      const res = await api.post<RegisterResult>('/auth/register', input);
+      return res.data;
     },
     [],
   );
+
+  const verifyEmail = useCallback(async (token: string) => {
+    const res = await api.post<AuthResponse>('/auth/verify-email', { token });
+    tokenStore.set(res.data.accessToken, res.data.refreshToken);
+    setUser(res.data.user);
+  }, []);
+
+  const resendVerification = useCallback(async (email: string) => {
+    await api.post('/auth/resend-verification', { email });
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -85,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, login, register, verifyEmail, resendVerification, logout, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

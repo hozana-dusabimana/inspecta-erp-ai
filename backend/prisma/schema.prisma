@@ -208,6 +208,14 @@ model User {
   fullName       String
   role           Role      @default(SITE_ENGINEER)
   isActive       Boolean   @default(true)
+  // Email verification for self-service company signup. Defaults to true so that
+  // trusted creation paths (seed, admin-invite) and all pre-existing rows are
+  // verified automatically; ONLY public self-registration explicitly sets false
+  // and drives the verify-email flow. (Prod syncs via `prisma db push`, which has
+  // no data migration step — a true default is what keeps existing users logged-in.)
+  emailVerified         Boolean   @default(true)
+  verificationTokenHash String?   @unique
+  verificationExpiresAt DateTime?
   lastLoginAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

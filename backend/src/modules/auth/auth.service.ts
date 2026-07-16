@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { hashPassword, verifyPassword } from '../../lib/password';
@@ -7,8 +8,53 @@ import {
   verifyRefreshToken,
   hashToken,
 } from '../../lib/jwt';
-import { Unauthorized, Conflict, NotFound } from '../../lib/errors';
+import { Unauthorized, Conflict, NotFound, Forbidden, BadRequest } from '../../lib/errors';
 import { permissionsFor } from '../../auth/permissions';
+import { sendMail, isEmailConfigured } from '../../lib/email';
+import { env } from '../../config/env';
+
+const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
+
+/**
+ * Issues a fresh verification token for a user, persists its hash, and emails
+ * the verification link. Returns whether an email was actually dispatched.
+ * When SMTP is not configured the link is logged so the flow is still
+ * completable in development.
+ */
+async function sendVerification(user: { id: string; email: string; fullName: string }): Promise<boolean> {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      verificationTokenHash: hashToken(rawToken),
+      verificationExpiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
+    },
+  });
+
+  const link = `${env.webUrl.replace(/\/$/, '')}/verify-email?token=${rawToken}`;
+
+  if (!isEmailConfigured()) {
+    // eslint-disable-next-line no-console
+    console.warn(`[auth] SMTP not configured — verification link for ${user.email}: ${link}`);
+    return false;
+  }
+
+  const result = await sendMail({
+    to: user.email,
+    subject: 'Verify your email to activate your Inspecta account',
+    text: `Hi ${user.fullName},\n\nWelcome to Inspecta. Confirm your email address to activate your company account:\n\n${link}\n\nThis link expires in 24 hours. If you did not create this account, you can ignore this email.`,
+    html: `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#141821">
+      <h2 style="margin:0 0 12px">Welcome to Inspecta, ${user.fullName}</h2>
+      <p style="color:#4b5563">Confirm your email address to activate your company account.</p>
+      <p style="margin:24px 0">
+        <a href="${link}" style="background:#FC6061;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">Verify my email</a>
+      </p>
+      <p style="color:#6b7280;font-size:12px">Or paste this link into your browser:<br>${link}</p>
+      <p style="color:#9ca3af;font-size:11px;margin-top:24px">This link expires in 24 hours. If you did not create this account, you can safely ignore this email.</p>
+    </div>`,
+  });
+  return result.ok;
+}
 
 function slugify(name: string): string {
   return name
@@ -83,13 +129,55 @@ export async function registerOrganization(input: {
         passwordHash,
         fullName: input.fullName,
         role: Role.SYSTEM_ADMIN,
+        emailVerified: false,
       },
     });
     return { org, user };
   });
 
-  const tokens = await issueTokens(user);
-  return { user: publicUser(user), ...tokens };
+  // Account is created but dormant until the email is verified — no tokens yet.
+  const emailed = await sendVerification(user);
+  return { verificationRequired: true, email: user.email, emailed };
+}
+
+/**
+ * Confirms an email-verification token, activates the account, and logs the
+ * user in (returns tokens) so the new admin lands straight in their workspace.
+ */
+export async function verifyEmail(rawToken: string) {
+  const user = await prisma.user.findUnique({
+    where: { verificationTokenHash: hashToken(rawToken) },
+  });
+  if (!user || !user.verificationExpiresAt || user.verificationExpiresAt < new Date()) {
+    throw BadRequest('This verification link is invalid or has expired. Request a new one.');
+  }
+
+  const verified = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerified: true,
+      verificationTokenHash: null,
+      verificationExpiresAt: null,
+      lastLoginAt: new Date(),
+    },
+  });
+
+  const tokens = await issueTokens(verified);
+  return { user: publicUser(verified), ...tokens };
+}
+
+/**
+ * Re-sends a verification email. Always resolves the same way regardless of
+ * whether the account exists or is already verified, to avoid leaking which
+ * emails are registered.
+ */
+export async function resendVerification(rawEmail: string) {
+  const email = rawEmail.toLowerCase().trim();
+  const user = await prisma.user.findFirst({ where: { email } });
+  if (user && !user.emailVerified) {
+    await sendVerification(user);
+  }
+  return { sent: true };
 }
 
 export async function login(email: string, password: string) {
@@ -99,6 +187,12 @@ export async function login(email: string, password: string) {
 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) throw Unauthorized('Invalid credentials');
+
+  // Verify the password BEFORE this check so we don't reveal, to an
+  // unauthenticated caller, whether an unverified email is even registered.
+  if (!user.emailVerified) {
+    throw Forbidden('Please verify your email before signing in. Check your inbox for the verification link.');
+  }
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 

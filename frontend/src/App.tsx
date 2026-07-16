@@ -13,6 +13,8 @@ import InspectaErpPage from './components/marketing/InspectaErp';
 import TeamPage from './components/marketing/Team';
 import ContactPage from './components/marketing/Contact';
 import LoginPage from './components/LoginPage';
+import SignupPage from './components/SignupPage';
+import VerifyEmailPage from './components/VerifyEmailPage';
 import Dashboard from './components/Dashboard';
 import DailyEntry from './components/DailyEntry';
 import CopilotWorkspace from './components/CopilotWorkspace';
@@ -67,6 +69,13 @@ function LoginRoute() {
   return <LoginPage onLoginSuccess={() => navigate('/dashboard')} onNavigate={navigateView} />;
 }
 
+function SignupRoute() {
+  const { user, loading } = useAuth();
+  const navigateView = useViewNavigate();
+  if (!loading && user) return <Navigate to="/dashboard" replace />;
+  return <SignupPage onNavigate={navigateView} />;
+}
+
 // Copilot + Daily Entry are standalone full-screen pages (their own header, no
 // sidebar), so they render directly — not inside the AppShell chrome.
 function CopilotRoute() {
@@ -113,6 +122,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<LandingRoute />} />
         <Route path="/login" element={<LoginRoute />} />
+        <Route path="/signup" element={<SignupRoute />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
         {/* Public marketing site */}
         <Route path="/about" element={<AboutPage />} />

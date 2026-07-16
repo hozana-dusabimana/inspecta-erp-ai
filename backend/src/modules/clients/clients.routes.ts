@@ -9,7 +9,8 @@ import { auditFromRequest } from '../../auth/audit';
 const router = Router();
 router.use(authenticate);
 
-const upsertSchema = z.object({
+// Exported so the AI Copilot write tools validate client creation identically.
+export const upsertSchema = z.object({
   name: z.string().min(2),
   // private | government | individual — drives the billing workflow
   clientType: z.enum(['private', 'government', 'individual']).optional(),

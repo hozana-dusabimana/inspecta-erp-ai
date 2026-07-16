@@ -1,29 +1,94 @@
 import { env } from '../../config/env';
 
+/** A tool/function call the model asked us to run. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Present on assistant messages that requested tool calls (OpenAI shape). */
+  tool_calls?: ToolCall[];
+  /** Present on `role:'tool'` result messages — links back to the call. */
+  tool_call_id?: string;
+  /** Tool name, for `role:'tool'` messages. */
+  name?: string;
+}
+
+/** An OpenAI-style function tool definition exposed to the model. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema
+}
+
+export interface CompleteOptions {
+  tools?: ToolSpec[];
+  toolChoice?: 'auto' | 'none' | 'required';
 }
 
 export interface AiCompletion {
   text: string;
   provider: string;
   model: string;
+  /** Tool calls the model requested this turn (empty/absent when it answered with text). */
+  toolCalls?: ToolCall[];
+  finishReason?: string;
 }
 
 export interface AiProvider {
   readonly name: string;
   isConfigured(): boolean;
-  complete(messages: ChatMessage[]): Promise<AiCompletion>;
+  /** `opts.tools` engages function calling (OpenRouter only); without it, plain text. */
+  complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<AiCompletion>;
+  /** Whether this provider can do function/tool calling. */
+  supportsTools?: boolean;
+}
+
+/** Serialize our ChatMessage[] into the OpenAI/OpenRouter wire shape. */
+function toOpenAiMessages(messages: ChatMessage[]): Record<string, unknown>[] {
+  return messages.map((m) => {
+    if (m.role === 'tool') {
+      return { role: 'tool', tool_call_id: m.tool_call_id, content: m.content };
+    }
+    if (m.role === 'assistant' && m.tool_calls?.length) {
+      return {
+        role: 'assistant',
+        content: m.content || null,
+        tool_calls: m.tool_calls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+        })),
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
 }
 
 // ───────────────────────── OpenRouter (default) ─────────────────────────
 class OpenRouterProvider implements AiProvider {
   readonly name = 'openrouter';
+  readonly supportsTools = true;
   isConfigured() {
     return Boolean(env.ai.openrouter.apiKey);
   }
-  async complete(messages: ChatMessage[]): Promise<AiCompletion> {
+  async complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<AiCompletion> {
+    const body: Record<string, unknown> = {
+      model: env.ai.openrouter.model,
+      messages: toOpenAiMessages(messages),
+    };
+    if (opts?.tools?.length) {
+      body.tools = opts.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      }));
+      body.tool_choice = opts.toolChoice ?? 'auto';
+    }
+
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -32,17 +97,43 @@ class OpenRouterProvider implements AiProvider {
         'HTTP-Referer': env.corsOrigin,
         'X-Title': 'Inspecta BuildOS',
       },
-      body: JSON.stringify({ model: env.ai.openrouter.model, messages }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
     }
-    const json = (await res.json()) as { choices: { message: { content: string } }[] };
+    const json = (await res.json()) as {
+      choices: {
+        message: {
+          content: string | null;
+          tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+        };
+        finish_reason?: string;
+      }[];
+    };
+    const msg = json.choices?.[0]?.message;
+    const toolCalls: ToolCall[] = (msg?.tool_calls ?? []).map((tc) => ({
+      id: tc.id,
+      name: tc.function.name,
+      arguments: safeParseArgs(tc.function.arguments),
+    }));
     return {
-      text: json.choices?.[0]?.message?.content ?? '',
+      text: msg?.content ?? '',
       provider: this.name,
       model: env.ai.openrouter.model,
+      toolCalls: toolCalls.length ? toolCalls : undefined,
+      finishReason: json.choices?.[0]?.finish_reason,
     };
+  }
+}
+
+/** Tool-call arguments arrive as a JSON string; tolerate malformed output. */
+function safeParseArgs(raw: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(raw || '{}');
+    return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
   }
 }
 

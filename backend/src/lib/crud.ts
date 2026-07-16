@@ -5,7 +5,7 @@ import { prisma } from './prisma';
 import { asyncHandler, ok, paginated } from './http';
 import { NotFound, BadRequest } from './errors';
 import { authenticate, requirePermission } from '../middleware/auth';
-import { auditFromRequest } from '../auth/audit';
+import { auditFromRequest, recordAudit } from '../auth/audit';
 import { Permission } from '../auth/permissions';
 
 type Delegate = {
@@ -136,7 +136,7 @@ const DATE_FIELDS = new Set([
 ]);
 
 /** Coerce ISO date strings on known date fields into Date objects. */
-function coerceDates(data: Record<string, unknown>): Record<string, unknown> {
+export function coerceDates(data: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...data };
   for (const key of Object.keys(out)) {
     if (DATE_FIELDS.has(key) && typeof out[key] === 'string') {
@@ -150,7 +150,7 @@ function coerceDates(data: Record<string, unknown>): Record<string, unknown> {
  * Generate a sequential, org-scoped identifier (PREFIX-0001, PREFIX-0002, …),
  * skipping any value already taken (handles gaps from deleted records).
  */
-async function generateAutoCode(model: string, orgId: string, field: string, prefix: string): Promise<string> {
+export async function generateAutoCode(model: string, orgId: string, field: string, prefix: string): Promise<string> {
   const delegate = (prisma as unknown as Record<string, Delegate>)[model];
   // Count rows that already carry a value with this prefix — gives a correct
   // per-prefix sequence and works whether the field is nullable or not (handles
@@ -165,7 +165,7 @@ async function generateAutoCode(model: string, orgId: string, field: string, pre
   return `${prefix}-${Date.now()}`;
 }
 
-async function assertProjectInOrg(orgId: string, projectId: unknown) {
+export async function assertProjectInOrg(orgId: string, projectId: unknown) {
   if (!projectId) return;
   const project = await prisma.project.findFirst({
     where: { id: String(projectId), organizationId: orgId },
@@ -174,7 +174,7 @@ async function assertProjectInOrg(orgId: string, projectId: unknown) {
   if (!project) throw BadRequest('projectId does not belong to your organization');
 }
 
-async function assertRefsInOrg(
+export async function assertRefsInOrg(
   orgId: string,
   data: Record<string, unknown>,
   refs?: Array<{ field: string; model: string }>,
@@ -263,6 +263,59 @@ function flattenForExport(row: Record<string, unknown>): Record<string, string |
     out[k] = v as string | number;
   }
   return out;
+}
+
+/**
+ * The create pipeline shared by the CRUD route handler and the AI Copilot write
+ * tools: parse → autoCode → project/ref scoping → validate → coerce dates →
+ * transform → force org. When `commit` is false it stops there and returns the
+ * resolved would-be record (used to build a preview without writing). When true
+ * it persists, audits, and runs `afterChange`. `req` may be a real Express
+ * request or a minimal actor shim ({ user, ip, headers }).
+ */
+export async function runCreate(
+  opts: CrudOptions,
+  req: Request,
+  body: unknown,
+  commit: boolean,
+): Promise<{ data: Record<string, unknown>; record?: Record<string, unknown> }> {
+  const orgId = req.user!.orgId;
+  const parsed = opts.createSchema.parse(body) as Record<string, unknown>;
+  if (opts.autoCode) {
+    const codes = Array.isArray(opts.autoCode) ? opts.autoCode : [opts.autoCode];
+    for (const ac of codes) {
+      if (ac.when && !ac.when(parsed)) continue;
+      const cur = parsed[ac.field];
+      if (cur === undefined || cur === null || String(cur).trim() === '') {
+        parsed[ac.field] = await generateAutoCode(opts.model, orgId, ac.field, ac.prefix);
+      }
+    }
+  }
+  if (opts.requireProject || parsed.projectId) {
+    await assertProjectInOrg(orgId, parsed.projectId);
+  }
+  await assertRefsInOrg(orgId, parsed, opts.refs);
+  if (opts.validate) await opts.validate(parsed, req);
+  let data = coerceDates(parsed);
+  if (opts.transform) data = opts.transform(data, req);
+  data.organizationId = orgId;
+
+  if (!commit) return { data };
+
+  const delegate = (prisma as unknown as Record<string, Delegate>)[opts.model];
+  const record = await delegate.create({ data });
+  await recordAudit({
+    organizationId: orgId,
+    userId: req.user!.id,
+    action: 'CREATE',
+    entity: opts.entity,
+    entityId: String(record.id),
+    newValues: record,
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers?.['user-agent'] ?? null,
+  });
+  if (opts.afterChange) await opts.afterChange('CREATE', record, req);
+  return { data, record };
 }
 
 /**
@@ -368,29 +421,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
     '/',
     requirePermission(opts.writePerm),
     asyncHandler(async (req, res) => {
-      const parsed = opts.createSchema.parse(req.body) as Record<string, unknown>;
-      if (opts.autoCode) {
-        const codes = Array.isArray(opts.autoCode) ? opts.autoCode : [opts.autoCode];
-        for (const ac of codes) {
-          if (ac.when && !ac.when(parsed)) continue;
-          const cur = parsed[ac.field];
-          if (cur === undefined || cur === null || String(cur).trim() === '') {
-            parsed[ac.field] = await generateAutoCode(opts.model, req.user!.orgId, ac.field, ac.prefix);
-          }
-        }
-      }
-      if (opts.requireProject || parsed.projectId) {
-        await assertProjectInOrg(req.user!.orgId, parsed.projectId);
-      }
-      await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
-      if (opts.validate) await opts.validate(parsed, req);
-      let data = coerceDates(parsed);
-      if (opts.transform) data = opts.transform(data, req);
-      data.organizationId = req.user!.orgId;
-
-      const record = await delegate().create({ data });
-      await auditFromRequest(req, 'CREATE', opts.entity, String(record.id), { newValues: record });
-      if (opts.afterChange) await opts.afterChange('CREATE', record, req);
+      const { record } = await runCreate(opts, req, req.body, true);
       return ok(res, record, 201);
     }),
   );

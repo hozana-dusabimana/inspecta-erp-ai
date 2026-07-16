@@ -5,7 +5,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
-import { createCrudRouter } from '../../lib/crud';
+import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 import { spi, cpi, eac, etc, vac } from '../../lib/formulas';
 
@@ -54,9 +54,8 @@ const costCreate = z.object({
   amount: z.number().nonnegative(),
   date: z.string().datetime().optional(),
 });
-router.use(
-  '/costs',
-  createCrudRouter({
+// Exported so the AI Copilot write tools reuse the exact cost-entry pipeline.
+export const costEntryCrud: CrudOptions = {
     model: 'costEntry',
     entity: 'cost-entry',
     readPerm: 'finance:read',
@@ -92,8 +91,8 @@ router.use(
         });
       }
     },
-  }),
-);
+};
+router.use('/costs', createCrudRouter(costEntryCrud));
 
 // ── Client invoices / IPC ─────────────────────────────────────
 const invoiceCreate = z.object({

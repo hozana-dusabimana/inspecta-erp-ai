@@ -10,7 +10,8 @@ import { auditFromRequest } from '../../auth/audit';
 const router = Router();
 router.use(authenticate);
 
-const createSchema = z.object({
+// Exported so the AI Copilot write tools validate project creation identically.
+export const createSchema = z.object({
   code: z.string().min(2).optional(), // auto-generated when omitted
   name: z.string().min(2),
   description: z.string().optional(),

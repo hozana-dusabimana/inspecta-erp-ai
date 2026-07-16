@@ -2,6 +2,8 @@ import { prisma } from '../../lib/prisma';
 import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
 import { selectTools, runTools } from './tools';
 import { retrieve, RagSource } from './rag';
+import { runAgent } from './agent';
+import { Actor, writeToolSpecs } from './write-tools';
 
 export interface CopilotContext {
   organizationName: string;
@@ -132,7 +134,15 @@ ANSWER FORMAT — use these sections (omit a section only if there is genuinely 
 **Action Plan** — a short table: Priority | Action | Owner | Due | Expected Impact.
 **Supporting Metrics** — the key numbers you used.
 When you use a fact from the RETRIEVED RECORDS, cite it inline in square brackets, e.g. [NCR NCR-01] or [Inspection "Slab pour QA"].
-End with: "Confidence: <0-100>%" (low if data is sparse).`;
+End with: "Confidence: <0-100>%" (low if data is sparse).
+
+CREATING RECORDS (when tools are available):
+- You can CREATE projects, clients, risks, NCRs and cost entries on the user's behalf using the provided tools.
+- Gather the essentials conversationally. Ask for missing REQUIRED fields one at a time; don't invent values. Optional fields can be left out.
+- To attach an existing project/client by name, call list_projects / list_clients to resolve its id first. If the user names a client that doesn't exist, offer to create the client first (its own confirm), then the project.
+- Before saving, call preview_<entity>, then show the user the previewed fields and ask them to confirm (e.g. "Reply 'yes' to create it").
+- Only AFTER the user explicitly confirms in a later message, call commit_<entity>. Never confirm on the user's behalf. Never claim something was created unless a commit tool returned created:true.
+- If a tool returns an error (permission, validation), explain it plainly and, when possible, ask for what's needed. When creating records, the "Confidence" line is not required.`;
 
 export interface CopilotAnswer {
   text: string;
@@ -154,6 +164,10 @@ export interface AskOptions {
   provider?: string;
   projectId?: string;
   pageContext?: string;
+  /** Conversation to load prior turns from (and to scope pending create actions). */
+  conversationId?: string;
+  /** The signed-in user; required to enable agentic create-by-chat (writes run as them). */
+  actor?: Actor;
 }
 
 export async function ask(
@@ -173,8 +187,26 @@ export async function ask(
   ]);
   const toolNames = selectTools(prompt, pageContext);
 
+  // Prior turns (this conversation) so slot-filling / confirmations work across
+  // messages. The current prompt is persisted by the route AFTER this call, so
+  // history never includes the current turn.
+  let history: ChatMessage[] = [];
+  if (opts.conversationId) {
+    const prior = await prisma.aiMessage.findMany({
+      where: { conversationId: opts.conversationId },
+      orderBy: { createdAt: 'asc' },
+      take: 40,
+      select: { role: true, content: true },
+    });
+    history = prior.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content,
+    })) as ChatMessage[];
+  }
+
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
+    ...history,
     {
       role: 'user',
       content:
@@ -213,8 +245,31 @@ export async function ask(
   const provider = providerName ? getProvider(providerName) : anyConfiguredProvider();
   if (!provider || !provider.isConfigured()) return offlineAnswer();
 
-  // Try the live provider with one retry on transient errors, then degrade gracefully.
+  // Agentic path: a tool-capable provider + a signed-in actor + a conversation
+  // lets the Copilot CREATE records (preview → confirm → commit) as the user.
+  // On failure, fall through to the plain completion + offline fallback below.
   let lastErr: unknown;
+  if (provider.supportsTools && opts.actor && opts.conversationId) {
+    try {
+      const ctx = { conversationId: opts.conversationId, sameTurnPendingIds: new Set<string>() };
+      const result = await runAgent(provider, messages, writeToolSpecs(), opts.actor, ctx);
+      if (result.text?.trim()) {
+        return {
+          text: result.text,
+          confidence: extractConfidence(result.text),
+          provider: result.provider,
+          model: result.model,
+          groundedOn: { projects: context.projects.length, generatedAt: isoNow },
+          sources,
+          offline: false,
+        };
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  // Try the live provider with one retry on transient errors, then degrade gracefully.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const completion = await provider.complete(messages);

@@ -5,7 +5,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
-import { createCrudRouter } from '../../lib/crud';
+import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -85,7 +85,8 @@ const ncrCreate = z.object({
   raisedBy: z.string().optional(),
   closedAt: z.string().datetime().optional(),
 });
-router.use('/ncrs', createCrudRouter({
+// Exported so the AI Copilot write tools reuse the exact NCR create pipeline.
+export const ncrCrud: CrudOptions = {
   model: 'ncr', entity: 'ncr', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
   createSchema: ncrCreate, updateSchema: ncrCreate.partial(),
   autoCode: { field: 'number', prefix: 'NCR' },
@@ -110,7 +111,8 @@ router.use('/ncrs', createCrudRouter({
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: (record.severity as Severity) ?? 'MEDIUM', title: `NCR ${record.number}`, message: String(record.description), link: `/projects/${record.projectId}` });
     }
   },
-}));
+};
+router.use('/ncrs', createCrudRouter(ncrCrud));
 
 // ── Corrective actions (first-class, multiple per NCR) ────────
 const caCreate = z.object({

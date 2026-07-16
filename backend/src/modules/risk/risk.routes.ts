@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { RiskStatus } from '@prisma/client';
-import { createCrudRouter } from '../../lib/crud';
+import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { riskScore } from '../../lib/formulas';
 import { notify } from '../notifications/notify';
 
@@ -16,7 +16,8 @@ const riskCreate = z.object({
   owner: z.string().optional(),
 });
 
-const router = createCrudRouter({
+// Exported so the AI Copilot write tools reuse the exact create pipeline.
+export const riskCrud: CrudOptions = {
   model: 'risk',
   entity: 'risk',
   readPerm: 'risk:read',
@@ -45,6 +46,8 @@ const router = createCrudRouter({
       });
     }
   },
-});
+};
+
+const router = createCrudRouter(riskCrud);
 
 export default router;

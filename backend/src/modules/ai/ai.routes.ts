@@ -18,34 +18,42 @@ const chatSchema = z.object({
   conversationId: z.string().optional(),
 });
 
+/**
+ * Resolve the caller's conversation, creating one if needed. Done BEFORE the
+ * answer is generated so agentic create previews can be attached to it and
+ * confirmed on a later turn. Returns a conversation id owned by this user+org.
+ */
+async function resolveConversation(orgId: string, userId: string, conversationId: string | undefined, prompt: string): Promise<string> {
+  if (conversationId) {
+    const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId } });
+    if (conv) return conv.id;
+  }
+  const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId, title: prompt.slice(0, 80) } });
+  return conv.id;
+}
+
 router.post(
   '/chat',
   requirePermission('ai:use'),
   asyncHandler(async (req, res) => {
     const body = chatSchema.parse(req.body);
     const orgId = req.user!.orgId;
+    const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, body.prompt);
+
     const answer = await service.ask(orgId, body.prompt, {
       provider: body.provider,
       projectId: body.projectId,
       pageContext: body.pageContext,
+      conversationId,
+      actor: req.user!,
     });
 
     // Persist the exchange (conversation memory).
-    let conversationId = body.conversationId;
-    if (conversationId) {
-      const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId: req.user!.id } });
-      if (!conv) conversationId = undefined;
-    }
-    if (!conversationId) {
-      const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId: req.user!.id, title: body.prompt.slice(0, 80) } });
-      conversationId = conv.id;
-    } else {
-      await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-    }
     await prisma.aiMessage.createMany({ data: [
       { conversationId, role: 'user', content: body.prompt },
       { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
     ] });
+    await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
 
     return ok(res, { ...answer, conversationId });
   }),
@@ -62,27 +70,21 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
   res.flushHeaders?.();
   const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
-  // Compute the grounded answer (tools + RAG + provider/offline), then stream it.
+  // Ensure the conversation exists before answering (agentic previews attach to it).
+  const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, body.prompt);
+
+  // Compute the grounded answer (tools + RAG + agentic writes + provider/offline), then stream it.
   const answer = await service.ask(orgId, body.prompt, {
     provider: body.provider, projectId: body.projectId, pageContext: body.pageContext,
+    conversationId, actor: req.user!,
   });
 
   // Persist conversation memory.
-  let conversationId = body.conversationId;
-  if (conversationId) {
-    const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId: req.user!.id } });
-    if (!conv) conversationId = undefined;
-  }
-  if (!conversationId) {
-    const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId: req.user!.id, title: body.prompt.slice(0, 80) } });
-    conversationId = conv.id;
-  } else {
-    await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-  }
   await prisma.aiMessage.createMany({ data: [
     { conversationId, role: 'user', content: body.prompt },
     { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
   ] });
+  await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
 
   // Stream the text in small chunks for a token-by-token feel.
   const tokens = answer.text.split(/(\s+)/);

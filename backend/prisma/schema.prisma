@@ -1830,6 +1830,26 @@ model AiMessage {
   @@map("ai_messages")
 }
 
+// A create the Copilot has PREVIEWED and is waiting for the user to confirm.
+// The frozen args are re-run through the real create pipeline on commit; nothing
+// is written until an explicit confirmation in a LATER turn. TTL-bounded.
+model AiPendingAction {
+  id             String   @id @default(cuid())
+  conversationId String
+  organizationId String
+  userId         String
+  tool           String // e.g. create_project
+  entity         String // e.g. project
+  argsJson       Json // original tool args (frozen)
+  previewJson    Json // resolved would-be record shown to the user
+  status         String   @default("pending") // pending | committed | cancelled
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+
+  @@index([conversationId, userId, status])
+  @@map("ai_pending_actions")
+}
+
 // ════════════════ MODULE 05 — Labor, Attendance & Payroll ════════════════
 // Rwanda RRA PAYE / RSSB. statutory_rates are admin-configurable and
 // date-versioned — never hardcode rates in app logic.

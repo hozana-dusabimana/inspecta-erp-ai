@@ -6,11 +6,11 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#f8f9ff",
-  "theme_color": "#00286a",
+  "background_color": "#f7f7f8",
+  "theme_color": "#141821",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/inspecta-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

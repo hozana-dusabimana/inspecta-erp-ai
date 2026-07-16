@@ -82,7 +82,7 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
           <Card title="Cost by Category">
             {(s.costByCategory ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No costs yet.</p> : (
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={s.costByCategory}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="category" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="amount" fill="#00286a" radius={[4, 4, 0, 0]} /></BarChart>
+                <BarChart data={s.costByCategory}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="category" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="amount" fill="#471519" radius={[4, 4, 0, 0]} /></BarChart>
               </ResponsiveContainer>
             )}
           </Card>
@@ -100,10 +100,10 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
           <Card title="Monthly Cash Flow & Cumulative Position">
             {(c.curve ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No cash movements yet.</p> : (
               <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={c.curve}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(v) => money(v)} /><Legend wrapperStyle={{ fontSize: 11 }} />
+                <LineChart data={c.curve}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip formatter={(v) => money(v)} /><Legend wrapperStyle={{ fontSize: 11 }} />
                   <Line type="monotone" dataKey="inflows" stroke="#48c768" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="outflows" stroke="#dc2626" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="cumulative" stroke="#00286a" strokeWidth={2.5} dot={false} name="Cash Position" />
+                  <Line type="monotone" dataKey="cumulative" stroke="#471519" strokeWidth={2.5} dot={false} name="Cash Position" />
                 </LineChart>
               </ResponsiveContainer>
             )}

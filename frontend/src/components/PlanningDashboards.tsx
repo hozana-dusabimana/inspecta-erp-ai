@@ -15,7 +15,7 @@ interface Props {
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const num = (n: unknown) => Number(n ?? 0).toLocaleString();
-const PIE = ['#00286a', '#ff8a00', '#48c768', '#7c9cff', '#b2c5ff', '#c4c6d3', '#9aa0b4'];
+const PIE = ['#471519', '#fc6061', '#48c768', '#c98a2b', '#e8918f', '#7a5a5b', '#c9a9aa'];
 
 function Kpi({ label, value, tone, light }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad'; light?: string }) {
   const color = tone === 'bad' ? 'text-red-600' : tone === 'warn' ? 'text-amber-600' : 'text-brand-primary';
@@ -64,9 +64,9 @@ function BaselineTab({ projectId }: { projectId: string }) {
       <Panel title="BOQ Cost vs Budget">
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chart}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} />
-            <Tooltip /><Bar dataKey="Cost" fill="#00286a" radius={[4, 4, 0, 0]} /><Bar dataKey="Budget" fill="#ff8a00" radius={[4, 4, 0, 0]} />
+            <Tooltip /><Bar dataKey="Cost" fill="#471519" radius={[4, 4, 0, 0]} /><Bar dataKey="Budget" fill="#fc6061" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </Panel>
@@ -103,7 +103,7 @@ function ResourcesTab() {
         <Panel title="Equipment by Ownership">
           {ownership.length === 0 ? <p className="text-xs text-brand-on-surface-variant">No equipment yet.</p> : (
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={ownership}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#00286a" radius={[4, 4, 0, 0]} /></BarChart>
+              <BarChart data={ownership}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#471519" radius={[4, 4, 0, 0]} /></BarChart>
             </ResponsiveContainer>
           )}
         </Panel>
@@ -132,7 +132,7 @@ function ProcurementTab({ projectId }: { projectId: string }) {
       <Panel title="Purchase Requests by Status">
         {prChart.length === 0 ? <p className="text-xs text-brand-on-surface-variant">No purchase requests yet.</p> : (
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={prChart}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#ff8a00" radius={[4, 4, 0, 0]} /></BarChart>
+            <BarChart data={prChart}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} allowDecimals={false} /><Tooltip /><Bar dataKey="value" fill="#fc6061" radius={[4, 4, 0, 0]} /></BarChart>
           </ResponsiveContainer>
         )}
       </Panel>
@@ -159,7 +159,7 @@ function BudgetTab({ projectId }: { projectId: string }) {
       </div>
       <Panel title="Planned vs Actual Cost">
         <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={chart}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#00286a" radius={[4, 4, 0, 0]} /></BarChart>
+          <BarChart data={chart}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} /><Tooltip formatter={(v) => money(v)} /><Bar dataKey="value" fill="#471519" radius={[4, 4, 0, 0]} /></BarChart>
         </ResponsiveContainer>
       </Panel>
     </div>

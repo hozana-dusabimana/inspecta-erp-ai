@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { HardHat, Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight } from 'lucide-react';
+import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -88,11 +88,9 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
         </button>
         <div className="flex flex-col gap-6">
           <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => go(AppView.DASHBOARD)}>
-            <div className="w-10 h-10 rounded-xl bg-brand-secondary-container flex items-center justify-center shadow-lg shadow-brand-secondary-container/20">
-              <HardHat className="text-white w-5 h-5" />
-            </div>
+            <img src="/inspecta-icon.svg" alt="Inspecta" className="w-10 h-10 rounded-xl shadow-lg" />
             <div>
-              <h1 className="font-display text-lg font-bold text-white leading-none">Inspecta AI</h1>
+              <h1 className="font-display text-lg font-extrabold tracking-tight text-white leading-none">INSPECTA</h1>
               <p className="text-brand-on-primary-container text-[10px] uppercase font-bold tracking-widest mt-1">Construction ERP</p>
             </div>
           </div>

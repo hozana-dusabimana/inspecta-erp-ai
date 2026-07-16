@@ -159,7 +159,7 @@ export default function OnboardingTour({ open, onClose }: { open: boolean; onClo
           className="pointer-events-none"
           style={{
             position: 'fixed', left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12,
-            borderRadius: 12, border: '2px solid #ff8a00', boxShadow: '0 0 0 9999px rgba(2,6,23,0.66)', transition: 'all .2s ease', zIndex: 101,
+            borderRadius: 12, border: '2px solid #fc6061', boxShadow: '0 0 0 9999px rgba(2,6,23,0.66)', transition: 'all .2s ease', zIndex: 101,
           }}
         />
       ) : (

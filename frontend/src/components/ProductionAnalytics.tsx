@@ -24,7 +24,7 @@ function Bars({ data }: { data: { name: string; productivity: number }[] }) {
   if (!data.length) return <p className="text-xs text-brand-on-surface-variant">No data.</p>;
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="productivity" fill="#00286a" radius={[4, 4, 0, 0]} /></BarChart>
+      <BarChart data={data}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="productivity" fill="#471519" radius={[4, 4, 0, 0]} /></BarChart>
     </ResponsiveContainer>
   );
 }
@@ -127,9 +127,9 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 </div>
                 {(a.trends?.[period] ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No trend data.</p> : (
                   <ResponsiveContainer width="100%" height={240}>
-                    <LineChart data={a.trends[period]}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="productivity" stroke="#00286a" strokeWidth={2} dot={false} name="Productivity" />
-                      <Line type="monotone" dataKey="actual" stroke="#ff8a00" strokeWidth={2} dot={false} name="Actual Qty" />
+                    <LineChart data={a.trends[period]}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="productivity" stroke="#471519" strokeWidth={2} dot={false} name="Productivity" />
+                      <Line type="monotone" dataKey="actual" stroke="#fc6061" strokeWidth={2} dot={false} name="Actual Qty" />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -154,7 +154,7 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
               <Card title="Labor Hours by Activity (histogram)">
                 {(a.histograms?.laborByActivity ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No data.</p> : (
                   <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={a.histograms.laborByActivity}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="hours" fill="#7c9cff" radius={[4, 4, 0, 0]} /></BarChart>
+                    <BarChart data={a.histograms.laborByActivity}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Bar dataKey="hours" fill="#c98a2b" radius={[4, 4, 0, 0]} /></BarChart>
                   </ResponsiveContainer>
                 )}
               </Card>
@@ -212,9 +212,9 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 <Card title="Burndown — cumulative planned vs actual">
                   <ResponsiveContainer width="100%" height={240}>
                     <LineChart data={(() => { let cp = 0; let ca = 0; const total = a.trends.daily.reduce((s: number, t: any) => s + t.planned, 0); return a.trends.daily.map((t: any) => { cp += t.planned; ca += t.actual; return { label: t.label, Remaining: Math.max(0, total - ca), Planned: Math.max(0, total - cp) }; }); })()}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="Planned" stroke="#9aa0b4" strokeWidth={2} dot={false} strokeDasharray="4 4" />
-                      <Line type="monotone" dataKey="Remaining" stroke="#00286a" strokeWidth={2} dot={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} /><Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="Planned" stroke="#9ca3af" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                      <Line type="monotone" dataKey="Remaining" stroke="#471519" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </Card>

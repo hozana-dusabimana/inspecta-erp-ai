@@ -92,12 +92,12 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
           <div className="grid lg:grid-cols-2 gap-5">
             <Card title="Defect Heatmap by Inspection Type">
               {(k.defectsByType ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No inspection data.</p> : (
-                <ResponsiveContainer width="100%" height={220}><BarChart data={k.defectsByType}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="defects" fill="#dc2626" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={220}><BarChart data={k.defectsByType}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="defects" fill="#dc2626" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
               )}
             </Card>
             <Card title="NCRs by Status">
               {(k.ncrByStatus ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No NCRs.</p> : (
-                <ResponsiveContainer width="100%" height={220}><BarChart data={k.ncrByStatus}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="status" tick={{ fontSize: 9 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#00286a" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={220}><BarChart data={k.ncrByStatus}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="status" tick={{ fontSize: 9 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#471519" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
               )}
             </Card>
           </div>
@@ -118,7 +118,7 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
             <Card title="Risk Matrix (open risks)"><RiskMatrix risks={k.riskMatrix ?? []} /></Card>
             <Card title="Incidents by Type">
               {(k.incidentsByType ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No incidents. 🎉</p> : (
-                <ResponsiveContainer width="100%" height={200}><BarChart data={k.incidentsByType}><CartesianGrid strokeDasharray="3 3" stroke="#c4c6d3" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 9 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={200}><BarChart data={k.incidentsByType}><CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.3} /><XAxis dataKey="name" tick={{ fontSize: 9 }} /><YAxis tick={{ fontSize: 10 }} allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
               )}
             </Card>
           </div>

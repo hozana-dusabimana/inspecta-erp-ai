@@ -5,32 +5,34 @@
   --font-display: "Hanken Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Brand Colors */
-  --color-brand-primary: #00286a;
-  --color-brand-primary-container: #0f3d91;
-  --color-brand-on-primary-container: #8eadff;
-  /* Sidebar/nav surface — kept dark in BOTH themes (decoupled from primary). */
-  --color-brand-nav: #00286a;
-  --color-brand-secondary: #914c00;
-  --color-brand-secondary-container: #ff8a00;
-  --color-brand-on-secondary-container: #613100;
-  --color-brand-tertiary: #003512;
+  /* Brand Colors — aligned to the public/marketing brand (coral #FC6061 +
+     maroon #471519 on neutral surfaces). Coral is the vibrant accent, maroon
+     the deep primary; success stays green. */
+  --color-brand-primary: #471519;              /* maroon — headings, primary buttons, avatar */
+  --color-brand-primary-container: #631d20;    /* lighter maroon — primary button hover */
+  --color-brand-on-primary-container: #c7b0b0; /* muted light text on the dark sidebar */
+  /* Sidebar/nav surface — kept dark in BOTH themes (matches the login brand panel). */
+  --color-brand-nav: #141821;
+  --color-brand-secondary: #a13d3e;            /* muted maroon-red — secondary accent text */
+  --color-brand-secondary-container: #fc6061;  /* CORAL — accent icons, active nav, CTA fills */
+  --color-brand-on-secondary-container: #5e1a1b;
+  --color-brand-tertiary: #003512;             /* green — success semantics (kept) */
   --color-brand-on-tertiary-container: #48c768;
   --color-brand-tertiary-fixed-dim: #62df7d;
-  --color-brand-surface: #f8f9ff;
-  --color-brand-surface-dim: #ccdbf4;
-  --color-brand-surface-container: #e6eeff;
-  --color-brand-surface-container-low: #eff4ff;
+  --color-brand-surface: #f7f7f8;              /* neutral app background (was blue-tinted) */
+  --color-brand-surface-dim: #ececef;
+  --color-brand-surface-container: #f2f2f4;
+  --color-brand-surface-container-low: #fafafa;
   --color-brand-surface-container-lowest: #ffffff;
-  --color-brand-surface-container-high: #dde9ff;
-  --color-brand-surface-container-highest: #d5e3fd;
-  --color-brand-on-surface: #0d1c2f;
-  --color-brand-on-surface-variant: #434652;
-  --color-brand-outline: #747783;
-  --color-brand-outline-variant: #c4c6d3;
+  --color-brand-surface-container-high: #ededf0;
+  --color-brand-surface-container-highest: #e6e6ea;
+  --color-brand-on-surface: #14141a;           /* marketing ink */
+  --color-brand-on-surface-variant: #5c5f66;   /* marketing muted */
+  --color-brand-outline: #a1a1aa;
+  --color-brand-outline-variant: #e4e4e7;
   --color-brand-status-critical: #dc2626;
   --color-brand-status-warning: #f59e0b;
-  --color-brand-surface-ai: #f8fafc;
+  --color-brand-surface-ai: #fafafa;
 }
 
 /* Marketing site palette (public pages). Flips with html.dark; the coral/maroon
@@ -60,30 +62,30 @@ html.dark {
    `brand-primary` becomes a brighter blue so heading/button text stays
    readable on dark surfaces; the sidebar uses `brand-nav` (stays dark). */
 html.dark {
-  --color-brand-primary: #4d7ce6;
-  --color-brand-primary-container: #6f97ee;
-  --color-brand-on-primary-container: #a9c5ff;
-  --color-brand-nav: #0c1626;
-  --color-brand-secondary: #ffb060;
-  --color-brand-secondary-container: #ff8a00;
-  --color-brand-on-secondary-container: #ffce9a;
+  --color-brand-primary: #e0575a;              /* mid coral-red — readable as text on dark AND as a fill */
+  --color-brand-primary-container: #ec6d6f;    /* primary button hover */
+  --color-brand-on-primary-container: #c2adae; /* muted light text on the dark sidebar */
+  --color-brand-nav: #0b0d12;
+  --color-brand-secondary: #e0898a;
+  --color-brand-secondary-container: #fc6061;  /* coral accent (constant) */
+  --color-brand-on-secondary-container: #ffc9c9;
   --color-brand-tertiary: #0c5a26;
   --color-brand-on-tertiary-container: #62df7d;
   --color-brand-tertiary-fixed-dim: #62df7d;
-  --color-brand-surface: #0a1018;
-  --color-brand-surface-dim: #060a12;
-  --color-brand-surface-container: #121c2b;
-  --color-brand-surface-container-low: #0e1622;
-  --color-brand-surface-container-lowest: #131e2e;
-  --color-brand-surface-container-high: #1a2638;
-  --color-brand-surface-container-highest: #213047;
-  --color-brand-on-surface: #e7edf6;
-  --color-brand-on-surface-variant: #9fabbd;
-  --color-brand-outline: #5d6878;
-  --color-brand-outline-variant: #2a3650;
+  --color-brand-surface: #0d1016;              /* neutral dark (matches marketing dark bg) */
+  --color-brand-surface-dim: #08090d;
+  --color-brand-surface-container: #171b22;
+  --color-brand-surface-container-low: #111318;
+  --color-brand-surface-container-lowest: #14181f;
+  --color-brand-surface-container-high: #1e222b;
+  --color-brand-surface-container-highest: #262b35;
+  --color-brand-on-surface: #f3f4f6;
+  --color-brand-on-surface-variant: #9aa1ac;
+  --color-brand-outline: #5b616c;
+  --color-brand-outline-variant: #2a2f3a;
   --color-brand-status-critical: #f87171;
   --color-brand-status-warning: #fbbf24;
-  --color-brand-surface-ai: #0e1622;
+  --color-brand-surface-ai: #12151b;
 }
 
 /* Page background follows the surface token (covers areas outside #root). */
@@ -93,15 +95,15 @@ body { background-color: var(--color-brand-surface); }
 .glass-panel {
   background: rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(15, 61, 145, 0.08);
+  border: 1px solid rgba(252, 96, 97, 0.10);
 }
 html.dark .glass-panel {
-  background: rgba(19, 30, 46, 0.7);
-  border-color: rgba(111, 151, 238, 0.14);
+  background: rgba(23, 27, 34, 0.7);
+  border-color: rgba(252, 96, 97, 0.16);
 }
 
 .ai-shimmer {
-  background: linear-gradient(90deg, transparent, rgba(15, 61, 145, 0.05), transparent);
+  background: linear-gradient(90deg, transparent, rgba(252, 96, 97, 0.06), transparent);
   background-size: 200% 100%;
   animation: shimmer 2s infinite linear;
 }

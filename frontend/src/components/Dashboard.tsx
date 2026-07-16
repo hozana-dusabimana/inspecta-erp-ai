@@ -99,8 +99,8 @@ function roleLabel(role?: string): string {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  LABOR: '#00286a', MATERIAL: '#ff8a00', EQUIPMENT: '#b2c5ff',
-  SUBCONTRACTOR: '#7c9cff', OVERHEAD: '#c4c6d3', OTHER: '#9aa0b4',
+  LABOR: '#471519', MATERIAL: '#fc6061', EQUIPMENT: '#f0b8b8',
+  SUBCONTRACTOR: '#c98a2b', OVERHEAD: '#e4e4e7', OTHER: '#9ca3af',
 };
 
 // Compact currency for the KPI mini-grid (e.g. 1450000 -> "RWF 1.5M").
@@ -156,7 +156,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const costData = (financeResp?.data?.costByCategory ?? []).map((c: any) => ({
     name: c.category.charAt(0) + c.category.slice(1).toLowerCase(),
     value: Number(c.amount),
-    color: CATEGORY_COLORS[c.category] ?? '#9aa0b4',
+    color: CATEGORY_COLORS[c.category] ?? '#9ca3af',
   }));
   const costTotal = costData.reduce((s: number, c: any) => s + c.value, 0);
 
@@ -449,7 +449,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
                       <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
-                      <Line type="monotone" dataKey="Actual" stroke="#00286a" strokeWidth={3} activeDot={{ r: 6 }} name="Actual Progress %" />
+                      <Line type="monotone" dataKey="Actual" stroke="#471519" strokeWidth={3} activeDot={{ r: 6 }} name="Actual Progress %" />
                       <Line type="monotone" dataKey="Planned" stroke="#cbd5e1" strokeDasharray="5 5" strokeWidth={2} name="Planned Baseline %" />
                     </LineChart>
                   </ResponsiveContainer>
@@ -513,15 +513,15 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     <AreaChart data={productivityTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ff8a00" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#ff8a00" stopOpacity={0.01}/>
+                          <stop offset="5%" stopColor="#fc6061" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#fc6061" stopOpacity={0.01}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
                       <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} domain={[0.8, 1.3]} />
                       <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
-                      <Area type="monotone" dataKey="value" stroke="#ff8a00" strokeWidth={2.5} fillOpacity={1} fill="url(#colorProd)" name="Productivity Index" />
+                      <Area type="monotone" dataKey="value" stroke="#fc6061" strokeWidth={2.5} fillOpacity={1} fill="url(#colorProd)" name="Productivity Index" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>

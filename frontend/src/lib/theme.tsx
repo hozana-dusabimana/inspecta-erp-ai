@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.classList.add(theme);
     // Keep the mobile browser chrome colour in sync.
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0c1626' : '#00286a');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0b0d12' : '#141821');
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {

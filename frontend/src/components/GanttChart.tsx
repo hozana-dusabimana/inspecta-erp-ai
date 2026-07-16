@@ -88,9 +88,9 @@ export default function GanttChart({ projectId }: { projectId?: string }) {
       <div className="px-5 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between gap-3 flex-wrap">
         <h3 className="font-bold text-brand-primary text-sm">Baseline Gantt</h3>
         <div className="flex items-center gap-4 text-[10px] font-bold text-brand-on-surface-variant">
-          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: '#00286a' }} /> Task</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: '#471519' }} /> Task</span>
           <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: '#dc2626' }} /> Critical</span>
-          <span className="flex items-center gap-1.5"><span style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '10px solid #ff8a00' }} /> Milestone</span>
+          <span className="flex items-center gap-1.5"><span style={{ width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderBottom: '10px solid #fc6061' }} /> Milestone</span>
           <span>Duration: {cpm.projectDuration}d</span>
         </div>
       </div>
@@ -124,12 +124,12 @@ export default function GanttChart({ projectId }: { projectId?: string }) {
                 <polyline
                   key={i}
                   points={`${a.x1},${a.y1} ${a.x1 + 6},${a.y1} ${a.x1 + 6},${a.y2} ${a.x2},${a.y2}`}
-                  fill="none" stroke="#9aa0b4" strokeWidth={1.2} markerEnd="url(#arrow)"
+                  fill="none" stroke="#9ca3af" strokeWidth={1.2} markerEnd="url(#arrow)"
                 />
               ))}
               <defs>
                 <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#9aa0b4" />
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#9ca3af" />
                 </marker>
               </defs>
             </svg>
@@ -146,11 +146,11 @@ export default function GanttChart({ projectId }: { projectId?: string }) {
                   </div>
                   <div className="relative" style={{ width: chartW, height: ROW_H }}>
                     {isMilestone ? (
-                      <div className="absolute" style={{ left: left - 7, top: ROW_H / 2 - 7, width: 0, height: 0, borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderBottom: '12px solid #ff8a00' }} title={`${a.name} (milestone, day ${a.es})`} />
+                      <div className="absolute" style={{ left: left - 7, top: ROW_H / 2 - 7, width: 0, height: 0, borderLeft: '7px solid transparent', borderRight: '7px solid transparent', borderBottom: '12px solid #fc6061' }} title={`${a.name} (milestone, day ${a.es})`} />
                     ) : (
                       <div
                         className="absolute rounded shadow-sm flex items-center"
-                        style={{ left, top: 7, width, height: ROW_H - 14, background: a.critical ? '#dc2626' : '#00286a' }}
+                        style={{ left, top: 7, width, height: ROW_H - 14, background: a.critical ? '#dc2626' : '#471519' }}
                         title={`${a.name}: day ${a.es}–${a.ef} (${a.duration}d), float ${a.float}${a.critical ? ', critical' : ''}`}
                       >
                         {width > 34 && <span className="text-[9px] text-white font-bold px-1.5 truncate">{a.duration}d</span>}

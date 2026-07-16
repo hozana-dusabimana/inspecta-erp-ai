@@ -2,75 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import DocumentAttachments from './DocumentAttachments';
+import { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
+import EntityForm from './EntityForm';
 
-export interface Field {
-  name: string;
-  label: string;
-  type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv';
-  options?: { value: string; label: string }[];
-  /** Populate a select from a live API list (foreign-key pickers). */
-  optionsEndpoint?: string;
-  /** Append the current projectId to optionsEndpoint so the picker only lists this project's records. */
-  scopeToProject?: boolean;
-  optionLabel?: (row: Record<string, any>) => string;
-  required?: boolean;
-  placeholder?: string;
-  /** Read-only display (e.g. an auto-generated code shown on the edit screen). */
-  readOnly?: boolean;
-  /** Hide this field on the create form (e.g. auto-generated or set-later fields). */
-  hideOnCreate?: boolean;
-  /** Hide this field on the edit form. */
-  hideOnEdit?: boolean;
-}
-
-/** Dropdown filter shown in the toolbar (maps to a backend filterField). */
-export interface FilterDef {
-  field: string;
-  label: string;
-  options: { value: string; label: string }[];
-}
-
-/** Summation card driven by backend `meta.sums` (or record count via key '__count'). */
-export interface SummaryCardDef {
-  key: string;
-  label: string;
-  money?: boolean;
-}
-
-function DynamicSelect({ field, value, onChange, required, projectId }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean; projectId?: string }) {
-  const url = useMemo(() => {
-    let u = field.optionsEndpoint!;
-    if (field.scopeToProject && projectId) u += (u.includes('?') ? '&' : '?') + 'projectId=' + projectId;
-    return u;
-  }, [field.optionsEndpoint, field.scopeToProject, projectId]);
-  const { data } = useQuery({
-    queryKey: ['options', url],
-    queryFn: () => api.get<Record<string, any>[]>(url),
-  });
-  const rows = data?.data ?? [];
-  return (
-    <select
-      value={value} required={required}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary font-semibold"
-    >
-      <option value="">Select…</option>
-      {rows.map((r) => (
-        <option key={r.id} value={r.id}>{field.optionLabel ? field.optionLabel(r) : r.name ?? r.id}</option>
-      ))}
-    </select>
-  );
-}
-
-export interface Column {
-  key: string;
-  label: string;
-  render?: (row: Record<string, any>) => React.ReactNode;
-  align?: 'left' | 'right';
-  /** When true, header is clickable to sort (key must be a real scalar column). */
-  sortable?: boolean;
-}
+// Re-exported so existing imports (`from './ResourceManager'`) keep working.
+export type { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
 
 interface Props {
   endpoint: string;
@@ -95,31 +31,12 @@ interface Props {
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 const numFmt = (n: unknown) => Number(n ?? 0).toLocaleString();
 
-function emptyForm(fields: Field[]): Record<string, string> {
-  return Object.fromEntries(fields.map((f) => [f.name, '']));
-}
-
-function buildPayload(fields: Field[], form: Record<string, string>, projectId?: string, projectScoped?: boolean) {
-  const payload: Record<string, unknown> = {};
-  for (const f of fields) {
-    const raw = form[f.name];
-    if (raw === '' || raw === undefined) continue;
-    if (f.type === 'number') payload[f.name] = Number(raw);
-    else if (f.type === 'date') payload[f.name] = new Date(raw).toISOString();
-    else if (f.type === 'csv') payload[f.name] = raw.split(',').map((s) => s.trim()).filter(Boolean);
-    else payload[f.name] = raw;
-  }
-  if (projectScoped && projectId) payload.projectId = projectId;
-  return payload;
-}
-
 const PAGE_SIZE = 25;
 
 export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState<Record<string, string>>(emptyForm(fields));
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Toolbar state
@@ -192,21 +109,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const sums = (meta as any)?.sums as Record<string, number> | undefined;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Invalidate every page/filter variant of this endpoint after a mutation.
   const invalidate = () => queryClient.invalidateQueries({ queryKey: [endpoint] });
-
-  const save = useMutation({
-    mutationFn: (payload: Record<string, unknown>) =>
-      editing ? api.put(`${endpoint}/${editing}`, payload) : api.post(endpoint, payload),
-    onSuccess: () => {
-      invalidate();
-      setOpen(false);
-      setEditing(null);
-      setForm(emptyForm(fields));
-      setError(null);
-    },
-    onError: (e) => setError(errorMessage(e)),
-  });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`${endpoint}/${id}`),
@@ -214,33 +117,8 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
     onError: (e) => setError(errorMessage(e)),
   });
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm(emptyForm(fields));
-    setError(null);
-    setOpen(true);
-  };
-  const openEdit = (row: Record<string, any>) => {
-    setEditing(row.id);
-    setForm(
-      Object.fromEntries(
-        fields.map((f) => {
-          const v = row[f.name];
-          if (v === null || v === undefined) return [f.name, ''];
-          if (f.type === 'date') return [f.name, String(v).slice(0, 10)];
-          if (f.type === 'csv' && Array.isArray(v)) return [f.name, v.join(', ')];
-          return [f.name, String(v)];
-        }),
-      ),
-    );
-    setError(null);
-    setOpen(true);
-  };
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    save.mutate(buildPayload(fields, form, projectId, projectScoped));
-  };
+  const openCreate = () => { setEditingRow(null); setError(null); setFormOpen(true); };
+  const openEdit = (row: Record<string, any>) => { setEditingRow(row); setError(null); setFormOpen(true); };
 
   const cardValue = (c: SummaryCardDef) => {
     if (c.key === '__count') return numFmt(total);
@@ -250,8 +128,8 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
 
   return (
     <div className="space-y-4">
-      {/* Inline error (shown when the create/edit modal is closed) */}
-      {!open && error && (
+      {/* Inline error (e.g. a failed delete) */}
+      {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 flex items-center justify-between">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700"><X className="w-3.5 h-3.5" /></button>
@@ -428,59 +306,18 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
         )}
       </div>
 
-      {/* Create / edit modal */}
-      {open && (
-        <div className="fixed inset-0 z-50 bg-brand-on-surface/40 backdrop-blur-sm flex items-center justify-center px-4">
-          <div className="bg-brand-surface-container-lowest w-full max-w-lg rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
-            <button onClick={() => setOpen(false)} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
-            <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{editing ? 'Edit' : 'New'} {entityLabel}</h3>
-            <form onSubmit={submit} className="space-y-3">
-              {fields.filter((f) => (editing ? !f.hideOnEdit : !f.hideOnCreate)).map((f) => (
-                <div key={f.name} className="space-y-1">
-                  <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">{f.label}</label>
-                  {f.optionsEndpoint ? (
-                    <DynamicSelect field={f} value={form[f.name] ?? ''} required={f.required} projectId={projectId} onChange={(v) => setForm((s) => ({ ...s, [f.name]: v }))} />
-                  ) : f.type === 'textarea' ? (
-                    <textarea
-                      value={form[f.name] ?? ''} required={f.required}
-                      onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                      className="w-full bg-brand-surface border border-brand-outline-variant rounded-lg px-3 py-2 text-xs outline-none focus:border-brand-primary min-h-[70px]"
-                    />
-                  ) : f.type === 'select' ? (
-                    <select
-                      value={form[f.name] ?? ''} required={f.required}
-                      onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                      className="w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary font-semibold"
-                    >
-                      <option value="">Select…</option>
-                      {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  ) : (
-                    <input
-                      type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
-                      step={f.type === 'number' ? 'any' : undefined}
-                      value={form[f.name] ?? ''} required={f.required} placeholder={f.placeholder}
-                      readOnly={f.readOnly}
-                      onClick={(e) => { if (f.type === 'date' && !f.readOnly) { try { (e.currentTarget as unknown as { showPicker: () => void }).showPicker(); } catch { /* unsupported */ } } }}
-                      onChange={(e) => setForm((s) => ({ ...s, [f.name]: e.target.value }))}
-                      className={`w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary ${f.type === 'date' ? 'cursor-pointer' : ''} ${f.readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    />
-                  )}
-                </div>
-              ))}
-              {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 text-xs font-semibold text-brand-on-surface-variant hover:bg-brand-surface rounded-lg">Cancel</button>
-                <button type="submit" disabled={save.isPending} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container disabled:opacity-60">
-                  {save.isPending ? 'Saving…' : editing ? 'Save changes' : `Create ${entityLabel}`}
-                </button>
-              </div>
-            </form>
-            {attachModule && editing && (
-              <DocumentAttachments module={attachModule} recordId={editing} projectId={projectScoped ? projectId : undefined} />
-            )}
-          </div>
-        </div>
+      {/* Create / edit modal (shared wizard-capable form) */}
+      {formOpen && (
+        <EntityForm
+          endpoint={endpoint}
+          entityLabel={entityLabel}
+          fields={fields}
+          editing={editingRow}
+          projectId={projectId}
+          projectScoped={projectScoped}
+          attachModule={attachModule}
+          onClose={() => setFormOpen(false)}
+        />
       )}
     </div>
   );

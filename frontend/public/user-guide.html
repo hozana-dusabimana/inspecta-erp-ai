@@ -3,35 +3,36 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Inspecta BUILDOS — User Guide</title>
+<title>Inspecta ERP — User Guide</title>
 <style>
   :root{
-    --navy:#00286a; --navy2:#0b3a8f; --orange:#ff8a00; --ink:#1b2233; --muted:#5b6478;
-    --line:#e6e9f0; --bg:#f6f8fc; --card:#ffffff; --good:#15803d; --warn:#b45309; --bad:#b91c1c;
+    --coral:#FC6061; --coral-d:#e14a4b; --slate:#1f2a44; --slate2:#2c3a5e;
+    --ink:#141821; --muted:#5b6478; --line:#e6e9f0; --bg:#f6f8fc; --card:#ffffff;
+    --good:#15803d; --warn:#b45309; --bad:#b91c1c;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     color:var(--ink);background:var(--bg);line-height:1.6;font-size:15px}
   .wrap{max-width:920px;margin:0 auto;padding:0 22px}
-  a{color:var(--navy2);text-decoration:none}
+  a{color:var(--coral-d);text-decoration:none}
   a:hover{text-decoration:underline}
-  h1,h2,h3{line-height:1.25;color:var(--navy)}
-  h2{font-size:24px;margin:46px 0 12px;padding-top:14px;border-top:3px solid var(--orange);display:inline-block}
+  h1,h2,h3{line-height:1.25;color:var(--slate)}
+  h2{font-size:24px;margin:46px 0 12px;padding-top:14px;border-top:3px solid var(--coral);display:inline-block}
   h3{font-size:18px;margin:26px 0 8px}
   p{margin:10px 0}
-  code{background:#eef1f7;padding:2px 6px;border-radius:5px;font-size:.9em;color:var(--navy)}
+  code{background:#fdeaea;padding:2px 6px;border-radius:5px;font-size:.9em;color:var(--coral-d)}
   hr{border:none;border-top:1px solid var(--line);margin:32px 0}
 
   /* Cover */
-  .cover{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;padding:64px 0 56px;text-align:center}
-  .badge{display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);
-    border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 16px;font-weight:700;font-size:13px;letter-spacing:.5px}
+  .cover{background:linear-gradient(135deg,var(--coral),var(--coral-d));color:#fff;padding:64px 0 56px;text-align:center}
+  .badge{display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.15);
+    border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:8px 16px;font-weight:700;font-size:13px;letter-spacing:.5px}
   .cover h1{color:#fff;font-size:40px;margin:22px 0 6px;font-weight:800}
-  .cover .sub{color:#cfe0ff;font-size:17px;margin:0}
-  .cover .meta{margin-top:26px;color:#aac4f6;font-size:13px}
-  .hard{width:54px;height:54px;border-radius:14px;background:var(--orange);display:inline-flex;align-items:center;
-    justify-content:center;font-size:26px;box-shadow:0 8px 24px rgba(255,138,0,.4)}
+  .cover .sub{color:#ffe4e4;font-size:17px;margin:0}
+  .cover .meta{margin-top:26px;color:#ffd0d0;font-size:13px}
+  .hard{width:54px;height:54px;border-radius:14px;background:#fff;display:inline-flex;align-items:center;
+    justify-content:center;font-size:26px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 
   /* TOC */
   .toc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:34px 0;
@@ -45,7 +46,7 @@
     box-shadow:0 6px 24px rgba(16,30,70,.05)}
   .callout{border-radius:12px;padding:14px 16px;margin:16px 0;border:1px solid;font-size:14px}
   .tip{background:#ecfdf3;border-color:#bbf7d0;color:#14532d}
-  .note{background:#eff5ff;border-color:#c7dbff;color:#1e3a8a}
+  .note{background:#fff1f1;border-color:#ffd0d0;color:#8a2b2c}
   .warn{background:#fff7ed;border-color:#fed7aa;color:#9a3412}
   .callout b{display:block;margin-bottom:2px}
 
@@ -53,26 +54,34 @@
   ol.steps{counter-reset:s;list-style:none;padding-left:0;margin:14px 0}
   ol.steps>li{counter-increment:s;position:relative;padding:6px 0 6px 44px;margin:6px 0}
   ol.steps>li::before{content:counter(s);position:absolute;left:0;top:4px;width:28px;height:28px;border-radius:50%;
-    background:var(--navy);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+    background:var(--coral);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
   ul.bul{margin:8px 0;padding-left:20px}
   ul.bul li{margin:4px 0}
 
   /* Tables */
   table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;background:var(--card);border-radius:10px;overflow:hidden}
   th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{background:var(--navy);color:#fff;font-weight:700;font-size:13px}
+  th{background:var(--slate);color:#fff;font-weight:700;font-size:13px}
   tr:last-child td{border-bottom:none}
-  .pill{display:inline-block;background:#eef1f7;color:var(--navy);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700}
+  .pill{display:inline-block;background:#fdeaea;color:var(--coral-d);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700}
+  .tag{display:inline-block;background:#eef1f7;color:var(--slate);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace}
 
   .lead{font-size:16px;color:var(--muted)}
-  .feature-tag{font-size:12px;font-weight:800;color:var(--orange);letter-spacing:.6px;text-transform:uppercase}
-  footer{background:var(--navy);color:#cfe0ff;text-align:center;padding:30px 0;margin-top:50px;font-size:13px}
+  .feature-tag{font-size:12px;font-weight:800;color:var(--coral-d);letter-spacing:.6px;text-transform:uppercase}
+  footer{background:var(--slate);color:#cdd6ea;text-align:center;padding:30px 0;margin-top:50px;font-size:13px}
+
+  /* Figures / diagrams */
+  figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 10px;
+    box-shadow:0 6px 24px rgba(16,30,70,.05);overflow-x:auto}
+  figure svg{display:block;width:100%;height:auto;min-width:520px}
+  figcaption{font-size:12.5px;color:var(--muted);text-align:center;margin-top:8px}
+  .svg-note{fill:var(--muted);font-size:11px}
 
   @media (max-width:640px){ .toc ol{columns:1} .cover h1{font-size:30px} }
   @media print{
     body{background:#fff;font-size:12px}
     .cover{padding:40px 0}
-    .card,.toc{box-shadow:none;break-inside:avoid}
+    .card,.toc,figure{box-shadow:none;break-inside:avoid}
     h2{break-after:avoid} h3{break-after:avoid}
     a{color:var(--ink)}
     .no-print{display:none}
@@ -84,7 +93,7 @@
 <!-- ░░░ COVER ░░░ -->
 <div class="cover">
   <div class="wrap">
-    <div class="badge"><span class="hard">🏗️</span> INSPECTA BUILDOS</div>
+    <div class="badge"><span class="hard">🏗️</span> INSPECTA ERP</div>
     <h1>User Guide</h1>
     <p class="sub">AI-Powered Construction Productivity &amp; Profitability ERP</p>
     <p class="meta">A step-by-step guide to every feature · Currency: Rwandan Franc (RWF)</p>
@@ -93,24 +102,83 @@
 
 <div class="wrap">
 
-  <p class="lead">Welcome! This guide walks you through everything Inspecta BUILDOS can do — from signing in and setting up a project to recording attendance, running payroll, selling at the till, and reading your dashboards. No technical knowledge needed; just follow the numbered steps.</p>
+  <p class="lead">Welcome! This guide walks you through everything Inspecta can do — from creating your company account and setting up a project to recording production, running payroll, selling at the till, and reading your dashboards. No technical knowledge needed; just follow the numbered steps.</p>
 
   <div class="callout tip">
     <b>💡 The fastest way to learn</b>
-    The app has a built-in guided tour. After you sign in, a walkthrough starts automatically and highlights every area. You can replay it anytime by clicking the <b>“?” (Help)</b> button in the top bar.
+    The app has a built-in guided tour. After you sign in, it can walk you through every area. You can start it anytime by clicking the <b>“?” (Help)</b> button in the top bar.
   </div>
+
+  <div class="callout note">
+    <b>🖼️ About the pictures in this guide</b>
+    The blue diagrams below are <b>labelled illustrations</b> of each screen and workflow — drawn to match the real app so you know exactly what to look for. They are not photos; the live screens use the coral Inspecta theme and your own data.
+  </div>
+
+  <!-- Journey diagram -->
+  <figure aria-label="The Inspecta journey from sign-up to daily use">
+    <svg viewBox="0 0 900 150" role="img">
+      <defs>
+        <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#9aa6be"/>
+        </marker>
+      </defs>
+      <text x="450" y="18" text-anchor="middle" fill="#1f2a44" font-size="14" font-weight="700">Your journey at a glance</text>
+      <!-- 6 steps -->
+      <g font-size="12" font-weight="700" text-anchor="middle">
+        <g>
+          <rect x="8"   y="42" width="130" height="58" rx="12" fill="#fff1f1" stroke="#FC6061"/>
+          <text x="73"  y="66" fill="#e14a4b">1 · Sign up</text>
+          <text x="73"  y="86" fill="#5b6478" font-weight="500">Create company</text>
+        </g>
+        <g>
+          <rect x="156" y="42" width="130" height="58" rx="12" fill="#fff1f1" stroke="#FC6061"/>
+          <text x="221" y="66" fill="#e14a4b">2 · Verify email</text>
+          <text x="221" y="86" fill="#5b6478" font-weight="500">Activates account</text>
+        </g>
+        <g>
+          <rect x="304" y="42" width="130" height="58" rx="12" fill="#eef4ff" stroke="#2c3a5e"/>
+          <text x="369" y="66" fill="#1f2a44">3 · Set up</text>
+          <text x="369" y="86" fill="#5b6478" font-weight="500">Users, clients, HR</text>
+        </g>
+        <g>
+          <rect x="452" y="42" width="130" height="58" rx="12" fill="#eef4ff" stroke="#2c3a5e"/>
+          <text x="517" y="66" fill="#1f2a44">4 · Plan project</text>
+          <text x="517" y="86" fill="#5b6478" font-weight="500">WBS · BOQ · schedule</text>
+        </g>
+        <g>
+          <rect x="600" y="42" width="130" height="58" rx="12" fill="#eef4ff" stroke="#2c3a5e"/>
+          <text x="665" y="66" fill="#1f2a44">5 · Run it</text>
+          <text x="665" y="86" fill="#5b6478" font-weight="500">Site · stock · finance</text>
+        </g>
+        <g>
+          <rect x="748" y="42" width="144" height="58" rx="12" fill="#eef4ff" stroke="#2c3a5e"/>
+          <text x="820" y="66" fill="#1f2a44">6 · Oversee</text>
+          <text x="820" y="86" fill="#5b6478" font-weight="500">Dashboards · AI · reports</text>
+        </g>
+      </g>
+      <g stroke="#9aa6be" stroke-width="2" marker-end="url(#arw)">
+        <line x1="140" y1="71" x2="153" y2="71"/>
+        <line x1="288" y1="71" x2="301" y2="71"/>
+        <line x1="436" y1="71" x2="449" y2="71"/>
+        <line x1="584" y1="71" x2="597" y2="71"/>
+        <line x1="732" y1="71" x2="745" y2="71"/>
+      </g>
+      <text x="450" y="128" text-anchor="middle" class="svg-note">Steps 1–2 happen once for your company · steps 3–6 are your ongoing routine</text>
+    </svg>
+    <figcaption>The end-to-end journey, from creating an account to running day-to-day operations.</figcaption>
+  </figure>
 
   <!-- ░░░ TOC ░░░ -->
   <div class="toc">
     <h2>Contents</h2>
     <ol>
-      <li><a href="#start">Getting started</a></li>
+      <li><a href="#start">Getting started &amp; sign-up</a></li>
       <li><a href="#interface">Understanding the screen</a></li>
       <li><a href="#pattern">How every module works</a></li>
       <li><a href="#projects">Projects, Clients &amp; Contracts</a></li>
       <li><a href="#planning">Planning (WBS &amp; BOQ)</a></li>
       <li><a href="#hr">Human Resources</a></li>
-      <li><a href="#attendance">Recording Attendance</a></li>
+      <li><a href="#attendance">Field Ops &amp; Attendance</a></li>
       <li><a href="#payroll">Payroll (PAYE / RSSB)</a></li>
       <li><a href="#pos">Point of Sale</a></li>
       <li><a href="#equipment">Equipment, Fuel &amp; Usage</a></li>
@@ -134,38 +202,134 @@
   </div>
 
   <!-- ░░░ GETTING STARTED ░░░ -->
-  <h2 id="start">1 · Getting started</h2>
+  <h2 id="start">1 · Getting started &amp; sign-up</h2>
   <div class="card">
-    <h3>Signing in</h3>
+    <h3>Create your company account (first time)</h3>
+    <p>Inspecta is <b>self-service</b>: the first person from a company signs up, which creates the company (organisation) and makes them its <b>System Administrator</b>. Everyone else is invited afterwards from inside the app.</p>
     <ol class="steps">
       <li>Open <code>https://inspecta.isiri.rw</code> in your web browser (Chrome, Edge, Safari or Firefox).</li>
-      <li>Click <b>Sign In</b> and enter the email and password your administrator gave you.</li>
-      <li>You’ll land on the <b>Dashboard</b>, and the guided tour will start automatically the first time.</li>
+      <li>Click <b>Sign up</b> and enter your <b>Company name</b>, your <b>Full name</b>, <b>Email</b> and a <b>password</b> (at least 8 characters). Click <b>Create account</b>.</li>
+      <li>We send a <b>verification email</b>. Open it and click <b>“Verify my email.”</b> The link is valid for 24 hours. (Didn’t get it? Use <b>Resend</b> on the sign-in screen, and check spam.)</li>
+      <li>Verifying <b>activates your account and signs you straight in</b> — you land on the <b>Dashboard</b>. No second login needed the first time.</li>
+    </ol>
+    <div class="callout warn">
+      <b>⚠️ You must verify before you can sign in</b>
+      Until the email is verified, the account is dormant and sign-in is refused with “Please verify your email.” Verify first, then you can log in normally afterwards.
+    </div>
+
+    <h3>Signing in (returning users)</h3>
+    <ol class="steps">
+      <li>Go to the app and click <b>Sign in</b>.</li>
+      <li>Enter your email and password. You’ll return to the <b>Dashboard</b>.</li>
     </ol>
     <div class="callout note">
       <b>📱 Works anywhere</b>
-      Inspecta BUILDOS runs in any modern browser on desktop, tablet or phone. You can also “install” it as an app from your browser menu for quick access.
+      Inspecta runs in any modern browser on desktop, tablet or phone. You can also “install” it as an app from your browser menu for quick access, and it keeps showing cached data if your connection drops.
     </div>
+
+    <h3>Inviting your team (admins)</h3>
+    <p>Once you’re in, open <b>Administration → Users</b> to invite colleagues and give each one a <b>role</b>. Their role decides which menu items and actions they see.</p>
+
     <h3>What you can see depends on your role</h3>
-    <p>Each person is given a role. The menu only shows the areas your role is allowed to use.</p>
     <table>
-      <tr><th>Role</th><th>Typically can do</th></tr>
-      <tr><td><span class="pill">System Administrator</span></td><td>Everything, plus manage users, roles and company settings.</td></tr>
-      <tr><td><span class="pill">Project Manager</span></td><td>Most modules: planning, finance, production, procurement, HR, payroll, POS, approvals.</td></tr>
-      <tr><td><span class="pill">Site Engineer</span></td><td>Production, QA/QC, HSE, field ops, scheduling, inventory (read).</td></tr>
-      <tr><td><span class="pill">Quantity Surveyor</span></td><td>Planning, finance, procurement, profitability, payroll (read).</td></tr>
-      <tr><td><span class="pill">Storekeeper</span></td><td>Inventory, procurement and Point of Sale.</td></tr>
+      <tr><th>Role</th><th>What it can typically do</th></tr>
+      <tr><td><span class="pill">System Administrator</span></td><td><b>Everything</b> — every module — plus manage users &amp; roles, company settings and the audit trail.</td></tr>
+      <tr><td><span class="pill">Project Manager</span></td><td>Broad write access: Planning, Production, Finance, Procurement, HR, Payroll, POS, Equipment, QA/QC, HSE, Risk, Scheduling &amp; Field Ops; approves requests; AI Copilot &amp; Reports. (Inventory is view-only.)</td></tr>
+      <tr><td><span class="pill">Quantity Surveyor</span></td><td>Planning &amp; BOQ, Finance, Procurement, Contracts &amp; Productivity (edit); Profitability &amp; Payroll (view); approves requests; AI Copilot &amp; Reports.</td></tr>
+      <tr><td><span class="pill">Site Engineer</span></td><td>Production, QA/QC, HSE, Risk, Scheduling &amp; Field Ops (edit); Planning, Inventory, HR &amp; Equipment (view).</td></tr>
+      <tr><td><span class="pill">Storekeeper</span></td><td>Inventory, Procurement and Point of Sale (edit).</td></tr>
     </table>
+    <div class="callout tip"><b>💡 Note</b> The <b>AI Copilot</b>, <b>Executive Intelligence</b> and cross-module <b>Reports</b> are available to System Administrators, Project Managers and Quantity Surveyors — the roles cleared for company-wide financial data.</div>
   </div>
 
   <!-- ░░░ INTERFACE ░░░ -->
   <h2 id="interface">2 · Understanding the screen</h2>
   <div class="card">
+    <figure aria-label="Anatomy of the Inspecta workspace">
+      <svg viewBox="0 0 880 380" role="img">
+        <!-- sidebar -->
+        <rect x="10" y="46" width="188" height="322" rx="10" fill="#1f2a44"/>
+        <text x="26" y="72" fill="#fff" font-size="12" font-weight="800">INSPECTA</text>
+        <g fill="#c9d3ea" font-size="10.5">
+          <rect x="22" y="86" width="164" height="20" rx="5" fill="#FC6061"/>
+          <text x="32" y="100" fill="#fff" font-weight="700">Dashboard</text>
+          <text x="32" y="126">Executive Intelligence</text>
+          <text x="32" y="148">Portfolio</text>
+          <text x="32" y="172" fill="#8ea0c4" font-weight="700">▸ Planning &amp; Scheduling</text>
+          <text x="32" y="194" fill="#8ea0c4" font-weight="700">▸ Operations</text>
+          <text x="32" y="216" fill="#8ea0c4" font-weight="700">▸ People</text>
+          <text x="32" y="238" fill="#8ea0c4" font-weight="700">▸ Finance</text>
+          <text x="32" y="260" fill="#8ea0c4" font-weight="700">▸ Supply Chain</text>
+          <text x="32" y="282" fill="#8ea0c4" font-weight="700">▸ Quality &amp; Safety</text>
+          <text x="32" y="304" fill="#8ea0c4" font-weight="700">▸ Workflow &amp; Records</text>
+          <text x="32" y="330">AI Copilot</text>
+          <text x="32" y="352">Administration</text>
+        </g>
+        <!-- top bar -->
+        <rect x="208" y="46" width="662" height="40" rx="8" fill="#fff" stroke="#e6e9f0"/>
+        <rect x="222" y="56" width="150" height="20" rx="10" fill="#f0f2f7"/>
+        <text x="232" y="70" fill="#9aa6be" font-size="10.5">🔍 Search…</text>
+        <g font-size="11" font-weight="700">
+          <rect x="640" y="56" width="60" height="20" rx="10" fill="#fdeaea"/>
+          <text x="650" y="70" fill="#e14a4b">Ask AI</text>
+          <circle cx="726" cy="66" r="10" fill="#f0f2f7"/><text x="722" y="70" font-size="10">?</text>
+          <circle cx="756" cy="66" r="10" fill="#f0f2f7"/><text x="751" y="70" font-size="10">🔔</text>
+          <circle cx="838" cy="66" r="12" fill="#1f2a44"/><text x="833" y="70" fill="#fff" font-size="10">JD</text>
+        </g>
+        <!-- content: title + project picker -->
+        <text x="222" y="112" fill="#1f2a44" font-size="14" font-weight="800">Finance &amp; Cost Control</text>
+        <rect x="700" y="98" width="168" height="24" rx="6" fill="#fff" stroke="#FC6061"/>
+        <text x="710" y="114" fill="#e14a4b" font-size="10.5" font-weight="700">Project: BRIDGE-01 ▾</text>
+        <!-- summary cards -->
+        <g>
+          <rect x="222" y="132" width="150" height="52" rx="8" fill="#fff" stroke="#e6e9f0"/>
+          <rect x="382" y="132" width="150" height="52" rx="8" fill="#fff" stroke="#e6e9f0"/>
+          <rect x="542" y="132" width="150" height="52" rx="8" fill="#fff" stroke="#e6e9f0"/>
+          <rect x="702" y="132" width="166" height="52" rx="8" fill="#fff" stroke="#e6e9f0"/>
+          <g font-size="9" fill="#9aa6be" font-weight="700">
+            <text x="234" y="150">BUDGET</text><text x="394" y="150">ACTUAL COST</text>
+            <text x="554" y="150">VARIANCE</text><text x="714" y="150">FORECAST PROFIT</text>
+          </g>
+          <g font-size="13" fill="#FC6061" font-weight="800" font-family="ui-monospace,monospace">
+            <text x="234" y="172">RWF 220M</text><text x="394" y="172">RWF 150M</text>
+            <text x="554" y="172">RWF 12M</text><text x="714" y="172">RWF 34M</text>
+          </g>
+        </g>
+        <!-- tabs -->
+        <g font-size="10.5" font-weight="700">
+          <rect x="222" y="196" width="72" height="22" rx="6" fill="#1f2a44"/><text x="234" y="211" fill="#fff">Budget</text>
+          <text x="306" y="211" fill="#5b6478">Actual Costs</text>
+          <text x="392" y="211" fill="#5b6478">Cash Flow</text>
+          <text x="470" y="211" fill="#5b6478">Invoices / IPC</text>
+          <text x="566" y="211" fill="#5b6478">Payments</text>
+          <rect x="792" y="196" width="76" height="22" rx="6" fill="#FC6061"/><text x="804" y="211" fill="#fff">+ Add</text>
+        </g>
+        <!-- table -->
+        <rect x="222" y="228" width="646" height="132" rx="8" fill="#fff" stroke="#e6e9f0"/>
+        <rect x="222" y="228" width="646" height="24" fill="#1f2a44"/>
+        <g fill="#fff" font-size="9.5" font-weight="700">
+          <text x="234" y="244">Type</text><text x="330" y="244">Category</text>
+          <text x="470" y="244">Description</text><text x="770" y="244">Amount</text>
+        </g>
+        <g fill="#5b6478" font-size="9.5">
+          <text x="234" y="270">ORIGINAL</text><text x="330" y="270">MATERIAL</text><text x="470" y="270">Concrete &amp; rebar</text><text x="760" y="270">RWF 48,000,000</text>
+          <text x="234" y="296">ORIGINAL</text><text x="330" y="296">LABOR</text><text x="470" y="296">Frame crew</text><text x="760" y="296">RWF 22,500,000</text>
+          <text x="234" y="322">REVISED</text><text x="330" y="322">EQUIPMENT</text><text x="470" y="322">Crane hire</text><text x="760" y="322">RWF 9,750,000</text>
+        </g>
+        <!-- annotations -->
+        <g font-size="10.5" font-weight="700" fill="#e14a4b">
+          <text x="10" y="26">① Sidebar — grouped menu</text>
+          <text x="300" y="26">② Top bar — search · Ask AI · Help · 🔔 · profile</text>
+          <text x="700" y="94" text-anchor="end" fill="#e14a4b">③ Project picker</text>
+        </g>
+      </svg>
+      <figcaption>Anatomy of a module screen: ① grouped sidebar, ② top bar, ③ project picker, then summary cards, tabs and the data table.</figcaption>
+    </figure>
     <ul class="bul">
-      <li><b>Left sidebar</b> — the main menu. Click any item to open that area (module).</li>
-      <li><b>Top bar</b> — global search, <b>Ask AI</b> (the Copilot), the <b>“?” Help</b> button (replays the tour), theme switch, the <b>🔔 notifications</b> bell, and your profile / sign-out.</li>
-      <li><b>Project selector</b> — inside most modules there’s a dropdown at the top right to choose which project you’re working on. Pick a project before adding records.</li>
-      <li><b>Summary cards</b> — the coloured number tiles at the top of a module show live totals (e.g. Total Sales, Active Employees).</li>
+      <li><b>Left sidebar</b> — the main menu, organised into collapsible groups: <span class="tag">Planning &amp; Scheduling</span> <span class="tag">Operations</span> <span class="tag">People</span> <span class="tag">Finance</span> <span class="tag">Supply Chain</span> <span class="tag">Quality &amp; Safety</span> <span class="tag">Workflow &amp; Records</span>. Click a group to expand it, then click an item to open it.</li>
+      <li><b>Top bar</b> — global search, <b>Ask AI</b> (the Copilot), the <b>“?” Help</b> button (starts the tour), the <b>🔔 notifications</b> bell, and your profile / sign-out.</li>
+      <li><b>Project selector</b> — inside project-based modules there’s a dropdown at the top to choose which project you’re working on. Pick a project before adding records.</li>
+      <li><b>Summary cards</b> — the coloured number tiles at the top of a module show live totals (e.g. Budget, Active Employees, Total Sales).</li>
     </ul>
     <div class="callout warn">
       <b>⚠️ “Select a project to continue”</b>
@@ -186,41 +350,43 @@
       <tr><td><b>Filters</b></td><td>Narrow the list by status, type, category, etc.</td></tr>
       <tr><td><b>From / To dates</b></td><td>Show only records in a date range.</td></tr>
       <tr><td><b>Column headers</b></td><td>Click a header (with arrows) to sort.</td></tr>
-      <tr><td><b>Excel / CSV</b></td><td>Download the current (filtered) list as a spreadsheet.</td></tr>
+      <tr><td><b>Excel</b></td><td>Download the current (filtered) list as a spreadsheet.</td></tr>
       <tr><td><b>Prev / Next</b></td><td>Move between pages when there are many records.</td></tr>
     </table>
+    <div class="callout tip"><b>💡 Codes fill themselves in</b> Fields marked “(auto)” — project codes, employee numbers, invoice/GRN/PO numbers — are generated for you; leave them blank when creating.</div>
     <div class="callout tip"><b>💡 Money is shown in RWF</b> All amounts across the system are in Rwandan Francs, e.g. <code>RWF 350,000</code>.</div>
   </div>
 
   <!-- ░░░ PROJECTS ░░░ -->
   <h2 id="projects">4 · Projects, Clients &amp; Contracts</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Planning Suite</span>
+    <span class="feature-tag">Menu → Planning &amp; Scheduling → Planning Suite</span>
     <h3>Add a client</h3>
     <ol class="steps">
       <li>Open <b>Planning Suite</b> → <b>Clients</b> tab.</li>
       <li>Click <b>+ Add Client</b>.</li>
-      <li>Enter the name, choose <b>Client Type</b> (private / government / individual — this affects billing), add contact details and TIN, then <b>Create</b>.</li>
+      <li>Enter the name, choose <b>Client Type</b> (private / government / individual), add contact person, phone, email, <b>TIN</b> (tax number) and address, then <b>Create</b>.</li>
     </ol>
     <h3>Create a project</h3>
     <ol class="steps">
       <li>Open <b>Planning Suite</b> → <b>Project Setup</b> tab → <b>+ Add Project</b>.</li>
-      <li>Fill in the code, name, type, the <b>client</b>, the <b>contract value</b> (in RWF), start &amp; planned finish dates, and location.</li>
+      <li>Fill in the <b>name</b>, project type &amp; category, the <b>client</b>, the <b>project manager</b>, the <b>contract value</b> (RWF) and planned profit margin, start &amp; planned finish dates, location and site surfaces. The <b>project code</b> is generated automatically.</li>
       <li>Click <b>Create</b>. The project now appears in the project selector everywhere.</li>
     </ol>
     <h3>Record the contract</h3>
-    <p>On the <b>Contracts</b> tab, add the contract reference, type (lump sum / unit price / cost-plus), retention %, and signed date.</p>
+    <p>On the <b>Contracts</b> tab, add the contract reference and number, link it to the client &amp; project, choose the type (<b>lump sum / unit price / cost-plus / time &amp; material</b>), and set retention %, advance payment, defects-liability months and signed date.</p>
   </div>
 
   <!-- ░░░ PLANNING ░░░ -->
   <h2 id="planning">5 · Planning — WBS &amp; BOQ</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Planning Suite</span>
+    <span class="feature-tag">Menu → Planning &amp; Scheduling → Planning Suite</span>
     <p>The <b>Work Breakdown Structure (WBS)</b> is the list of activities; the <b>Bill of Quantities (BOQ)</b> prices them.</p>
     <ol class="steps">
       <li>Select your project at the top.</li>
-      <li>On the <b>WBS</b> tab, add items (e.g. “1.0 Substructure”, “2.1 Concrete Frame”), each with a unit and planned quantity.</li>
-      <li>On the <b>BOQ</b> tab, add priced items — quantity × rate gives the amount automatically.</li>
+      <li>On the <b>WBS</b> tab, add items (e.g. “1.0 Substructure”, “2.1 Concrete Frame”), each with a unit, planned quantity, level and weight %. Set a <b>Parent</b> to build the hierarchy, or use the <b>WBS Tree</b> tab to see it nested.</li>
+      <li>On the <b>BOQ</b> tab, add priced items — quantity × rate gives the amount automatically; add markup and contingency %. Use <b>BOQ Versions</b> to keep revisions.</li>
+      <li>On the <b>Productivity</b> tab, set planned productivity rates (units per crew-day) so production can be measured against a benchmark.</li>
     </ol>
     <div class="callout tip"><b>💡 Bulk load from Excel</b> Use the <b>Excel Import / Export</b> panel at the top of Planning to export a template, fill it in, and import many WBS/BOQ rows at once.</div>
   </div>
@@ -228,159 +394,223 @@
   <!-- ░░░ HR ░░░ -->
   <h2 id="hr">6 · Human Resources</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Human Resources</span>
+    <span class="feature-tag">Menu → People → Human Resources</span>
     <h3>Add an employee</h3>
     <ol class="steps">
       <li>Open <b>Human Resources</b> → <b>Employees</b> → <b>+ Add Employee</b>.</li>
-      <li>Enter full name, national ID, trade, the crew and project they belong to, and contact details.</li>
-      <li>For payroll, set <b>Gross Monthly Salary</b> (RWF) and <b>Medical Scheme</b> (RAMA / private / none). Click <b>Create</b>.</li>
+      <li>Enter full name, national ID, <b>trade</b>, the <b>crew</b> and <b>project</b> they belong to, and contact details. The employee number is generated automatically.</li>
+      <li>For payroll, set the <b>Gross Monthly Salary</b> (RWF) and <b>Medical Scheme</b> (RAMA / private / none), and set <b>Status</b> to <b>active</b>. Click <b>Create</b>.</li>
     </ol>
-    <p>Use the other tabs to manage <b>Trades</b>, <b>Wage Rates</b>, <b>Crews</b> (with a foreman), and <b>Crew Members</b>.</p>
+    <p>Use the other tabs to manage <b>Trades</b>, <b>Wage Rates</b> (daily/hourly by trade), <b>Crews</b> (with a foreman), <b>Crew Members</b> and daily <b>Availability</b>. The <b>Website Team</b> tab controls who appears on your public marketing site.</p>
   </div>
 
   <!-- ░░░ ATTENDANCE ░░░ -->
-  <h2 id="attendance">7 · Recording Attendance</h2>
+  <h2 id="attendance">7 · Field Ops &amp; Attendance</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Field Ops → Attendance</span>
-    <p>Attendance records who worked, on which day — and it feeds payroll.</p>
+    <span class="feature-tag">Menu → Operations → Field Ops</span>
+    <p>Field Ops is the site-level record: a daily <b>Site Diary</b>, <b>Tasks</b>, and <b>Attendance</b>.</p>
+    <h3>Record attendance</h3>
     <ol class="steps">
-      <li>Open <b>Field Ops</b> from the menu and choose the <b>Attendance</b> tab.</li>
-      <li>Select the <b>project</b> at the top right.</li>
+      <li>Open <b>Field Ops</b> and choose the <b>Attendance</b> tab.</li>
+      <li>Select the <b>project</b> at the top.</li>
       <li>Click <b>+ Add Attendance</b>.</li>
-      <li>Pick the <b>employee</b> (or type a worker name), set the <b>date</b>, choose the <b>status</b> — <span class="pill">present</span> / <span class="pill">half&nbsp;day</span> / <span class="pill">absent</span> / <span class="pill">leave</span> — and enter <b>hours worked</b>.</li>
-      <li>Click <b>Create</b>. The record appears in the list and the <b>Total Hours</b> card updates.</li>
+      <li>Enter the <b>worker name</b>, their <b>trade</b>, the <b>hours worked</b> and the <b>date</b>, then <b>Create</b>. The record appears in the list and the <b>Total Hours</b> card updates.</li>
     </ol>
-    <div class="callout note"><b>🔁 Daily routine</b> Record attendance each day. To review a period, use the <b>From / To</b> date filter, filter by <b>status</b>, and click <b>Excel</b> to export the timesheet.</div>
-    <div class="callout tip"><b>💡 Why it matters</b> When you run payroll, employees who have qualifying attendance in the month are the ones paid — so keeping attendance current keeps payroll accurate.</div>
+    <div class="callout note"><b>🔁 Daily routine</b> Record attendance each day. To review a period, use the <b>From / To</b> date filter, filter by <b>status</b> (present / half day / absent / leave), and click <b>Excel</b> to export the timesheet.</div>
+    <h3>Site Diary &amp; Tasks</h3>
+    <ul class="bul">
+      <li><b>Site Diary</b> — one entry per day with weather, workforce count and notes.</li>
+      <li><b>Tasks</b> — assign work with a status (To&nbsp;do / In&nbsp;progress / Done / Blocked) and due date.</li>
+    </ul>
   </div>
 
   <!-- ░░░ PAYROLL ░░░ -->
   <h2 id="payroll">8 · Payroll (Rwanda PAYE / RSSB)</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Payroll</span>
+    <span class="feature-tag">Menu → People → Payroll</span>
     <p>Payroll calculates each employee’s tax and social-security deductions and produces payslips.</p>
+
+    <figure aria-label="Payroll run steps">
+      <svg viewBox="0 0 820 96" role="img">
+        <defs>
+          <marker id="arw2" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#9aa6be"/></marker>
+        </defs>
+        <g font-size="11.5" font-weight="700" text-anchor="middle">
+          <rect x="8"   y="26" width="150" height="46" rx="10" fill="#eef4ff" stroke="#2c3a5e"/><text x="83"  y="46" fill="#1f2a44">Create run</text><text x="83"  y="62" fill="#5b6478" font-weight="500">pick the month</text>
+          <rect x="192" y="26" width="150" height="46" rx="10" fill="#fff1f1" stroke="#FC6061"/><text x="267" y="46" fill="#e14a4b">Compute</text><text x="267" y="62" fill="#5b6478" font-weight="500">gross · PAYE · RSSB · net</text>
+          <rect x="376" y="26" width="150" height="46" rx="10" fill="#eef4ff" stroke="#2c3a5e"/><text x="451" y="46" fill="#1f2a44">Review payslips</text><text x="451" y="62" fill="#5b6478" font-weight="500">check each employee</text>
+          <rect x="560" y="26" width="150" height="46" rx="10" fill="#dff5e7" stroke="#15803d"/><text x="635" y="46" fill="#15803d">Post</text><text x="635" y="62" fill="#5b6478" font-weight="500">locks &amp; records cash</text>
+        </g>
+        <g stroke="#9aa6be" stroke-width="2" marker-end="url(#arw2)">
+          <line x1="160" y1="49" x2="189" y2="49"/><line x1="344" y1="49" x2="373" y2="49"/><line x1="528" y1="49" x2="557" y2="49"/>
+        </g>
+      </svg>
+      <figcaption>The monthly payroll run: Create → Compute → Review → Post.</figcaption>
+    </figure>
+
     <h3>One-time setup: statutory rates</h3>
     <ol class="steps">
       <li>Open <b>Payroll</b> → <b>Statutory Rates</b> tab.</li>
-      <li>Confirm the <b>PAYE bands</b> and <b>RSSB</b> rates (pension, maternity, medical, CBHI). These come pre-loaded but your administrator can update them — they are date-versioned, so old payslips stay correct.</li>
+      <li>Confirm the <b>PAYE bands</b> and <b>RSSB</b> rates (pension, maternity, medical, CBHI). They are <b>date-versioned</b>, so updating them keeps old payslips correct.</li>
     </ol>
     <h3>Run a monthly payroll</h3>
     <ol class="steps">
-      <li>Make sure the month’s <b>attendance</b> and employee <b>salaries</b> are up to date.</li>
-      <li>Open <b>Payroll</b> → <b>Payroll Runs</b> → set the <b>period month</b> → <b>Create payroll run</b>.</li>
-      <li>On the new run, click <b>Compute</b>. The system calculates gross, PAYE, RSSB and net pay for every active employee and generates payslips.</li>
-      <li>Click the run to expand it and review each <b>payslip</b> (gross, PAYE, deductions, net).</li>
-      <li>When satisfied, click <b>Post</b>. This locks the run and records the net pay as a cash outflow in Finance.</li>
+      <li>Open <b>Payroll</b> → <b>Payroll Runs</b>, choose the <b>period month</b>, and click <b>Create payroll run</b>.</li>
+      <li>On the new run click <b>Compute</b>. Every <b>active</b> employee who has a <b>Gross Monthly Salary</b> is included; the system works out gross, PAYE, RSSB and net pay and generates payslips.</li>
+      <li>Expand the run to review each <b>payslip</b> (gross, PAYE, deductions, net).</li>
+      <li>When satisfied, click <b>Post</b>. This locks the run (status <span class="pill">POSTED</span>) and records the net pay as a cash outflow in Finance.</li>
     </ol>
+    <div class="callout note"><b>ℹ️ Attendance pro-rating</b> If attendance is recorded against employees for that month, pay is pro-rated over a 26-working-day month; otherwise the full monthly salary is paid.</div>
     <div class="callout warn"><b>⚠️ Posting is final</b> A posted run can’t be recomputed. Review payslips before posting.</div>
   </div>
 
   <!-- ░░░ POS ░░░ -->
   <h2 id="pos">9 · Point of Sale (POS)</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Point of Sale</span>
+    <span class="feature-tag">Menu → Finance → Point of Sale</span>
     <p>Sell materials, equipment rental or services over the counter, with VAT receipts and cash reconciliation.</p>
     <h3>Set up products (once)</h3>
-    <p>On the <b>Products</b> tab, add what you sell — name, type, price (RWF), and whether VAT applies. Link a product to a stock material so sales draw it down automatically.</p>
+    <p>On the <b>Products</b> tab, add what you sell — name, <b>type</b> (material / equipment rental / service), unit price (RWF), and whether <b>VAT</b> applies. Link a product to a stock material so sales draw it down automatically.</p>
     <h3>Make a sale</h3>
     <ol class="steps">
       <li>Open <b>Point of Sale</b> → <b>Till &amp; Sales</b>.</li>
       <li>Click <b>Open till</b> and enter the opening cash float.</li>
       <li>Tap products to add them to the cart; adjust quantities with + / −.</li>
-      <li>Enter the client name (or leave “Walk-in”), choose the payment method (cash / mobile money / bank), and click <b>Complete Sale</b>. A receipt with VAT is created.</li>
+      <li>Enter the client name (or leave “Walk-in”), choose the payment method, and click <b>Complete Sale</b>. A receipt with VAT is created and any linked stock is reduced.</li>
     </ol>
     <h3>Close the till</h3>
     <ol class="steps">
       <li>At end of day, enter the <b>counted cash</b> and click <b>Close till</b>.</li>
-      <li>The system compares it to expected cash and flags any variance.</li>
+      <li>The system compares it to expected cash and flags any <b>variance</b>.</li>
     </ol>
-    <p>Use the <b>Service Invoices</b> tab for billed services (e.g. testing) outside the till.</p>
+    <p>Use the <b>Service Invoices</b> tab for billed services (e.g. testing) outside the till, with their own status (Pending / Paid / Overdue / Cancelled).</p>
   </div>
 
   <!-- ░░░ EQUIPMENT ░░░ -->
   <h2 id="equipment">10 · Equipment, Fuel &amp; Usage</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Equipment</span>
+    <span class="feature-tag">Menu → Operations → Equipment</span>
     <ul class="bul">
-      <li><b>Register</b> — add machines (code, category, ownership, daily rate, fuel type, home project).</li>
+      <li><b>Register</b> — add machines (name, category, ownership, status, daily/hourly rate, fuel type, home project). The code is auto-generated.</li>
+      <li><b>Categories</b> — group your equipment.</li>
       <li><b>Fuel Logs</b> — record litres and cost per litre; total cost is calculated. Use the date filter to see consumption over a period.</li>
       <li><b>Usage Logs</b> — record daily hours used, by operator, allocated to a project/activity.</li>
-      <li><b>Maintenance</b> — schedule and log services, costs and downtime.</li>
-      <li><b>Utilization</b> — planned vs available hours.</li>
+      <li><b>Maintenance</b> — schedule and log services, costs and downtime (Scheduled / Done / Overdue).</li>
+      <li><b>Utilization</b> — planned vs available hours, with a utilization %.</li>
     </ul>
   </div>
 
   <!-- ░░░ INVENTORY ░░░ -->
   <h2 id="inventory">11 · Inventory &amp; Stock</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Inventory</span>
+    <span class="feature-tag">Menu → Supply Chain → Inventory</span>
     <ol class="steps">
-      <li><b>Materials</b> — add each material (code, unit, reorder level, unit cost).</li>
-      <li><b>Stock Movements</b> — record opening balances, receipts, issues and adjustments. The running balance is kept automatically.</li>
-      <li><b>Goods Received (GRN)</b> — log deliveries against a purchase order; this posts a receipt to the ledger.</li>
-      <li><b>Material Issues</b> — issue stock to a project/activity; this posts an issue and allocates the cost.</li>
+      <li><b>Materials</b> — add each material (code, unit, category, reorder level, unit cost, supplier).</li>
+      <li><b>Stock Movements</b> — record opening balances, receipts, issues, adjustments, transfers, returns and waste. The running balance is kept automatically.</li>
+      <li><b>Material Planning</b> — plan required quantities per project with lead times.</li>
+      <li><b>Goods Received (GRN)</b> — log deliveries (optionally against a purchase order); confirm once you attach the signed delivery note.</li>
+      <li><b>Material Issues</b> — issue stock to a project/activity; confirm against the signed issue slip. This allocates the cost.</li>
     </ol>
-    <div class="callout note"><b>🔔 Low-stock alerts</b> When a material drops to its reorder level, the system raises a notification automatically.</div>
+    <div class="callout note"><b>🔔 Low-stock alerts</b> The Inventory summary shows stock value, reorder alerts, dead stock and material waste %, and valuation by <b>Weighted Average</b> or <b>FIFO</b>. When a material drops to its reorder level, a notification is raised automatically.</div>
   </div>
 
   <!-- ░░░ PROCUREMENT ░░░ -->
   <h2 id="procurement">12 · Procurement</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Procurement</span>
-    <p>The buying chain: <b>Purchase Request → Purchase Order → Goods Received</b>.</p>
+    <span class="feature-tag">Menu → Supply Chain → Procurement</span>
+    <p>The buying chain runs a <b>Purchase Request</b> through a clear approval workflow, then into orders and deliveries.</p>
+
+    <figure aria-label="Purchase Request approval workflow">
+      <svg viewBox="0 0 860 120" role="img">
+        <defs>
+          <marker id="arw3" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#9aa6be"/></marker>
+        </defs>
+        <g font-size="11" font-weight="700" text-anchor="middle">
+          <rect x="6"   y="40" width="96" height="34" rx="8" fill="#eef1f7" stroke="#8ea0c4"/><text x="54"  y="61" fill="#1f2a44">DRAFT</text>
+          <rect x="140" y="40" width="110" height="34" rx="8" fill="#fff4e0" stroke="#b45309"/><text x="195" y="61" fill="#b45309">SUBMITTED</text>
+          <rect x="288" y="40" width="104" height="34" rx="8" fill="#dff5e7" stroke="#15803d"/><text x="340" y="61" fill="#15803d">APPROVED</text>
+          <rect x="430" y="40" width="96" height="34" rx="8" fill="#e3f0ff" stroke="#2c3a5e"/><text x="478" y="61" fill="#1f2a44">ORDERED</text>
+          <rect x="564" y="40" width="110" height="34" rx="8" fill="#efe6ff" stroke="#6d28d9"/><text x="619" y="61" fill="#6d28d9">DELIVERED</text>
+          <rect x="712" y="40" width="96" height="34" rx="8" fill="#eef1f7" stroke="#8ea0c4"/><text x="760" y="61" fill="#1f2a44">CLOSED</text>
+          <!-- reject -->
+          <rect x="140" y="90" width="110" height="26" rx="8" fill="#fdeaea" stroke="#b91c1c"/><text x="195" y="107" fill="#b91c1c">REJECTED</text>
+        </g>
+        <g font-size="9.5" font-weight="700" fill="#5b6478" text-anchor="middle">
+          <text x="121" y="34">Submit</text>
+          <text x="269" y="34">Approve</text>
+          <text x="411" y="34">Order</text>
+          <text x="545" y="34">Deliver</text>
+          <text x="693" y="34">Close</text>
+        </g>
+        <g stroke="#9aa6be" stroke-width="2" marker-end="url(#arw3)">
+          <line x1="102" y1="57" x2="138" y2="57"/>
+          <line x1="250" y1="57" x2="286" y2="57"/>
+          <line x1="392" y1="57" x2="428" y2="57"/>
+          <line x1="526" y1="57" x2="562" y2="57"/>
+          <line x1="674" y1="57" x2="710" y2="57"/>
+          <line x1="195" y1="74" x2="195" y2="88" stroke="#b91c1c"/>
+        </g>
+      </svg>
+      <figcaption>Purchase Request lifecycle. The <b>Approve/Reject</b> step needs approval permission; drive it from the workflow panel on the Procurement summary.</figcaption>
+    </figure>
+
     <ol class="steps">
-      <li><b>Suppliers</b> — add your vendors (name, category, TIN, payment terms).</li>
-      <li><b>Purchase Requests</b> — raise a request, then use <b>Submit</b> → it is <b>Approved/Rejected</b> by an approver, then <b>Ordered</b>.</li>
-      <li><b>Purchase Orders</b> — create the order (optionally from a request) for a supplier.</li>
-      <li><b>Deliveries / GRNs</b> — record what arrives.</li>
-      <li><b>RFQs</b> — request quotes from several suppliers and award the best.</li>
+      <li><b>Suppliers</b> — add your vendors (name, category, TIN, payment terms, rating, lead time).</li>
+      <li><b>Purchase Requests</b> — raise a request, then use the buttons on the workflow panel: <b>Submit → Approve/Reject → Order → Mark Delivered → Close</b>.</li>
+      <li><b>Purchase Orders</b> — create the order for a supplier (optionally from an approved request).</li>
+      <li><b>RFQs &amp; Quotes</b> — request quotes from several suppliers and <b>award</b> the best one.</li>
+      <li><b>Deliveries</b> — record what arrives against a purchase order.</li>
     </ol>
+    <div class="callout tip"><b>💡 MRP</b> The Procurement summary includes <b>Material Requirements Planning</b> — pick a project to see net requirements (planned − stock on hand) and the estimated cost to procure.</div>
   </div>
 
   <!-- ░░░ PRODUCTION ░░░ -->
   <h2 id="production">13 · Production &amp; Daily Reports</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Production</span>
+    <span class="feature-tag">Menu → Operations → Production</span>
     <ol class="steps">
       <li>Open <b>Production</b> and pick the project.</li>
-      <li>On <b>Daily Reports</b>, create the day’s report (date, weather), then add <b>activity lines</b> — planned vs actual quantity, labour hours and equipment hours per activity.</li>
+      <li>On <b>Daily Reports</b>, create the day’s report (report number, date, shift, weather). Then on <b>Daily Entries</b> add <b>activity lines</b> — WBS activity, planned vs actual quantity, labour hours and equipment hours.</li>
+      <li>Use <b>Material Use</b> to record planned vs used quantities and waste per entry.</li>
       <li>The <b>analytics</b> at the top show productivity, variance and Earned Value (CPI/SPI). Big shortfalls raise an alert automatically.</li>
     </ol>
-    <p>There is also a quick <b>Daily Production Entry</b> screen for fast logging from site, including voice input.</p>
+    <p>There is also a quick full-screen <b>Daily Production Entry</b> screen for fast logging from site.</p>
   </div>
 
   <!-- ░░░ SCHEDULING ░░░ -->
   <h2 id="scheduling">14 · Scheduling (Gantt / CPM)</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Scheduling (CPM)</span>
+    <span class="feature-tag">Menu → Planning &amp; Scheduling → Scheduling (CPM)</span>
     <ol class="steps">
-      <li>Add <b>activities</b> with durations and start dates.</li>
-      <li>Add <b>dependencies</b> (which activity follows which).</li>
-      <li>The system computes the <b>critical path</b> and shows a <b>Gantt chart</b>, highlighting delayed and critical tasks.</li>
+      <li>Pick the project. On <b>Activities</b>, add tasks with a code, duration and start date (mark milestones where relevant). Link each to a WBS item.</li>
+      <li>On <b>Dependencies</b>, connect activities — choose the relationship (<b>FS / SS / FF / SF</b>) and any lag in days.</li>
+      <li>The system computes the <b>critical path</b> and shows a <b>Gantt chart</b>, highlighting critical tasks, plus a table of early/late start &amp; finish and float.</li>
     </ol>
   </div>
 
   <!-- ░░░ FINANCE ░░░ -->
   <h2 id="finance">15 · Finance &amp; IPC Billing</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Finance</span>
+    <span class="feature-tag">Menu → Finance → Finance</span>
     <ul class="bul">
-      <li><b>Budget</b> — set budgeted amounts by activity and cost category (labour / material / equipment / subcontract).</li>
-      <li><b>Actual Costs</b> — record costs as they’re incurred. The summary shows budget vs actual and flags overruns.</li>
-      <li><b>Invoices / IPC</b> — raise client invoices or <b>Interim Payment Certificates</b> (gross valuation, retention, advance, tax → net is calculated). Track status from draft → certified → paid.</li>
-      <li><b>Payments</b> — record money received against invoices.</li>
-      <li><b>Cash Flow</b> — inflows vs outflows, with a monthly curve and deficit warnings.</li>
+      <li><b>Budget</b> — set budgeted amounts by activity and cost category (labour / material / equipment / subcontractor / overhead), with types Original / Revised / Forecast / Contingency.</li>
+      <li><b>Actual Costs</b> — record costs as they’re incurred. The summary shows budget vs actual, cost variance and forecast profit, and flags overruns.</li>
+      <li><b>Cash Flow</b> — log inflows and outflows (actual or forecast) by category.</li>
+      <li><b>Invoices / IPC</b> — raise client invoices or <b>Interim Payment Certificates</b> (gross valuation, previously certified, retention, advance deduction, tax → net is calculated). Track status from Draft → Submitted → Certified → Approved → Paid.</li>
+      <li><b>Payments</b> — record money received against invoices (reference auto-generated).</li>
     </ul>
   </div>
 
   <!-- ░░░ QAQC ░░░ -->
   <h2 id="qaqc">16 · Quality (QA / QC)</h2>
   <div class="card">
-    <span class="feature-tag">Menu → QA/QC</span>
+    <span class="feature-tag">Menu → Quality &amp; Safety → QA/QC</span>
     <ol class="steps">
-      <li><b>Inspections</b> — log inspections with a pass/fail result.</li>
-      <li><b>NCR Register</b> — when something fails, raise a <b>Non-Conformance Report</b> (description, severity, rework cost) linked to the inspection.</li>
-      <li><b>Material Tests</b> and <b>Rework</b> — record lab tests and any rework with its cost.</li>
+      <li><b>Inspections</b> — log inspections with a Pass / Fail / Pending result and defect count.</li>
+      <li><b>Material Tests</b> — record lab tests (concrete, soil, asphalt, steel…) with batch, result and certificate.</li>
+      <li><b>NCR Register</b> — when something fails, raise a <b>Non-Conformance Report</b> (description, severity, root cause, corrective action) linked to the WBS activity.</li>
+      <li><b>Corrective Actions</b> and <b>Rework</b> — track action plans and any rework with its cost and delay impact.</li>
+      <li><b>Compliance Docs</b> — method statements, ITPs, permits and certifications with expiry dates.</li>
     </ol>
     <div class="callout note"><b>🔔 Auto-alerts</b> New or critical NCRs and failed tests notify the team automatically.</div>
   </div>
@@ -388,45 +618,50 @@
   <!-- ░░░ HSE ░░░ -->
   <h2 id="hse">17 · Health &amp; Safety (HSE)</h2>
   <div class="card">
-    <span class="feature-tag">Menu → HSE</span>
+    <span class="feature-tag">Menu → Quality &amp; Safety → HSE</span>
     <ul class="bul">
-      <li><b>Incidents</b> — log near-misses, first aid, lost-time injuries (type, severity, involved person).</li>
-      <li><b>Risk Assessments</b> — activity-based assessments with validity dates.</li>
-      <li><b>Toolbox Talks</b> — record safety talks and attendance.</li>
-      <li><b>PPE Checks</b> — pass/fail checks per worker.</li>
+      <li><b>Incidents</b> — log near-misses, first aid, medical, lost-time, fatality or property damage (type, severity, location, investigation, root cause).</li>
+      <li><b>Safety Inspections</b> — checklist inspections with a Pass/Fail result and score.</li>
+      <li><b>Toolbox Talks</b> — record safety talks, presenter and attendance.</li>
+      <li><b>Risk Assessments</b> — activity-based assessments with a risk level and validity dates.</li>
+      <li><b>PPE</b> &amp; <b>PPE Checks</b> — issue PPE and run pass/fail checks per worker.</li>
     </ul>
-    <p>The safety dashboard shows incident frequency rate and a safety score.</p>
+    <p>The safety dashboard shows the incident frequency rate and a safety score.</p>
   </div>
 
   <!-- ░░░ RISK ░░░ -->
   <h2 id="risk">18 · Risk Register</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Risk Register</span>
-    <p>Log project risks with a <b>probability</b> (1–5) and <b>impact</b> (1–5); the score (probability × impact) is colour-coded. Record the mitigation and owner, and track status.</p>
+    <span class="feature-tag">Menu → Quality &amp; Safety → Risk Register</span>
+    <p>Log project risks with a <b>probability</b> (1–5) and <b>impact</b> (1–5); the score (probability × impact) is colour-coded (green &lt; 8, amber 8–14, red ≥ 15). Record the mitigation and owner, and track status (Open / Mitigating / Closed).</p>
   </div>
 
   <!-- ░░░ APPROVALS ░░░ -->
   <h2 id="approvals">19 · Approvals</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Approvals</span>
-    <p>Requests that need sign-off (e.g. purchase requests) appear here. Approvers click <b>Approve</b> or <b>Reject</b> with a note; the requester is notified.</p>
+    <span class="feature-tag">Menu → Workflow &amp; Records → Approvals</span>
+    <p>Requests that need sign-off (e.g. purchase requests) appear here. Approvers click <b>Approve</b> or <b>Reject</b> with a note; the requester is notified. You need the <b>approval</b> permission (Admins, Project Managers and Quantity Surveyors) to action them.</p>
   </div>
 
   <!-- ░░░ DOCUMENTS ░░░ -->
   <h2 id="documents">20 · Documents</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Documents</span>
-    <p>A versioned register for drawings, certificates and contracts. Add a document with its category and file link; new versions keep the history.</p>
+    <span class="feature-tag">Menu → Workflow &amp; Records → Documents</span>
+    <ul class="bul">
+      <li><b>Evidence Register</b> — project-scoped evidence attached to records (GRNs, issues, inspections, IPCs, etc.).</li>
+      <li><b>Documents</b> — a versioned library for drawings, certificates and contracts; add a document with its category and file link, and new versions keep the history.</li>
+    </ul>
   </div>
 
   <!-- ░░░ REPORTS ░░░ -->
   <h2 id="reports">21 · Reports &amp; Exports</h2>
   <div class="card">
-    <span class="feature-tag">Menu → Reports · or the Excel/CSV button on any list</span>
+    <span class="feature-tag">Menu → Workflow &amp; Records → Reports · or the Excel button on any list</span>
     <ul class="bul">
-      <li>From the <b>Reports</b> page, download portfolio and per-project reports as <b>Excel</b>, <b>CSV</b> or <b>PDF</b>.</li>
-      <li>From <b>any list</b>, click <b>Excel</b> or <b>CSV</b> to export exactly what you’re viewing (your search, filters and dates are applied).</li>
+      <li>From the <b>Reports</b> page, download portfolio and per-project reports.</li>
+      <li>From <b>any list</b>, click <b>Excel</b> to export exactly what you’re viewing (your search, filters and dates are applied).</li>
     </ul>
+    <p>Cross-module reporting is available to System Administrators, Project Managers and Quantity Surveyors.</p>
   </div>
 
   <!-- ░░░ COPILOT ░░░ -->
@@ -435,9 +670,10 @@
     <span class="feature-tag">Menu → AI Copilot · or “Ask AI” in the top bar</span>
     <ol class="steps">
       <li>Open the Copilot and type a question in plain language, e.g. <i>“Which project has the worst cost variance?”</i> or <i>“Summarise this month’s payroll.”</i></li>
-      <li>The Copilot answers using <b>only your live data</b> — it never invents figures, and shows a confidence level.</li>
+      <li>The Copilot answers using <b>your live data</b> and is aware of the page you’re on.</li>
     </ol>
     <div class="callout tip"><b>💡 Try asking</b> “Show under-performing activities”, “Any low-stock materials?”, “Open NCRs and their cost”.</div>
+    <p>The Copilot and <b>Executive Intelligence</b> require the AI permission (Admins, Project Managers, Quantity Surveyors).</p>
   </div>
 
   <!-- ░░░ DASHBOARDS ░░░ -->
@@ -459,25 +695,27 @@
       <li><b>Users</b> — invite team members and set their role.</li>
       <li><b>Roles</b> — view exactly what each role can access.</li>
       <li><b>Company Settings</b> — name, currency (RWF), TIN, logo, working days.</li>
-      <li><b>Audit Trail</b> — a record of who created, changed or deleted what.</li>
+      <li><b>Audit Trail</b> — a record of who created, changed or deleted what, including sign-ins.</li>
     </ul>
   </div>
 
   <!-- ░░░ FAQ ░░░ -->
   <h2 id="faq">25 · Tips &amp; FAQ</h2>
   <div class="card">
+    <h3>I signed up but can’t sign in</h3>
+    <p>You must click the <b>verification link</b> in the email we sent first. Use <b>Resend</b> on the sign-in screen if you didn’t receive it, and check your spam folder. Links expire after 24 hours.</p>
     <h3>I don’t see a menu item</h3>
-    <p>Your role may not have access to it. Ask your administrator to adjust your role.</p>
+    <p>Your role may not have access to it. Ask your System Administrator to adjust your role in <b>Administration → Users</b>.</p>
     <h3>A list says “select a project”</h3>
-    <p>Choose a project from the dropdown at the top right of the screen.</p>
-    <h3>How do I see the tour again?</h3>
+    <p>Choose a project from the dropdown at the top of the screen.</p>
+    <h3>How do I see the guided tour?</h3>
     <p>Click the <b>“?” (Help)</b> button in the top bar at any time.</p>
     <h3>Can I export my data?</h3>
-    <p>Yes — every list has <b>Excel</b> and <b>CSV</b> buttons, and the Reports page produces PDFs.</p>
+    <p>Yes — every list has an <b>Excel</b> button, and the Reports page produces portfolio and project reports.</p>
     <h3>What currency is used?</h3>
     <p>Rwandan Francs (RWF) throughout.</p>
     <h3>Is my data safe?</h3>
-    <p>Access is controlled by role, every change is recorded in the audit trail, and your company’s data is kept separate from others.</p>
+    <p>Access is controlled by role, every change is recorded in the audit trail, and your company’s data is kept completely separate from other companies.</p>
   </div>
 
   <!-- ░░░ GLOSSARY ░░░ -->
@@ -487,14 +725,17 @@
       <tr><th>Term</th><th>Meaning</th></tr>
       <tr><td><b>WBS</b></td><td>Work Breakdown Structure — the hierarchy of project activities.</td></tr>
       <tr><td><b>BOQ</b></td><td>Bill of Quantities — priced list of work items (qty × rate).</td></tr>
-      <tr><td><b>DSR</b></td><td>Daily Site Report — the day’s production record.</td></tr>
       <tr><td><b>IPC</b></td><td>Interim Payment Certificate — periodic billing to the client.</td></tr>
       <tr><td><b>NCR</b></td><td>Non-Conformance Report — raised when work fails a quality check.</td></tr>
       <tr><td><b>GRN</b></td><td>Goods Received Note — record of a delivery into stock.</td></tr>
+      <tr><td><b>PR / PO</b></td><td>Purchase Request / Purchase Order — the buying chain.</td></tr>
+      <tr><td><b>RFQ</b></td><td>Request for Quotation — asking suppliers to quote.</td></tr>
+      <tr><td><b>MRP</b></td><td>Material Requirements Planning — net material needed (planned − on hand).</td></tr>
       <tr><td><b>PAYE</b></td><td>Pay As You Earn — employee income tax (Rwanda RRA).</td></tr>
-      <tr><td><b>RSSB</b></td><td>Rwanda Social Security Board — pension, maternity, medical contributions.</td></tr>
+      <tr><td><b>RSSB</b></td><td>Rwanda Social Security Board — pension, maternity, medical (CBHI) contributions.</td></tr>
       <tr><td><b>CPM</b></td><td>Critical Path Method — the sequence of tasks that drives the finish date.</td></tr>
       <tr><td><b>CPI / SPI</b></td><td>Cost / Schedule Performance Index — Earned Value health measures.</td></tr>
+      <tr><td><b>FIFO</b></td><td>First-In-First-Out — an inventory valuation method (vs Weighted Average).</td></tr>
       <tr><td><b>RWF</b></td><td>Rwandan Franc — the system currency.</td></tr>
     </table>
   </div>
@@ -503,8 +744,8 @@
 
 <footer>
   <div class="wrap">
-    <p><b>INSPECTA BUILDOS</b> — Construction Productivity &amp; Profitability ERP</p>
-    <p>Need help? Contact your system administrator. · Tip: open this page and press <b>Ctrl/Cmd + P</b> to save it as a PDF.</p>
+    <p><b>INSPECTA ERP</b> — Construction Productivity &amp; Profitability</p>
+    <p>Need help? Contact your System Administrator. · Tip: open this page and press <b>Ctrl/Cmd + P</b> to save it as a PDF.</p>
   </div>
 </footer>
 

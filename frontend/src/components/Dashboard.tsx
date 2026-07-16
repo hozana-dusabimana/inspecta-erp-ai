@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import SearchableSelect, { Option } from './SearchableSelect';
+import EntityForm from './EntityForm';
+import { PROJECT_FIELDS } from '../formConfigs';
 import { 
   HardHat, 
   Search, 
@@ -124,37 +125,6 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     { sender: 'ai', text: "Hi — I'm Inspecta Copilot. Ask me anything about your live project data, or open the Copilot Workspace." }
   ]);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  // Cascading location picker: Country → Region → City → (optional) Locality.
-  const [geoCountry, setGeoCountry] = useState<Option | null>(null);
-  const [geoRegion, setGeoRegion] = useState<Option | null>(null);
-  const [geoCity, setGeoCity] = useState<Option | null>(null);
-  const [geoLocality, setGeoLocality] = useState<Option | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  const geoQs = (search: string) => (search ? `?search=${encodeURIComponent(search)}` : '');
-  const fetchCountries = (search: string) =>
-    api
-      .get<Array<{ id: string; name: string; emoji?: string | null }>>(`/geo/countries${geoQs(search)}`)
-      .then((r) => r.data.map((c) => ({ id: c.id, label: c.name, hint: c.emoji ?? undefined })));
-  const fetchRegions = (search: string) =>
-    geoCountry
-      ? api
-          .get<Array<{ id: string; name: string }>>(`/geo/countries/${geoCountry.id}/regions${geoQs(search)}`)
-          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name })))
-      : Promise.resolve([] as Option[]);
-  const fetchCities = (search: string) =>
-    geoRegion
-      ? api
-          .get<Array<{ id: string; name: string; hasLocalities?: boolean }>>(`/geo/regions/${geoRegion.id}/cities${geoQs(search)}`)
-          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name, hasChildren: x.hasLocalities })))
-      : Promise.resolve([] as Option[]);
-  const fetchLocalities = (search: string) =>
-    geoCity
-      ? api
-          .get<Array<{ id: string; name: string }>>(`/geo/cities/${geoCity.id}/localities${geoQs(search)}`)
-          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name })))
-      : Promise.resolve([] as Option[]);
 
   const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -255,35 +225,10 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     : activeTab === 'risk' ? `${displayedProjects.length} at risk`
     : `${summary?.activeProjects ?? 0} active`;
 
-  const createProject = useMutation({
-    mutationFn: (input: { code: string; name: string; location: string; status: string }) =>
-      api.post<ApiProject>('/projects', input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['projects-summary'] });
-      setNewProjectName('');
-      setIsNewProjectOpen(false);
-      setCreateError(null);
-    },
-    onError: (err) => setCreateError(err instanceof Error ? err.message : 'Failed to create project'),
-  });
-
-  const handleCreateProject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProjectName) return;
-    // Derive a project code from the name (backend requires a unique code).
-    const code =
-      newProjectName
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '')
-        .slice(0, 10) || 'PRJ';
-    createProject.mutate({
-      code: `${code}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
-      name: newProjectName,
-      location: [geoLocality?.label, geoCity?.label, geoRegion?.label, geoCountry?.label].filter(Boolean).join(', '),
-      status: 'PLANNING',
-    });
+  const handleProjectSaved = () => {
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['projects-summary'] });
+    setIsNewProjectOpen(false);
   };
 
   const handleCopilotSend = async () => {
@@ -774,98 +719,16 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
           </aside>
         </main>
 
-      {/* New Project Dialog Modal */}
-      <AnimatePresence>
-        {isNewProjectOpen && (
-          <div className="fixed inset-0 z-50 bg-brand-on-background/40 backdrop-blur-sm flex items-center justify-center px-4" id="new-project-modal">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-brand-surface-container-lowest w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
-            >
-              <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Provision Enterprise Project</h3>
-              <p className="text-brand-on-surface-variant text-xs mb-4">Set up a new physical node under Inspecta AI supervision.</p>
-              
-              <form onSubmit={handleCreateProject} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">PROJECT NAME</label>
-                  <input 
-                    type="text"
-                    required
-                    placeholder="e.g. Skyline Tower B"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary transition-all font-medium"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">PROJECT LOCATION</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <SearchableSelect
-                      value={geoCountry}
-                      onChange={(opt) => { setGeoCountry(opt); setGeoRegion(null); setGeoCity(null); setGeoLocality(null); }}
-                      fetchOptions={fetchCountries}
-                      placeholder="Select country"
-                    />
-                    <SearchableSelect
-                      value={geoRegion}
-                      onChange={(opt) => { setGeoRegion(opt); setGeoCity(null); setGeoLocality(null); }}
-                      fetchOptions={fetchRegions}
-                      reloadKey={geoCountry?.id}
-                      disabled={!geoCountry}
-                      disabledText="Select a country first"
-                      placeholder="Select region / province"
-                    />
-                    <SearchableSelect
-                      value={geoCity}
-                      onChange={(opt) => { setGeoCity(opt); setGeoLocality(null); }}
-                      fetchOptions={fetchCities}
-                      reloadKey={geoRegion?.id}
-                      disabled={!geoRegion}
-                      disabledText="Select a region first"
-                      placeholder="Select district / city"
-                    />
-                    {geoCity?.hasChildren && (
-                      <SearchableSelect
-                        value={geoLocality}
-                        onChange={setGeoLocality}
-                        fetchOptions={fetchLocalities}
-                        reloadKey={geoCity?.id}
-                        placeholder="Select sector / area"
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {createError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
-                    {createError}
-                  </div>
-                )}
-
-                <div className="flex gap-3 justify-end pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewProjectOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-brand-on-surface-variant hover:bg-brand-surface rounded-lg transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={createProject.isPending}
-                    className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container transition-all disabled:opacity-60"
-                  >
-                    {createProject.isPending ? 'Provisioning…' : 'Provision Project'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* New Project — shared wizard form (same as Planning → Project Setup) */}
+      {isNewProjectOpen && (
+        <EntityForm
+          endpoint="/projects"
+          entityLabel="Project"
+          fields={PROJECT_FIELDS}
+          onClose={() => setIsNewProjectOpen(false)}
+          onSaved={handleProjectSaved}
+        />
+      )}
     </>
   );
 }

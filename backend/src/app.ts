@@ -39,6 +39,7 @@ import profitabilityRoutes from './modules/profitability/profitability.routes';
 import fieldopsRoutes from './modules/fieldops/fieldops.routes';
 import approvalsRoutes from './modules/approvals/approvals.routes';
 import portfolioRoutes from './modules/portfolio/portfolio.routes';
+import geoRoutes from './modules/geo/geo.routes';
 import publicRoutes from './modules/public/public.routes';
 
 export function createApp() {
@@ -134,6 +135,7 @@ export function createApp() {
   app.use('/api/fieldops', fieldopsRoutes); // M16
   app.use('/api/approvals', approvalsRoutes); // M18 — workflow
   app.use('/api/portfolio', portfolioRoutes); // M23
+  app.use('/api/geo', geoRoutes); // Country → Region → City reference data
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import SearchableSelect, { Option } from './SearchableSelect';
 import { 
   HardHat, 
   Search, 
@@ -124,8 +125,29 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   ]);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectLocation, setNewProjectLocation] = useState('Chicago, IL');
+  // Cascading location picker: Country → Region → City (backed by /api/geo).
+  const [geoCountry, setGeoCountry] = useState<Option | null>(null);
+  const [geoRegion, setGeoRegion] = useState<Option | null>(null);
+  const [geoCity, setGeoCity] = useState<Option | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const geoQs = (search: string) => (search ? `?search=${encodeURIComponent(search)}` : '');
+  const fetchCountries = (search: string) =>
+    api
+      .get<Array<{ id: string; name: string; emoji?: string | null }>>(`/geo/countries${geoQs(search)}`)
+      .then((r) => r.data.map((c) => ({ id: c.id, label: c.name, hint: c.emoji ?? undefined })));
+  const fetchRegions = (search: string) =>
+    geoCountry
+      ? api
+          .get<Array<{ id: string; name: string }>>(`/geo/countries/${geoCountry.id}/regions${geoQs(search)}`)
+          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name })))
+      : Promise.resolve([] as Option[]);
+  const fetchCities = (search: string) =>
+    geoRegion
+      ? api
+          .get<Array<{ id: string; name: string }>>(`/geo/regions/${geoRegion.id}/cities${geoQs(search)}`)
+          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name })))
+      : Promise.resolve([] as Option[]);
 
   const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -252,7 +274,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     createProject.mutate({
       code: `${code}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
       name: newProjectName,
-      location: newProjectLocation,
+      location: [geoCity?.label, geoRegion?.label, geoCountry?.label].filter(Boolean).join(', '),
       status: 'PLANNING',
     });
   };
@@ -772,17 +794,33 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">GEOGRAPHIC REGION</label>
-                  <select 
-                    value={newProjectLocation}
-                    onChange={(e) => setNewProjectLocation(e.target.value)}
-                    className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary transition-all font-semibold text-brand-primary"
-                  >
-                    <option value="Chicago, IL">Chicago, IL (Headquarters)</option>
-                    <option value="Austin, TX">Austin, TX (South Regional)</option>
-                    <option value="New York, NY">New York, NY (East Coast)</option>
-                    <option value="San Francisco, CA">San Francisco, CA (West Coast)</option>
-                  </select>
+                  <label className="font-sans text-[11px] font-bold text-brand-on-surface-variant block">PROJECT LOCATION</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <SearchableSelect
+                      value={geoCountry}
+                      onChange={(opt) => { setGeoCountry(opt); setGeoRegion(null); setGeoCity(null); }}
+                      fetchOptions={fetchCountries}
+                      placeholder="Select country"
+                    />
+                    <SearchableSelect
+                      value={geoRegion}
+                      onChange={(opt) => { setGeoRegion(opt); setGeoCity(null); }}
+                      fetchOptions={fetchRegions}
+                      reloadKey={geoCountry?.id}
+                      disabled={!geoCountry}
+                      disabledText="Select a country first"
+                      placeholder="Select region / province"
+                    />
+                    <SearchableSelect
+                      value={geoCity}
+                      onChange={setGeoCity}
+                      fetchOptions={fetchCities}
+                      reloadKey={geoRegion?.id}
+                      disabled={!geoRegion}
+                      disabledText="Select a region first"
+                      placeholder="Select city / town"
+                    />
+                  </div>
                 </div>
 
                 {createError && (

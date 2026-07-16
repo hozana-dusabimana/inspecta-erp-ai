@@ -2196,3 +2196,55 @@ model PpeCheck {
   @@index([projectId])
   @@map("ppe_checks")
 }
+
+// ─────────────────── Geographic reference data ───────────────────
+// Global lookup tables (NOT org-scoped) powering the cascading
+// Country → Region → City picker on project setup. Seeded once from ISO data
+// via `npm run seed:geo` (kept out of the startup seed — see prisma/seed-geo.ts).
+
+model Country {
+  id        String   @id @default(cuid())
+  iso2      String   @unique // ISO 3166-1 alpha-2 (e.g. "RW")
+  iso3      String?
+  name      String
+  phoneCode String?
+  currency  String?
+  emoji     String?
+  latitude  String?
+  longitude String?
+
+  regions Region[]
+
+  @@index([name])
+  @@map("countries")
+}
+
+model Region {
+  id        String  @id @default(cuid())
+  countryId String
+  stateCode String? // ISO 3166-2 subdivision code within the country (not globally unique)
+  name      String
+  latitude  String?
+  longitude String?
+
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities  City[]
+
+  @@index([countryId])
+  @@index([countryId, name])
+  @@map("regions")
+}
+
+model City {
+  id        String  @id @default(cuid())
+  regionId  String
+  name      String
+  latitude  String?
+  longitude String?
+
+  region Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@index([regionId])
+  @@index([regionId, name])
+  @@map("cities")
+}

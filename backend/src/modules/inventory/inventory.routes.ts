@@ -5,13 +5,14 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
-import { createCrudRouter } from '../../lib/crud';
+import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 
 const router = Router();
 
 // ── Material register ─────────────────────────────────────────
-const materialCreate = z.object({
+// Exported so the AI Copilot guided-create reuses the same validation.
+export const materialCreate = z.object({
   code: z.string().min(1),
   name: z.string().min(1),
   category: z.string().optional(),
@@ -45,9 +46,7 @@ const requirementCreate = z.object({
   status: z.enum(['PLANNED', 'REQUESTED', 'ORDERED', 'FULFILLED']).optional(),
   note: z.string().optional(),
 });
-router.use(
-  '/requirements',
-  createCrudRouter({
+export const requirementCrud: CrudOptions = {
     model: 'materialRequirement',
     entity: 'material-requirement',
     readPerm: 'inventory:read',
@@ -66,8 +65,8 @@ router.use(
       data.updatedBy = req.user!.id;
       return data;
     },
-  }),
-);
+};
+router.use('/requirements', createCrudRouter(requirementCrud));
 
 /** Compute net stock for a material = Σreceipts − Σissues (+adjustments). */
 async function stockForMaterial(orgId: string, materialId: string): Promise<number> {
@@ -101,9 +100,7 @@ const movementCreate = z.object({
   note: z.string().optional(),
   date: z.string().datetime().optional(),
 });
-router.use(
-  '/movements',
-  createCrudRouter({
+export const movementCrud: CrudOptions = {
     model: 'stockMovement',
     entity: 'stock-movement',
     readPerm: 'inventory:read',
@@ -134,8 +131,8 @@ router.use(
         });
       }
     },
-  }),
-);
+};
+router.use('/movements', createCrudRouter(movementCrud));
 
 // ── Stock ledger: current stock + reorder flags ───────────────
 router.get(

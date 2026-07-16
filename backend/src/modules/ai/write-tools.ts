@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { CrudOptions, runCreate } from '../../lib/crud';
@@ -9,6 +10,8 @@ import { upsertSchema as clientUpsertSchema } from '../clients/clients.routes';
 import { riskCrud } from '../risk/risk.routes';
 import { ncrCrud } from '../qaqc/qaqc.routes';
 import { costEntryCrud } from '../finance/finance.routes';
+import { materialCreate, movementCrud, requirementCrud } from '../inventory/inventory.routes';
+import { supplierCrud } from '../procurement/procurement.routes';
 
 /**
  * Agentic WRITE tools for the AI Copilot. The model can create records by
@@ -113,6 +116,19 @@ const clientCrud: CrudOptions = {
     if (d.email === '') d.email = null;
     return d;
   },
+};
+
+// Material register: the UI requires a code, but for the chat flow we make it
+// optional and auto-generate MAT-#### so the user doesn't have to invent one.
+const materialCrud: CrudOptions = {
+  model: 'material',
+  entity: 'material',
+  readPerm: 'inventory:read',
+  writePerm: 'inventory:write',
+  createSchema: materialCreate.extend({ code: z.string().min(1).optional() }),
+  updateSchema: materialCreate.partial(),
+  autoCode: { field: 'code', prefix: 'MAT' },
+  refs: [{ field: 'supplierId', model: 'supplier' }],
 };
 
 const DEFS: Record<string, WriteToolDef> = {
@@ -227,6 +243,93 @@ const DEFS: Record<string, WriteToolDef> = {
       },
     },
   },
+  // ── Inventory ──
+  material: {
+    entity: 'material',
+    title: 'material',
+    description: 'Add a material to the inventory register (code auto-generated).',
+    intake: 'the unit of measure, category, reorder level, unit cost, and preferred supplier',
+    crud: materialCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name'],
+      properties: {
+        name: { type: 'string' },
+        category: { type: 'string' },
+        unit: { type: 'string', description: 'e.g. bag, kg, m3, litre' },
+        reorderLevel: { type: 'number' },
+        unitCost: { type: 'number' },
+        supplierId: { type: 'string', description: 'Existing supplier id' },
+      },
+    },
+  },
+  stock_movement: {
+    entity: 'stock_movement',
+    title: 'stock movement',
+    description: 'Record a stock movement (receipt, issue, adjustment, waste…) for a material.',
+    intake: 'which material, the movement type, quantity, unit cost, project, and a reference or note',
+    crud: movementCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['materialId', 'type', 'quantity'],
+      properties: {
+        materialId: { type: 'string' },
+        type: { type: 'string', enum: ['RECEIPT', 'ISSUE', 'ADJUSTMENT', 'TRANSFER', 'RETURN', 'WASTE', 'OPENING'] },
+        quantity: { type: 'number', minimum: 0 },
+        unitCost: { type: 'number' },
+        projectId: { type: 'string' },
+        reference: { type: 'string' },
+        note: { type: 'string' },
+        date: { type: 'string', description: 'ISO 8601 date/datetime' },
+      },
+    },
+  },
+  material_requirement: {
+    entity: 'material_requirement',
+    title: 'material requirement',
+    description: 'Plan a material requirement (planned quantity) for a project.',
+    intake: 'the material, planned quantity, required-by date, supplier and lead time',
+    crud: requirementCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'materialId', 'plannedQuantity'],
+      properties: {
+        projectId: { type: 'string' },
+        materialId: { type: 'string' },
+        plannedQuantity: { type: 'number', minimum: 0 },
+        requiredByDate: { type: 'string', description: 'ISO 8601 date/datetime' },
+        supplierId: { type: 'string' },
+        leadTimeDays: { type: 'integer', minimum: 0 },
+        note: { type: 'string' },
+      },
+    },
+  },
+  // ── Procurement ──
+  supplier: {
+    entity: 'supplier',
+    title: 'supplier',
+    description: 'Add a supplier / vendor.',
+    intake: 'the category, contact person, email, phone, TIN, payment terms and lead time',
+    crud: supplierCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name'],
+      properties: {
+        name: { type: 'string' },
+        category: { type: 'string' },
+        contactName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        tinNumber: { type: 'string' },
+        paymentTerms: { type: 'string' },
+        leadTimeDays: { type: 'integer', minimum: 0 },
+      },
+    },
+  },
 };
 
 const LOOKUP_SPECS: ToolSpec[] = [
@@ -248,16 +351,17 @@ const LOOKUP_SPECS: ToolSpec[] = [
 const START_CREATE_SPEC: ToolSpec = {
   name: 'start_create',
   description:
-    'Begin creating a record when the user wants to create/add a project, client, risk, NCR, or cost entry. ' +
-    'Pass any values the user already stated in `values` (e.g. name, budget, amount). ' +
+    'Begin creating a record when the user wants to create/add a project, client, risk, NCR, cost entry, ' +
+    'material, stock movement (receipt/issue/adjustment), material requirement, or supplier. ' +
+    'Pass any values the user already stated in `values` (e.g. name, budget, quantity). ' +
     'After you call this, the SYSTEM collects the remaining fields from the user via input widgets — do NOT ask for fields yourself and do NOT preview; just briefly acknowledge (one short sentence).',
   parameters: {
     type: 'object',
     additionalProperties: false,
     required: ['entity'],
     properties: {
-      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry'] },
-      values: { type: 'object', description: 'Fields the user already provided, e.g. {"name":"...","budget":200000000}', additionalProperties: true },
+      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry', 'material', 'stock_movement', 'material_requirement', 'supplier'] },
+      values: { type: 'object', description: 'Fields the user already provided, e.g. {"name":"...","quantity":100}', additionalProperties: true },
     },
   },
 };
@@ -459,6 +563,10 @@ const FIELD_ORDER: Record<string, string[]> = {
   risk: ['projectId', 'title', 'probability', 'impact', 'category', 'owner', 'mitigation'],
   ncr: ['projectId', 'description', 'severity', 'rootCause', 'responsiblePerson', 'dueDate'],
   cost_entry: ['projectId', 'description', 'amount', 'category', 'date'],
+  material: ['name', 'category', 'unit', 'reorderLevel', 'unitCost', 'supplierId'],
+  stock_movement: ['materialId', 'type', 'quantity', 'unitCost', 'projectId', 'reference', 'note', 'date'],
+  material_requirement: ['projectId', 'materialId', 'plannedQuantity', 'requiredByDate', 'supplierId', 'leadTimeDays', 'note'],
+  supplier: ['name', 'category', 'contactName', 'email', 'phone', 'tinNumber', 'paymentTerms', 'leadTimeDays'],
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -469,18 +577,25 @@ const FIELD_LABELS: Record<string, string> = {
   category: 'Category', owner: 'Owner', mitigation: 'Mitigation',
   description: 'Description', severity: 'Severity', rootCause: 'Root cause',
   responsiblePerson: 'Responsible person', dueDate: 'Due date', amount: 'Amount', date: 'Date',
+  unit: 'Unit', reorderLevel: 'Reorder level', unitCost: 'Unit cost', supplierId: 'Supplier',
+  materialId: 'Material', type: 'Movement type', quantity: 'Quantity', reference: 'Reference', note: 'Note',
+  plannedQuantity: 'Planned quantity', requiredByDate: 'Required by', leadTimeDays: 'Lead time (days)',
+  tinNumber: 'TIN (tax number)', paymentTerms: 'Payment terms',
 };
 
-const REFERENCES: Record<string, { model: 'client' | 'project' | 'user'; allowAdd: boolean; addLabel?: string }> = {
+type RefModel = 'client' | 'project' | 'user' | 'material' | 'supplier';
+const REFERENCES: Record<string, { model: RefModel; allowAdd: boolean; addLabel?: string }> = {
   clientId: { model: 'client', allowAdd: true, addLabel: 'Add a new client' },
   projectId: { model: 'project', allowAdd: true, addLabel: 'Add a new project' },
   managerId: { model: 'user', allowAdd: false },
+  materialId: { model: 'material', allowAdd: true, addLabel: 'Add a new material' },
+  supplierId: { model: 'supplier', allowAdd: true, addLabel: 'Add a new supplier' },
 };
 
-const DATE_FIELDS_G = new Set(['startDate', 'endDate', 'dueDate', 'date']);
+const DATE_FIELDS_G = new Set(['startDate', 'endDate', 'dueDate', 'date', 'requiredByDate']);
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
-async function referenceOptions(model: 'client' | 'project' | 'user', orgId: string): Promise<FieldOption[]> {
+async function referenceOptions(model: RefModel, orgId: string): Promise<FieldOption[]> {
   if (model === 'client') {
     const rows = await prisma.client.findMany({ where: { organizationId: orgId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
     return rows.map((r) => ({ value: r.id, label: r.name }));
@@ -488,6 +603,14 @@ async function referenceOptions(model: 'client' | 'project' | 'user', orgId: str
   if (model === 'project') {
     const rows = await prisma.project.findMany({ where: { organizationId: orgId }, select: { id: true, code: true, name: true }, orderBy: { createdAt: 'desc' }, take: 200 });
     return rows.map((r) => ({ value: r.id, label: `${r.code} — ${r.name}` }));
+  }
+  if (model === 'material') {
+    const rows = await prisma.material.findMany({ where: { organizationId: orgId }, select: { id: true, code: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
+    return rows.map((r) => ({ value: r.id, label: `${r.code} — ${r.name}` }));
+  }
+  if (model === 'supplier') {
+    const rows = await prisma.supplier.findMany({ where: { organizationId: orgId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
+    return rows.map((r) => ({ value: r.id, label: r.name }));
   }
   const rows = await prisma.user.findMany({ where: { organizationId: orgId, isActive: true }, select: { id: true, fullName: true, email: true }, orderBy: { fullName: 'asc' }, take: 200 });
   return rows.map((r) => ({ value: r.id, label: r.fullName || r.email }));
@@ -569,7 +692,7 @@ export async function startCreateSession(entity: string, rawValues: Record<strin
   return advanceSession(session.id, entity, values, [], actor, `Let's create a ${def.title}. Fill in each field below — you can skip the optional ones.`);
 }
 
-async function createReference(model: 'client' | 'project' | 'user', name: string, actor: Actor): Promise<{ id?: string; error?: string }> {
+async function createReference(model: RefModel, name: string, actor: Actor): Promise<{ id?: string; error?: string }> {
   const clean = (name || '').trim();
   if (clean.length < 2) return { error: 'Please enter a name (at least 2 characters).' };
   if (model === 'client') {
@@ -580,6 +703,16 @@ async function createReference(model: 'client' | 'project' | 'user', name: strin
   if (model === 'project') {
     if (!can(actor.role, 'project:write')) return { error: `You don't have permission to add a project.` };
     const { record } = await runCreate(projectCrud, actorReq(actor), { name: clean }, true);
+    return { id: String(record?.id) };
+  }
+  if (model === 'material') {
+    if (!can(actor.role, 'inventory:write')) return { error: `You don't have permission to add a material.` };
+    const { record } = await runCreate(materialCrud, actorReq(actor), { name: clean }, true);
+    return { id: String(record?.id) };
+  }
+  if (model === 'supplier') {
+    if (!can(actor.role, 'procurement:write')) return { error: `You don't have permission to add a supplier.` };
+    const { record } = await runCreate(supplierCrud, actorReq(actor), { name: clean }, true);
     return { id: String(record?.id) };
   }
   return { error: 'You can only pick an existing project manager, not add one here.' };

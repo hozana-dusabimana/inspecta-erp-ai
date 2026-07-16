@@ -7,7 +7,7 @@ import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { notify } from '../notifications/notify';
-import { createCrudRouter } from '../../lib/crud';
+import { createCrudRouter, CrudOptions } from '../../lib/crud';
 
 const router = Router();
 
@@ -29,9 +29,8 @@ const supplierCreate = z.object({
   rating: z.number().min(0).max(5).optional(),
   leadTimeDays: z.number().int().nonnegative().optional(),
 });
-router.use(
-  '/suppliers',
-  createCrudRouter({
+// Exported so the AI Copilot guided-create reuses the same supplier pipeline.
+export const supplierCrud: CrudOptions = {
     model: 'supplier',
     entity: 'supplier',
     readPerm: 'procurement:read',
@@ -43,8 +42,8 @@ router.use(
       if (data.email === '') data.email = null;
       return data;
     },
-  }),
-);
+};
+router.use('/suppliers', createCrudRouter(supplierCrud));
 
 // ── Purchase orders (with nested line items) ──────────────────
 const poItem = z.object({

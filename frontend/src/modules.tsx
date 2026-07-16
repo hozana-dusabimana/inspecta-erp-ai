@@ -14,9 +14,12 @@ import ComplianceAnalytics from './components/ComplianceAnalytics';
 import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
 import {
-  PROJECT_FIELDS, CLIENT_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
+  PROJECT_FIELDS, CLIENT_FIELDS, SUPPLIER_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
   SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
 } from './formConfigs';
+
+// Inline "＋ New Supplier" for any supplier foreign-key picker.
+const SUPPLIER_CREATE = { endpoint: '/procurement/suppliers', entityLabel: 'Supplier', fields: SUPPLIER_FIELDS };
 
 // Creatable-select helpers for open taxonomies (preset options + user "＋ New").
 const unitField = (name = 'unit', label = 'Unit', extra: Record<string, unknown> = {}) => ({ name, label, type: 'select' as const, creatable: true, options: UNIT_OPTIONS, ...extra });
@@ -1086,7 +1089,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
           { name: 'category', label: 'Category', ...pick(MATERIAL_CATEGORY_OPTIONS) },
-          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, createConfig: SUPPLIER_CREATE },
           unitField(), { name: 'reorderLevel', label: 'Reorder Level', type: 'number' },
           { name: 'unitCost', label: 'Unit Cost', type: 'number' },
           { name: 'standardCost', label: 'Standard Cost', type: 'number' },
@@ -1133,7 +1136,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
           { name: 'plannedQuantity', label: 'Planned Quantity', type: 'number', required: true },
           { name: 'requiredByDate', label: 'Required By', type: 'date' },
-          { name: 'supplierId', label: 'Preferred Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'supplierId', label: 'Preferred Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, createConfig: SUPPLIER_CREATE },
           { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number' },
           { name: 'status', label: 'Status', type: 'select', options: opt(['PLANNED', 'REQUESTED', 'ORDERED', 'FULFILLED']) },
           { name: 'note', label: 'Note', type: 'textarea' },
@@ -1229,7 +1232,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'number', label: 'PO Number (auto)', hideOnCreate: true, readOnly: true, section: 'Order' },
-          { name: 'supplierId', label: 'Supplier', optionsEndpoint: '/procurement/suppliers', optionLabel: (s) => s.name, required: true, section: 'Order' },
+          { name: 'supplierId', label: 'Supplier', optionsEndpoint: '/procurement/suppliers', optionLabel: (s) => s.name, required: true, section: 'Order', createConfig: SUPPLIER_CREATE },
           { name: 'purchaseRequestId', label: 'From Purchase Request', type: 'select', optionsEndpoint: '/procurement/purchase-requests', optionLabel: (r) => r.number, section: 'Order' },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}`, section: 'Order' },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'ISSUED', 'PARTIAL', 'RECEIVED', 'CANCELLED']), section: 'Details' },
@@ -1281,7 +1284,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'rfqId', label: 'RFQ', type: 'select', optionsEndpoint: '/procurement/rfqs', optionLabel: (r) => r.number, required: true },
-          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, required: true },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, required: true, createConfig: SUPPLIER_CREATE },
           { name: 'totalAmount', label: 'Quoted Amount', type: 'number', required: true },
           { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number' },
           { name: 'notes', label: 'Notes', type: 'textarea' },
@@ -1346,7 +1349,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'testType', label: 'Test Type', type: 'select', options: opt(['CONCRETE', 'SOIL', 'ASPHALT', 'STEEL', 'OTHER']) },
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (r) => `${r.code} — ${r.name}` },
-          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, createConfig: SUPPLIER_CREATE },
           { name: 'batchNumber', label: 'Batch Number' },
           { name: 'sampleDate', label: 'Sample Date', type: 'date' },
           { name: 'resultDate', label: 'Result Date', type: 'date' },

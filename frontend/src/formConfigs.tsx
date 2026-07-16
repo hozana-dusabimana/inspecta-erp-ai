@@ -30,6 +30,19 @@ export const CLIENT_FIELDS: Field[] = [
   { name: 'address', label: 'Address', type: 'textarea', placeholder: 'Street, city, country', section: 'Contact' },
 ];
 
+// Inline "＋ New Supplier" mini-form — used by supplier pickers (e.g. the New
+// Material form) so a supplier can be created without leaving the screen.
+export const SUPPLIER_FIELDS: Field[] = [
+  { name: 'name', label: 'Supplier Name', required: true, placeholder: 'e.g. Cimerwa Ltd', section: 'Supplier' },
+  { name: 'category', label: 'Category', type: 'select', creatable: true, options: SUPPLIER_CATEGORY_OPTIONS, section: 'Supplier' },
+  { name: 'tinNumber', label: 'TIN Number', placeholder: 'e.g. 100123456', section: 'Supplier' },
+  { name: 'paymentTerms', label: 'Payment Terms', placeholder: 'Net 30', section: 'Supplier' },
+  { name: 'contactName', label: 'Contact Person', placeholder: 'e.g. Jane Doe', section: 'Contact' },
+  { name: 'phone', label: 'Phone', placeholder: 'e.g. +250 788 123 456', section: 'Contact' },
+  { name: 'email', label: 'Email', placeholder: 'e.g. sales@supplier.rw', section: 'Contact' },
+  { name: 'leadTimeDays', label: 'Lead Time (days)', type: 'number', section: 'Performance' },
+];
+
 export const PROJECT_FIELDS: Field[] = [
   // ── Project ──
   { name: 'code', label: 'Project Code (auto-generated)', hideOnCreate: true, readOnly: true, section: 'Project' },

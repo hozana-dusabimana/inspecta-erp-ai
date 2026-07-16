@@ -75,6 +75,8 @@ interface WriteToolDef {
   entity: string; // registry key / tool suffix, e.g. 'cost_entry'
   title: string; // human label for messages
   description: string; // shown to the model
+  /** Fields to ask the user about (one at a time) BEFORE previewing. */
+  intake: string;
   crud: CrudOptions; // the exact create pipeline config
   parameters: Record<string, unknown>; // JSON Schema for the model
 }
@@ -118,6 +120,7 @@ const DEFS: Record<string, WriteToolDef> = {
     entity: 'project',
     title: 'project',
     description: 'Create a new construction project for the organization.',
+    intake: 'the client, location, total budget, start date, end date, and project manager',
     crud: projectCrud,
     parameters: {
       type: 'object',
@@ -144,6 +147,7 @@ const DEFS: Record<string, WriteToolDef> = {
     entity: 'client',
     title: 'client',
     description: 'Create a new client / customer (needed before linking one to a project).',
+    intake: 'the client type (private/government/individual), contact person, email, phone, and address',
     crud: clientCrud,
     parameters: {
       type: 'object',
@@ -164,6 +168,7 @@ const DEFS: Record<string, WriteToolDef> = {
     entity: 'risk',
     title: 'risk',
     description: 'Log a project risk. Score = probability × impact (auto-computed).',
+    intake: 'which project, the risk title, probability (1-5), impact (1-5), category, owner, and mitigation',
     crud: riskCrud,
     parameters: {
       type: 'object',
@@ -185,6 +190,7 @@ const DEFS: Record<string, WriteToolDef> = {
     entity: 'ncr',
     title: 'NCR (non-conformance report)',
     description: 'Raise a non-conformance report against a project. The NCR number is auto-generated.',
+    intake: 'which project, the description of the non-conformance, severity, root cause, responsible person, and due date',
     crud: ncrCrud,
     parameters: {
       type: 'object',
@@ -206,6 +212,7 @@ const DEFS: Record<string, WriteToolDef> = {
     entity: 'cost_entry',
     title: 'cost entry',
     description: 'Record an actual cost against a project.',
+    intake: 'which project, the cost description, amount, category (labor/material/equipment/...), and date',
     crud: costEntryCrud,
     parameters: {
       type: 'object',
@@ -241,7 +248,10 @@ export function writeToolSpecs(): ToolSpec[] {
   for (const [key, def] of Object.entries(DEFS)) {
     specs.push({
       name: `preview_${key}`,
-      description: `Validate and PREVIEW creating a ${def.title} (does NOT save). ${def.description} Show the preview and ask the user to confirm.`,
+      description:
+        `Validate and PREVIEW creating a ${def.title} (does NOT save). ${def.description} ` +
+        `BEFORE calling this, ask the user (one question at a time) about ${def.intake} — any they have not already provided; they may say "skip"/"none" to leave optional ones blank. ` +
+        `Then call this to preview, show the fields, and ask the user to confirm.`,
       parameters: def.parameters,
     });
     specs.push({

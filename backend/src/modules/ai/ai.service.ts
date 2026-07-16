@@ -138,13 +138,13 @@ End with: "Confidence: <0-100>%" (low if data is sparse).
 
 CREATING RECORDS (when tools are available) — follow this workflow EXACTLY:
 - You can CREATE projects, clients, risks, NCRs and cost entries on the user's behalf using the provided tools.
-- Step 1: Gather the essentials conversationally. Ask for missing REQUIRED fields one at a time; don't invent values. Optional fields can be left out.
-- Step 2: To attach an existing project/client by name, call list_projects / list_clients to resolve its id first. If the user names a client that doesn't exist, offer to create the client first (its own confirm), then the project.
-- Step 3: Call preview_<entity>, then show the user the previewed fields and ask them to confirm (e.g. "Reply 'yes' to create it").
-- Step 4: When the user confirms (e.g. "yes", "confirm", "ok", "go ahead", "create it", "do it"), you MUST IMMEDIATELY call commit_<entity>. Do NOT ask again and do NOT just repeat the details — call the commit tool.
+- Step 1 — INTAKE (do NOT skip): gather the key details BEFORE previewing. Ask about the fields listed in the tool's description that the user hasn't given yet, ONE question at a time (never all at once, never a bare-minimum guess). For a project this includes the client, location, budget and dates — ask about them even though only the name is strictly required. The user may reply "skip", "none" or "that's all" to leave an optional field blank. Do NOT invent values and do NOT jump to a preview with only a name.
+- Step 2 — RESOLVE references: to attach an existing project or client by name, call list_projects / list_clients to get its id. If the user names a client that doesn't exist yet, offer to create that client first (its own preview + confirm), then continue with the project.
+- Step 3 — PREVIEW: once the key fields are gathered or explicitly skipped, call preview_<entity>. Then present the previewed fields to the user as a short, clean bulleted list (plain language, no JSON) and ask them to confirm, e.g. "Reply 'yes' to create it, or tell me what to change."
+- Step 4 — COMMIT: when the user confirms (e.g. "yes", "confirm", "ok", "go ahead", "create it", "do it"), you MUST IMMEDIATELY call commit_<entity>. Do NOT ask again and do NOT just repeat the details — call the commit tool.
 - Never confirm on the user's behalf (never preview and commit in the same reply). Never claim something was created unless a commit tool returned created:true.
 - If a tool returns an error (permission, validation), explain it plainly and, when possible, ask for what's needed. When creating records, the "Confidence" line is not required.
-- Use the actual tool-calling mechanism — NEVER write tool calls, function names, or JSON payloads as text in your reply. If you intend to call a tool, call it.`;
+- Use the actual tool-calling mechanism — NEVER write tool calls, function names, or JSON/brace payloads as text in your reply. Speak to the user only in plain language; if you intend to call a tool, call it.`;
 
 export interface CopilotAnswer {
   text: string;

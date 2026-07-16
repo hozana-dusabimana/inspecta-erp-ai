@@ -5,6 +5,7 @@ export interface Option {
   id: string;
   label: string;
   hint?: string; // small leading text, e.g. a flag emoji
+  hasChildren?: boolean; // whether a deeper level exists below this option
 }
 
 interface SearchableSelectProps {

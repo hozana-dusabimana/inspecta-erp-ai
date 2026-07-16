@@ -125,10 +125,11 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   ]);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  // Cascading location picker: Country → Region → City (backed by /api/geo).
+  // Cascading location picker: Country → Region → City → (optional) Locality.
   const [geoCountry, setGeoCountry] = useState<Option | null>(null);
   const [geoRegion, setGeoRegion] = useState<Option | null>(null);
   const [geoCity, setGeoCity] = useState<Option | null>(null);
+  const [geoLocality, setGeoLocality] = useState<Option | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const geoQs = (search: string) => (search ? `?search=${encodeURIComponent(search)}` : '');
@@ -145,7 +146,13 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const fetchCities = (search: string) =>
     geoRegion
       ? api
-          .get<Array<{ id: string; name: string }>>(`/geo/regions/${geoRegion.id}/cities${geoQs(search)}`)
+          .get<Array<{ id: string; name: string; hasLocalities?: boolean }>>(`/geo/regions/${geoRegion.id}/cities${geoQs(search)}`)
+          .then((r) => r.data.map((x) => ({ id: x.id, label: x.name, hasChildren: x.hasLocalities })))
+      : Promise.resolve([] as Option[]);
+  const fetchLocalities = (search: string) =>
+    geoCity
+      ? api
+          .get<Array<{ id: string; name: string }>>(`/geo/cities/${geoCity.id}/localities${geoQs(search)}`)
           .then((r) => r.data.map((x) => ({ id: x.id, label: x.name })))
       : Promise.resolve([] as Option[]);
 
@@ -274,7 +281,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
     createProject.mutate({
       code: `${code}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
       name: newProjectName,
-      location: [geoCity?.label, geoRegion?.label, geoCountry?.label].filter(Boolean).join(', '),
+      location: [geoLocality?.label, geoCity?.label, geoRegion?.label, geoCountry?.label].filter(Boolean).join(', '),
       status: 'PLANNING',
     });
   };
@@ -798,13 +805,13 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   <div className="grid grid-cols-1 gap-2">
                     <SearchableSelect
                       value={geoCountry}
-                      onChange={(opt) => { setGeoCountry(opt); setGeoRegion(null); setGeoCity(null); }}
+                      onChange={(opt) => { setGeoCountry(opt); setGeoRegion(null); setGeoCity(null); setGeoLocality(null); }}
                       fetchOptions={fetchCountries}
                       placeholder="Select country"
                     />
                     <SearchableSelect
                       value={geoRegion}
-                      onChange={(opt) => { setGeoRegion(opt); setGeoCity(null); }}
+                      onChange={(opt) => { setGeoRegion(opt); setGeoCity(null); setGeoLocality(null); }}
                       fetchOptions={fetchRegions}
                       reloadKey={geoCountry?.id}
                       disabled={!geoCountry}
@@ -813,13 +820,22 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                     />
                     <SearchableSelect
                       value={geoCity}
-                      onChange={setGeoCity}
+                      onChange={(opt) => { setGeoCity(opt); setGeoLocality(null); }}
                       fetchOptions={fetchCities}
                       reloadKey={geoRegion?.id}
                       disabled={!geoRegion}
                       disabledText="Select a region first"
-                      placeholder="Select city / town"
+                      placeholder="Select district / city"
                     />
+                    {geoCity?.hasChildren && (
+                      <SearchableSelect
+                        value={geoLocality}
+                        onChange={setGeoLocality}
+                        fetchOptions={fetchLocalities}
+                        reloadKey={geoCity?.id}
+                        placeholder="Select sector / area"
+                      />
+                    )}
                   </div>
                 </div>
 

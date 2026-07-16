@@ -2242,9 +2242,27 @@ model City {
   latitude  String?
   longitude String?
 
-  region Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  region     Region     @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  localities Locality[]
 
   @@index([regionId])
   @@index([regionId, name])
   @@map("cities")
+}
+
+// Optional 4th level below City (e.g. Rwanda sectors under a district). Most
+// countries in the ISO dataset have no localities; the picker only shows this
+// level when the selected city has children.
+model Locality {
+  id        String  @id @default(cuid())
+  cityId    String
+  name      String
+  latitude  String?
+  longitude String?
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId])
+  @@index([cityId, name])
+  @@map("localities")
 }

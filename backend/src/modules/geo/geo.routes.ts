@@ -44,6 +44,8 @@ router.get(
 );
 
 // GET /api/geo/regions/:regionId/cities?search=&limit= — cities of a region.
+// `hasLocalities` tells the client whether a deeper (4th) level exists, so it can
+// show the extra picker (e.g. Rwanda sectors) only when relevant.
 router.get(
   '/regions/:regionId/cities',
   asyncHandler(async (req, res) => {
@@ -52,9 +54,27 @@ router.get(
       where: { regionId: req.params.regionId, ...like(search) },
       orderBy: { name: 'asc' },
       take: limit ?? 50,
+      select: { id: true, name: true, _count: { select: { localities: true } } },
+    });
+    return ok(
+      res,
+      cities.map((c) => ({ id: c.id, name: c.name, hasLocalities: c._count.localities > 0 })),
+    );
+  }),
+);
+
+// GET /api/geo/cities/:cityId/localities?search=&limit= — 4th level (e.g. sectors).
+router.get(
+  '/cities/:cityId/localities',
+  asyncHandler(async (req, res) => {
+    const { search, limit } = searchSchema.parse(req.query);
+    const localities = await prisma.locality.findMany({
+      where: { cityId: req.params.cityId, ...like(search) },
+      orderBy: { name: 'asc' },
+      take: limit ?? 100,
       select: { id: true, name: true },
     });
-    return ok(res, cities);
+    return ok(res, localities);
   }),
 );
 

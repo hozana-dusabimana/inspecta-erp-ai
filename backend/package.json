@@ -16,6 +16,7 @@
     "prisma:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
     "seed:geo": "tsx prisma/seed-geo.ts",
+    "seed:rwanda": "tsx prisma/seed-rwanda.ts",
     "import:dataset": "tsx prisma/import-dataset.ts",
     "db:setup": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts",
     "lint": "tsc --noEmit",

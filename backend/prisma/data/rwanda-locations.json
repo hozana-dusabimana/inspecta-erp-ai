@@ -1,0 +1,580 @@
+[
+  {
+    "province": "Kigali City",
+    "code": "KIG",
+    "districts": [
+      {
+        "name": "Gasabo",
+        "sectors": [
+          "Bumbogo",
+          "Gatsata",
+          "Gikomero",
+          "Gisozi",
+          "Jabana",
+          "Jali",
+          "Kacyiru",
+          "Kimihurura",
+          "Kimironko",
+          "Kinyinya",
+          "Ndera",
+          "Nduba",
+          "Remera",
+          "Rusororo",
+          "Rutunga"
+        ]
+      },
+      {
+        "name": "Kicukiro",
+        "sectors": [
+          "Gahanga",
+          "Gatenga",
+          "Gikondo",
+          "Kagarama",
+          "Kanombe",
+          "Kicukiro",
+          "Kigarama",
+          "Masaka",
+          "Niboye",
+          "Nyarugunga"
+        ]
+      },
+      {
+        "name": "Nyarugenge",
+        "sectors": [
+          "Gitega",
+          "Kanyinya",
+          "Kigali City",
+          "Kimisagara",
+          "Mageragere",
+          "Muhima",
+          "Nyakabanda",
+          "Nyamirambo",
+          "Nyarugenge",
+          "Rwezamenyo"
+        ]
+      }
+    ]
+  },
+  {
+    "province": "Southern Province",
+    "code": "SOU",
+    "districts": [
+      {
+        "name": "Gisagara",
+        "sectors": [
+          "Gikonko",
+          "Gishubi",
+          "Kansi",
+          "Kibirizi",
+          "Kigembe",
+          "Mamba",
+          "Muganza",
+          "Mugombwa",
+          "Mukindo",
+          "Musha",
+          "Ndora",
+          "Nyanza",
+          "Save"
+        ]
+      },
+      {
+        "name": "Huye",
+        "sectors": [
+          "Gishamvu",
+          "Huye",
+          "Karama",
+          "Kigoma",
+          "Kinazi",
+          "Maraba",
+          "Mbazi",
+          "Mukura",
+          "Ngoma",
+          "Ruhashya",
+          "Rusatira",
+          "Rwaniro",
+          "Simbi",
+          "Tumba"
+        ]
+      },
+      {
+        "name": "Kamonyi",
+        "sectors": [
+          "Gacurabwenge",
+          "Karama",
+          "Kayenzi",
+          "Kayumbu",
+          "Mugina",
+          "Musambira",
+          "Ngamba",
+          "Nyamiyaga",
+          "Nyarubaka",
+          "Rugarika",
+          "Rukoma",
+          "Runda"
+        ]
+      },
+      {
+        "name": "Muhanga",
+        "sectors": [
+          "Cyeza",
+          "Kabacuzi",
+          "Kibangu",
+          "Kiyumba",
+          "Muhanga",
+          "Mushishiro",
+          "Nyabinoni",
+          "Nyamabuye",
+          "Nyarusange",
+          "Rongi",
+          "Rugendabari",
+          "Shyogwe"
+        ]
+      },
+      {
+        "name": "Nyamagabe",
+        "sectors": [
+          "Buruhukiro",
+          "Cyanika",
+          "Gasaka",
+          "Gatare",
+          "Kaduha",
+          "Kamegeri",
+          "Kibirizi",
+          "Kibumbwe",
+          "Kitabi",
+          "Mbazi",
+          "Mugano",
+          "Musange",
+          "Musebeya",
+          "Mushubi",
+          "Nkomane",
+          "Tare",
+          "Uwinkingi"
+        ]
+      },
+      {
+        "name": "Nyanza",
+        "sectors": [
+          "Busasamana",
+          "Busoro",
+          "Cyabakamyi",
+          "Kibilizi",
+          "Kigoma",
+          "Mukingo",
+          "Muyira",
+          "Ntyazo",
+          "Nyagisozi",
+          "Rwabicuma"
+        ]
+      },
+      {
+        "name": "Nyaruguru",
+        "sectors": [
+          "Busanze",
+          "Cyahinda",
+          "Kibeho",
+          "Kivu",
+          "Mata",
+          "Muganza",
+          "Munini",
+          "Ngera",
+          "Ngoma",
+          "Nyabimata",
+          "Nyagisozi",
+          "Ruheru",
+          "Ruramba",
+          "Rusenge"
+        ]
+      },
+      {
+        "name": "Ruhango",
+        "sectors": [
+          "Bweramana",
+          "Byimana",
+          "Kabagari",
+          "Kinazi",
+          "Kinihira",
+          "Mbuye",
+          "Mwendo",
+          "Ntongwe",
+          "Ruhango"
+        ]
+      }
+    ]
+  },
+  {
+    "province": "Western Province",
+    "code": "WES",
+    "districts": [
+      {
+        "name": "Karongi",
+        "sectors": [
+          "Bwishyura",
+          "Gashari",
+          "Gishyita",
+          "Gitesi",
+          "Mubuga",
+          "Murambi",
+          "Murundi",
+          "Mutuntu",
+          "Rubengera",
+          "Rugabano",
+          "Ruganda",
+          "Rwankuba",
+          "Twumba"
+        ]
+      },
+      {
+        "name": "Ngororero",
+        "sectors": [
+          "Bwira",
+          "Gatumba",
+          "Hindiro",
+          "Kabaya",
+          "Kageyo",
+          "Kavumu",
+          "Maririra",
+          "Muhororo",
+          "Ndaro",
+          "Ngororero",
+          "Nyange",
+          "Sovu"
+        ]
+      },
+      {
+        "name": "Nyabihu",
+        "sectors": [
+          "Bigogwe",
+          "Jenda",
+          "Jomba",
+          "Kabatwa",
+          "Karago",
+          "Kintobo",
+          "Mukamira",
+          "Muringa",
+          "Nyabihu",
+          "Rambura",
+          "Rugera",
+          "Shyira"
+        ]
+      },
+      {
+        "name": "Nyamasheke",
+        "sectors": [
+          "Bushekeri",
+          "Bushenge",
+          "Cyato",
+          "Gihombo",
+          "Kagano",
+          "Kanjongo",
+          "Karengera",
+          "Kirimbi",
+          "Macuba",
+          "Mahembe",
+          "Nyabitekeri",
+          "Rangiro",
+          "Ruharambuga"
+        ]
+      },
+      {
+        "name": "Rubavu",
+        "sectors": [
+          "Bugaragara",
+          "Busasamana",
+          "Cyanzarwe",
+          "Gisenyi",
+          "Kanama",
+          "Kanzenze",
+          "Mudende",
+          "Nyakiriba",
+          "Nyamyumba",
+          "Rubavu",
+          "Rugerero"
+        ]
+      },
+      {
+        "name": "Rusizi",
+        "sectors": [
+          "Bugarama",
+          "Butare",
+          "Buzi",
+          "Giheke",
+          "Gihundwe",
+          "Gikundamvura",
+          "Gishoma",
+          "Gitambi",
+          "Kamembe",
+          "Muganza",
+          "Mururu",
+          "Nkanka",
+          "Nkombo",
+          "Nkundamahoro",
+          "Nyakabuye",
+          "Nyakarenzo",
+          "Rwimbogo"
+        ]
+      },
+      {
+        "name": "Rutsiro",
+        "sectors": [
+          "Boneza",
+          "Gihango",
+          "Kigeyo",
+          "Kivumu",
+          "Manihira",
+          "Mukura",
+          "Murunda",
+          "Musasa",
+          "Mushonyi",
+          "Mushubati",
+          "Nyabirasi",
+          "Ruhango",
+          "Rusebeya"
+        ]
+      }
+    ]
+  },
+  {
+    "province": "Northern Province",
+    "code": "NOR",
+    "districts": [
+      {
+        "name": "Burera",
+        "sectors": [
+          "Bungwe",
+          "Butaro",
+          "Cyanika",
+          "Cyeru",
+          "Gatebe",
+          "Gitovu",
+          "Kagogo",
+          "Kinoni",
+          "Kinyababa",
+          "Kivuye",
+          "Nemba",
+          "Rugarama",
+          "Rugendabari",
+          "Ruhunde",
+          "Rusarabuye",
+          "Rwamiko",
+          "Umutara"
+        ]
+      },
+      {
+        "name": "Gakenke",
+        "sectors": [
+          "Busengo",
+          "Coko",
+          "Cyabingo",
+          "Gakenke",
+          "Gashenyi",
+          "Janja",
+          "Kamubuga",
+          "Kivuruga",
+          "Mataba",
+          "Minazi",
+          "Muhondo",
+          "Muzo",
+          "Nemba",
+          "Ruli",
+          "Rusasa",
+          "Rushashi",
+          "Rwankuba",
+          "Shangi"
+        ]
+      },
+      {
+        "name": "Gicumbi",
+        "sectors": [
+          "Bukure",
+          "Bwisige",
+          "Byumba",
+          "Cyumba",
+          "Giti",
+          "Kaniga",
+          "Manyagiro",
+          "Miyove",
+          "Mutete",
+          "Nyamiyaga",
+          "Nyankenke",
+          "Rubaya",
+          "Rukomo",
+          "Rushebya",
+          "Rutare",
+          "Ruvune",
+          "Rwamiko",
+          "Shangasha",
+          "Shyira"
+        ]
+      },
+      {
+        "name": "Musanze",
+        "sectors": [
+          "Busogo",
+          "Cyuve",
+          "Gacaca",
+          "Gashaki",
+          "Gataraga",
+          "Kimonyi",
+          "Kinigi",
+          "Muhoza",
+          "Muko",
+          "Musanze",
+          "Nkotsi",
+          "Nyange",
+          "Remera",
+          "Rwaza",
+          "Shingiro"
+        ]
+      },
+      {
+        "name": "Rulindo",
+        "sectors": [
+          "Base",
+          "Burega",
+          "Bushoki",
+          "Cyinzuzi",
+          "Cyungo",
+          "Kinihira",
+          "Kisaro",
+          "Mbogo",
+          "Murambi",
+          "Ngoma",
+          "Ntarabana",
+          "Rukozo",
+          "Rusiga",
+          "Shyorongi",
+          "Tumba"
+        ]
+      }
+    ]
+  },
+  {
+    "province": "Eastern Province",
+    "code": "EAS",
+    "districts": [
+      {
+        "name": "Bugesera",
+        "sectors": [
+          "Gashora",
+          "Juru",
+          "Kamabuye",
+          "Mareba",
+          "Mayange",
+          "Musenyi",
+          "Ngeruka",
+          "Ntarama",
+          "Nyamata",
+          "Nyarugenge",
+          "Rilima",
+          "Ruhuha",
+          "Rweru",
+          "Shyara"
+        ]
+      },
+      {
+        "name": "Gatsibo",
+        "sectors": [
+          "Gasange",
+          "Gatsibo",
+          "Gitoki",
+          "Kabarore",
+          "Kageyo",
+          "Kiramuruzi",
+          "Kiziguro",
+          "Muhura",
+          "Ngarama",
+          "Nyagihanga",
+          "Remera",
+          "Rugarama",
+          "Rwimbogo"
+        ]
+      },
+      {
+        "name": "Kayonza",
+        "sectors": [
+          "Gahini",
+          "Kabare",
+          "Kabarondo",
+          "Mukarange",
+          "Murama",
+          "Murundi",
+          "Ndego",
+          "Nyamirama",
+          "Rukara",
+          "Rwinkwavu"
+        ]
+      },
+      {
+        "name": "Kirehe",
+        "sectors": [
+          "Gatore",
+          "Kigarama",
+          "Kigina",
+          "Kirehe",
+          "Mahama",
+          "Mpanga",
+          "Mushikiri",
+          "Nasho",
+          "Nyamugali",
+          "Nyarubuye"
+        ]
+      },
+      {
+        "name": "Ngoma",
+        "sectors": [
+          "Gashanda",
+          "Jarama",
+          "Karembo",
+          "Kibungo",
+          "Mugesera",
+          "Murama",
+          "Mutenderi",
+          "Remera",
+          "Rukira",
+          "Rukumberi",
+          "Sake",
+          "Zaza"
+        ]
+      },
+      {
+        "name": "Nyagatare",
+        "sectors": [
+          "Gatunda",
+          "Karama",
+          "Karangazi",
+          "Katabagemu",
+          "Kiyombe",
+          "Matimba",
+          "Mimuli",
+          "Mukama",
+          "Musheli",
+          "Nyagatare",
+          "Rukomo",
+          "Rwempasha",
+          "Rwimiyaga",
+          "Tabagwe"
+        ]
+      },
+      {
+        "name": "Rwamagana",
+        "sectors": [
+          "Fumbwe",
+          "Gahengeri",
+          "Gishali",
+          "Gishari",
+          "Karenge",
+          "Kigabiro",
+          "Muhazi",
+          "Munyaga",
+          "Munyiginya",
+          "Musha",
+          "Muyumbu",
+          "Mwulire",
+          "Nzige",
+          "Rubona"
+        ]
+      }
+    ]
+  }
+]

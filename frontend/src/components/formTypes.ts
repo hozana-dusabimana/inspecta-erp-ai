@@ -5,6 +5,10 @@ export interface Field {
   label: string;
   type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv' | 'geo';
   options?: { value: string; label: string }[];
+  /** For a `select` with preset `options`: let the user add a value not in the
+   *  list via an inline "＋ New" (remembered per-field in the browser). Use for
+   *  open taxonomies like Type / Category / Unit. */
+  creatable?: boolean;
   /** Populate a select from a live API list (foreign-key pickers). */
   optionsEndpoint?: string;
   /** Append the current projectId to optionsEndpoint so the picker only lists this project's records. */

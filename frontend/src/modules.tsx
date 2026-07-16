@@ -13,7 +13,14 @@ import FinanceAnalytics from './components/FinanceAnalytics';
 import ComplianceAnalytics from './components/ComplianceAnalytics';
 import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
-import { PROJECT_FIELDS, CLIENT_FIELDS } from './formConfigs';
+import {
+  PROJECT_FIELDS, CLIENT_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
+  SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
+} from './formConfigs';
+
+// Creatable-select helpers for open taxonomies (preset options + user "＋ New").
+const unitField = (name = 'unit', label = 'Unit', extra: Record<string, unknown> = {}) => ({ name, label, type: 'select' as const, creatable: true, options: UNIT_OPTIONS, ...extra });
+const pick = (options: { value: string; label: string }[]) => ({ type: 'select' as const, creatable: true, options });
 
 const opt = (vals: string[]) => vals.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }));
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -452,7 +459,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'name', label: 'Activity Name', required: true },
           { name: 'parentId', label: 'Parent (for hierarchy)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'description', label: 'Description', type: 'textarea' },
-          { name: 'unit', label: 'Unit' },
+          unitField(),
           { name: 'quantity', label: 'Quantity', type: 'number' },
           { name: 'level', label: 'Level', type: 'number' },
           { name: 'weightPct', label: 'Weight %', type: 'number' },
@@ -478,10 +485,10 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true },
-          { name: 'category', label: 'Category' },
+          { name: 'category', label: 'Category', ...pick(BOQ_CATEGORY_OPTIONS) },
           { name: 'description', label: 'Description', required: true },
           { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
-          { name: 'unit', label: 'Unit' },
+          unitField(),
           { name: 'quantity', label: 'Quantity', type: 'number', required: true },
           { name: 'rate', label: 'Rate', type: 'number', required: true },
           { name: 'markupPct', label: 'Markup %', type: 'number' },
@@ -504,7 +511,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'activity', label: 'Activity', required: true },
-          { name: 'unit', label: 'Unit', required: true },
+          unitField('unit', 'Unit', { required: true }),
           { name: 'productivityRate', label: 'Planned Productivity Rate (units/crew-day)', type: 'number', required: true },
           { name: 'companyStandard', label: 'Company Standard', type: 'number' },
           { name: 'historicalStandard', label: 'Historical Standard', type: 'number' },
@@ -707,7 +714,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'name', label: 'Product Name', required: true },
           { name: 'productType', label: 'Type', type: 'select', options: opt(['material', 'equipment_rental', 'service']) },
           { name: 'materialId', label: 'Linked Material (draws down stock)', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}` },
-          { name: 'unit', label: 'Unit' },
+          unitField(),
           { name: 'unitPrice', label: 'Unit Price', type: 'number', required: true },
           { name: 'vatApplicable', label: 'VAT Applicable?', type: 'select', options: [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] },
         ],
@@ -914,7 +921,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name },
-          { name: 'unit', label: 'Unit' },
+          unitField(),
           { name: 'plannedQty', label: 'Planned Qty', type: 'number', required: true },
           { name: 'actualQty', label: 'Actual Qty', type: 'number', required: true },
           { name: 'remainingQty', label: 'Remaining Qty', type: 'number' },
@@ -1078,9 +1085,9 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
-          { name: 'category', label: 'Category' },
+          { name: 'category', label: 'Category', ...pick(MATERIAL_CATEGORY_OPTIONS) },
           { name: 'supplierId', label: 'Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
-          { name: 'unit', label: 'Unit' }, { name: 'reorderLevel', label: 'Reorder Level', type: 'number' },
+          unitField(), { name: 'reorderLevel', label: 'Reorder Level', type: 'number' },
           { name: 'unitCost', label: 'Unit Cost', type: 'number' },
           { name: 'standardCost', label: 'Standard Cost', type: 'number' },
         ],
@@ -1199,7 +1206,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'name', label: 'Name', required: true, section: 'Supplier' },
-          { name: 'category', label: 'Category', placeholder: 'Cement & Concrete', section: 'Supplier' },
+          { name: 'category', label: 'Category', ...pick(SUPPLIER_CATEGORY_OPTIONS), section: 'Supplier' },
           { name: 'tinNumber', label: 'TIN Number', section: 'Supplier' },
           { name: 'paymentTerms', label: 'Payment Terms', placeholder: 'Net 30', section: 'Supplier' },
           { name: 'contactName', label: 'Contact Name', section: 'Contact' },
@@ -1319,7 +1326,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'inspector', label: 'Inspector' },
         ],
         fields: [
-          { name: 'title', label: 'Title', required: true }, { name: 'type', label: 'Type' },
+          { name: 'title', label: 'Title', required: true }, { name: 'type', label: 'Type', ...pick(INSPECTION_TYPE_OPTIONS) },
           { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'result', label: 'Result', type: 'select', options: opt(['PASS', 'FAIL', 'PENDING']) },
           { name: 'defects', label: 'Defects', type: 'number' },
@@ -1469,7 +1476,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'expiryDate', label: 'Expiry', render: (r) => date(r.expiryDate) },
         ],
         fields: [
-          { name: 'ppeType', label: 'PPE Type', required: true },
+          { name: 'ppeType', label: 'PPE Type', required: true, ...pick(PPE_TYPE_OPTIONS) },
           { name: 'employeeId', label: 'Employee', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName },
           { name: 'quantity', label: 'Quantity', type: 'number' },
           { name: 'issueDate', label: 'Issue Date', type: 'date' },
@@ -1563,7 +1570,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'status', label: 'Status' },
         ],
         fields: [
-          { name: 'title', label: 'Title', required: true }, { name: 'category', label: 'Category' },
+          { name: 'title', label: 'Title', required: true }, { name: 'category', label: 'Category', ...pick(RISK_CATEGORY_OPTIONS) },
           { name: 'probability', label: 'Probability (1-5)', type: 'number', required: true },
           { name: 'impact', label: 'Impact (1-5)', type: 'number', required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['OPEN', 'MITIGATING', 'CLOSED']) },
@@ -1704,7 +1711,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'url', label: 'Link', render: (r) => <a href={r.url} target="_blank" rel="noreferrer" className="text-brand-primary underline">open</a> },
         ],
         fields: [
-          { name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category' },
+          { name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category', ...pick(DOCUMENT_CATEGORY_OPTIONS) },
           { name: 'url', label: 'File URL', required: true, placeholder: 'https://…' },
           { name: 'version', label: 'Version', type: 'number' },
         ],

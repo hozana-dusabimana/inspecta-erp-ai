@@ -28,8 +28,71 @@ function DynamicSelect({ field, value, onChange, required, projectId }: { field:
   );
 }
 
+/** Select with preset options that also lets the user add a value not in the
+ *  list. Custom additions are remembered per-field in localStorage so they show
+ *  up next time (no backend taxonomy table needed). */
+function CreatableSelect({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+  const storeKey = `inspecta.opts.${field.name}`;
+  const [custom, setCustom] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(storeKey) || '[]'); } catch { return []; }
+  });
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const presets = (field.options ?? []).map((o) => o.value);
+  const labelFor = (v: string) => field.options?.find((o) => o.value === v)?.label ?? v;
+  const all = Array.from(new Set([...presets, ...custom, ...(value && !presets.includes(value) && !custom.includes(value) ? [value] : [])]));
+
+  const commit = () => {
+    const v = draft.trim();
+    if (!v) { setAdding(false); return; }
+    if (!presets.includes(v) && !custom.includes(v)) {
+      const next = [...custom, v];
+      setCustom(next);
+      try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch { /* ignore */ }
+    }
+    onChange(v);
+    setDraft('');
+    setAdding(false);
+  };
+
+  const inputCls = 'w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary';
+  if (adding) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          autoFocus value={draft} placeholder={`New ${field.label.toLowerCase()}…`}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') { setAdding(false); setDraft(''); } }}
+          className={inputCls}
+        />
+        <button type="button" onClick={commit} className="h-10 shrink-0 px-3 rounded-lg bg-brand-primary text-white text-[11px] font-bold hover:bg-brand-primary-container">Add</button>
+        <button type="button" onClick={() => { setAdding(false); setDraft(''); }} className="h-10 shrink-0 px-2 rounded-lg border border-brand-outline-variant text-[11px] font-bold text-brand-on-surface-variant">Cancel</button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} flex-1 font-semibold`}>
+        <option value="">Select…</option>
+        {all.map((v) => <option key={v} value={v}>{labelFor(v)}</option>)}
+      </select>
+      <button type="button" onClick={() => setAdding(true)} title={`Add a ${field.label.toLowerCase()} not listed`}
+        className="h-10 shrink-0 flex items-center gap-1 px-2.5 rounded-lg border border-brand-primary/30 bg-brand-primary/5 text-brand-primary text-[11px] font-bold hover:bg-brand-primary/10">
+        <Plus className="w-3.5 h-3.5" /> New
+      </button>
+    </div>
+  );
+}
+
 function emptyForm(fields: Field[]): Record<string, string> {
   return Object.fromEntries(fields.map((f) => [f.name, '']));
+}
+
+/** Fallback guidance text so no input is ever blank/ambiguous. */
+function placeholderFor(f: Field): string {
+  if (f.placeholder) return f.placeholder;
+  if (f.type === 'number') return `e.g. 0`;
+  return `Enter ${f.label.replace(/\s*\(.*?\)\s*/g, '').toLowerCase()}`;
 }
 
 function hydrate(fields: Field[], row: Record<string, any>): Record<string, string> {
@@ -160,9 +223,11 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
             </button>
           )}
         </div>
+      ) : f.type === 'select' && f.creatable ? (
+        <CreatableSelect field={f} value={form[f.name] ?? ''} onChange={(v) => set(f.name, v)} />
       ) : f.type === 'textarea' ? (
         <textarea
-          value={form[f.name] ?? ''} required={f.required}
+          value={form[f.name] ?? ''} required={f.required} placeholder={placeholderFor(f)}
           onChange={(e) => set(f.name, e.target.value)}
           className="w-full bg-brand-surface border border-brand-outline-variant rounded-lg px-3 py-2 text-xs outline-none focus:border-brand-primary min-h-[70px]"
         />
@@ -179,7 +244,7 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
         <input
           type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
           step={f.type === 'number' ? 'any' : undefined}
-          value={form[f.name] ?? ''} required={f.required} placeholder={f.placeholder}
+          value={form[f.name] ?? ''} required={f.required} placeholder={f.type === 'date' ? undefined : placeholderFor(f)}
           readOnly={f.readOnly}
           onClick={(e) => { if (f.type === 'date' && !f.readOnly) { try { (e.currentTarget as unknown as { showPicker: () => void }).showPicker(); } catch { /* unsupported */ } } }}
           onChange={(e) => set(f.name, e.target.value)}

@@ -144,7 +144,7 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   };
 
   const renderField = (f: Field) => (
-    <div key={f.name} className="space-y-1">
+    <div key={f.name} className={`space-y-1 ${f.type === 'textarea' || f.type === 'geo' ? 'sm:col-span-2' : ''}`}>
       <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">
         {f.label}{f.required && <span className="text-brand-primary"> *</span>}
       </label>
@@ -191,7 +191,7 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
 
   return (
     <div className="fixed inset-0 z-50 bg-brand-on-surface/40 backdrop-blur-sm flex items-center justify-center px-4">
-      <div className="bg-brand-surface-container-lowest w-full max-w-lg rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div className="bg-brand-surface-container-lowest w-full max-w-3xl rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar">
         <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
         <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{isEdit ? 'Edit' : 'New'} {entityLabel}</h3>
 
@@ -216,11 +216,13 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
           </div>
         )}
 
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={submit} className="space-y-4">
           {isWizard && current.name && (
-            <p className="text-xs font-bold text-brand-on-surface-variant -mt-1 mb-1">{current.name}</p>
+            <p className="text-xs font-bold text-brand-on-surface-variant">{current.name}</p>
           )}
-          {(isWizard ? current.fields : visible).map(renderField)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            {(isWizard ? current.fields : visible).map(renderField)}
+          </div>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
 

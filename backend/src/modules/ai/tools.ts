@@ -67,6 +67,36 @@ async function getProductivityAnalysis(orgId: string, projectId?: string) {
   };
 }
 
+/**
+ * Physical % complete for one project: production quantity ratio when tracked,
+ * else the project's maintained progress field. Capped at 1 (100%).
+ */
+function projectProgress(plannedQty: number, actualQty: number, progressPct: number): number {
+  return plannedQty > 0 ? Math.min(1, actualQty / plannedQty) : progressPct / 100;
+}
+
+/**
+ * Portfolio earned value = Σ (project progress × project budget). Rolling EV up
+ * per project is essential: a single blended progress fraction applied to the
+ * whole portfolio budget inflates EV (and thus CPI) because untracked/0%
+ * projects still carry their full budget. See getCostAnalysis org-level branch.
+ */
+async function portfolioEarnedValue(orgId: string): Promise<number> {
+  const [projects, prodByProject, budgetByProject] = await Promise.all([
+    prisma.project.findMany({ where: { organizationId: orgId }, select: { id: true, budget: true, progressPct: true } }),
+    prisma.productionEntry.groupBy({ by: ['projectId'], where: { organizationId: orgId }, _sum: { plannedQty: true, actualQty: true } }),
+    prisma.budgetLine.groupBy({ by: ['projectId'], where: { organizationId: orgId }, _sum: { amount: true } }),
+  ]);
+  const prodBy = new Map(prodByProject.map((p) => [p.projectId, p._sum]));
+  const budgetBy = new Map(budgetByProject.map((b) => [b.projectId, num(b._sum.amount)]));
+  return projects.reduce((ev, p) => {
+    const s = prodBy.get(p.id);
+    const progress = projectProgress(num(s?.plannedQty), num(s?.actualQty), p.progressPct);
+    const projBac = budgetBy.get(p.id) || num(p.budget);
+    return ev + progress * projBac;
+  }, 0);
+}
+
 // ── get_cost_analysis (+ EVM) ─────────────────────────────────
 async function getCostAnalysis(orgId: string, projectId?: string) {
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
@@ -79,8 +109,12 @@ async function getCostAnalysis(orgId: string, projectId?: string) {
   ]);
   const bac = num(budgetAgg._sum.amount) || num(project?.budget);
   const ac = num(costAgg._sum.amount);
-  const progress = num(prod._sum.plannedQty) > 0 ? Math.min(1, num(prod._sum.actualQty) / num(prod._sum.plannedQty)) : num(project?.progressPct) / 100;
-  const ev = progress * bac; const pv = bac; const cpiV = cpi(ev, ac); const eacV = eac(bac, cpiV);
+  // Single project: EV from its own progress × its budget. Portfolio: sum EV per
+  // project so a few tracked projects don't earn value against the whole budget.
+  const ev = projectId
+    ? projectProgress(num(prod._sum.plannedQty), num(prod._sum.actualQty), num(project?.progressPct)) * bac
+    : await portfolioEarnedValue(orgId);
+  const pv = bac; const cpiV = cpi(ev, ac); const eacV = eac(bac, cpiV);
   return {
     budget: bac, actualCost: ac, costVariance: bac - ac,
     costByCategory: byCat.map((c) => ({ category: c.category, amount: num(c._sum.amount) })).sort((a, b) => b.amount - a.amount),
@@ -133,7 +167,7 @@ async function getInventoryAnalysis(orgId: string) {
   ]);
   const stockBy = new Map<string, number>();
   for (const g of groups) { const q = num(g._sum.quantity); const d = g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE' ? -q : g.type === 'TRANSFER' ? 0 : q; stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d); }
-  const reorder = materials.filter((m) => num(m.reorderLevel) > 0 && (stockBy.get(m.id) ?? 0) <= num(m.reorderLevel)).map((m) => ({ code: m.code, name: m.name, stock: stockBy.get(m.id) ?? 0, reorderLevel: num(m.reorderLevel) }));
+  const reorder = materials.filter((m) => num(m.reorderLevel) > 0 && (stockBy.get(m.id) ?? 0) <= num(m.reorderLevel)).map((m) => ({ code: m.code, name: m.name, stock: round(stockBy.get(m.id) ?? 0), reorderLevel: num(m.reorderLevel) }));
   const totalValue = materials.reduce((s, m) => s + (stockBy.get(m.id) ?? 0) * num(m.unitCost), 0);
   const used = num(waste._sum.qtyUsed); const wasteQty = num(waste._sum.wasteQty);
   return { materials: materials.length, totalStockValue: round(totalValue), reorderItems: reorder, materialWaste: wasteQty, wastePct: used > 0 ? round((wasteQty / used) * 100, 1) : 0 };

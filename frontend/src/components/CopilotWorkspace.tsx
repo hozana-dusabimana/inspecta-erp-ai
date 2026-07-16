@@ -22,8 +22,102 @@ import {
   Play,
   Info
 } from 'lucide-react';
-import { AppView, ChatMessage } from '../types';
+import { AppView, ChatMessage, CopilotField, CopilotPreview } from '../types';
 import { api } from '../lib/api';
+
+interface GuidedResult {
+  text?: string;
+  field?: CopilotField;
+  preview?: CopilotPreview;
+  created?: { entity: string; id?: string; fields: Record<string, unknown> };
+  error?: string;
+}
+
+const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const rid = () => Math.random().toString(36).slice(2);
+
+/** A single guided-create input (text / number / date / select + "add new"). */
+function CreateFieldWidget({ field, disabled, onSubmit }: {
+  field: CopilotField;
+  disabled: boolean;
+  onSubmit: (field: CopilotField, value: string, action: 'value' | 'skip' | 'addNew') => void;
+}) {
+  const [val, setVal] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const submit = () => {
+    if (adding) { if (newName.trim()) onSubmit(field, newName.trim(), 'addNew'); return; }
+    if (field.required && !String(val).trim()) return;
+    onSubmit(field, val, 'value');
+  };
+
+  const inputCls = 'w-full px-3 py-2 rounded-lg border border-brand-outline-variant/40 bg-brand-surface text-xs outline-none focus:border-brand-primary';
+  return (
+    <div className="mt-3 p-3 rounded-xl border border-brand-primary/15 bg-brand-primary/5 space-y-2">
+      <label className="block text-[11px] font-bold text-brand-primary">
+        {field.label}{field.required && <span className="text-brand-status-critical"> *</span>}
+      </label>
+
+      {field.type === 'select' && !adding && (
+        <select
+          className={inputCls}
+          value={val}
+          disabled={disabled}
+          onChange={(e) => { if (e.target.value === '__add__') { setAdding(true); setVal(''); } else setVal(e.target.value); }}
+        >
+          <option value="">Select…</option>
+          {field.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {field.allowAdd && <option value="__add__">➕ {field.addLabel ?? 'Add new'}</option>}
+        </select>
+      )}
+      {adding && (
+        <input className={inputCls} autoFocus placeholder={`New ${field.label.toLowerCase()} name`} value={newName} disabled={disabled} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+      )}
+      {field.type === 'text' && <input className={inputCls} autoFocus value={val} disabled={disabled} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />}
+      {field.type === 'number' && <input className={inputCls} type="number" autoFocus value={val} disabled={disabled} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />}
+      {field.type === 'date' && <input className={inputCls} type="date" value={val} disabled={disabled} onChange={(e) => setVal(e.target.value)} />}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={submit} disabled={disabled} className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-[11px] font-bold hover:bg-brand-primary-container disabled:opacity-50">
+          {adding ? 'Add & continue' : 'Next'}
+        </button>
+        {!field.required && !adding && (
+          <button onClick={() => onSubmit(field, '', 'skip')} disabled={disabled} className="px-3 py-1.5 rounded-lg text-brand-on-surface-variant text-[11px] font-bold hover:bg-brand-surface disabled:opacity-50">Skip</button>
+        )}
+        {adding && (
+          <button onClick={() => { setAdding(false); setNewName(''); }} disabled={disabled} className="px-3 py-1.5 rounded-lg text-brand-on-surface-variant text-[11px] font-bold hover:bg-brand-surface">Back</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The final preview card with Create / Cancel actions. */
+function CreatePreviewCard({ preview, disabled, onCreate, onCancel }: {
+  preview: CopilotPreview;
+  disabled: boolean;
+  onCreate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-3 p-3 rounded-xl border border-brand-secondary-container/30 bg-brand-secondary-container/5 space-y-2">
+      <p className="text-[11px] font-bold text-brand-primary uppercase tracking-wide">New {preview.title} — review</p>
+      <div className="space-y-1">
+        {Object.entries(preview.fields).map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-3 text-[11px]">
+            <span className="text-brand-on-surface-variant capitalize">{k.replace(/Id$/, '')}</span>
+            <span className="font-semibold text-brand-on-surface text-right break-all">{String(v)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={onCreate} disabled={disabled} className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-[11px] font-bold hover:bg-brand-primary-container disabled:opacity-50">Create</button>
+        <button onClick={onCancel} disabled={disabled} className="px-3 py-1.5 rounded-lg text-brand-on-surface-variant text-[11px] font-bold hover:bg-brand-surface disabled:opacity-50">Cancel</button>
+      </div>
+    </div>
+  );
+}
 
 interface CopilotWorkspaceProps {
   onNavigate: (view: AppView) => void;
@@ -63,14 +157,18 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
         if (evt.delta) { acc += evt.delta; setStreamingText(acc); }
         else if (evt.done) {
           if (evt.conversationId) setConversationId(evt.conversationId);
-          const sourceNote = evt.sources?.length ? `\n\nSources: ${evt.sources.map((s: any) => s.source).join(' · ')}` : '';
-          const confidenceNote = typeof evt.confidence === 'number'
+          // A guided-create widget/preview suppresses the source/confidence footer.
+          const guided = evt.field || evt.preview;
+          const sourceNote = !guided && evt.sources?.length ? `\n\nSources: ${evt.sources.map((s: any) => s.source).join(' · ')}` : '';
+          const confidenceNote = !guided && typeof evt.confidence === 'number'
             ? `\n\n— ${evt.offline ? 'Direct data read' : `${evt.provider} · ${evt.model}`} · Confidence ${evt.confidence}%`
             : '';
           onAddMessage({
             id: Math.random().toString(),
             sender: 'assistant',
             text: acc + sourceNote + confidenceNote,
+            field: evt.field,
+            preview: evt.preview,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
           setStreamingText('');
@@ -106,6 +204,66 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     if (!textToSend) setInput('');
 
     fetchAiResponse(prompt);
+  };
+
+  // ── Guided create: submit a field value / skip / add-new ──────
+  const submitField = async (field: CopilotField, rawValue: string, action: 'value' | 'skip' | 'addNew') => {
+    if (!conversationId) return;
+    const display = action === 'skip'
+      ? 'Skipped'
+      : action === 'addNew'
+        ? `New: ${rawValue}`
+        : field.type === 'select'
+          ? (field.options?.find((o) => o.value === rawValue)?.label ?? rawValue ?? '—')
+          : (rawValue || '—');
+    onAddMessage({ id: rid(), sender: 'user', text: `${field.label}: ${display}`, timestamp: nowTime() });
+    setIsLoading(true);
+    try {
+      const res = await api.post<GuidedResult>('/ai/create/answer', { conversationId, name: field.name, value: rawValue, action });
+      const d = res.data;
+      onAddMessage({
+        id: rid(),
+        sender: 'assistant',
+        text: d.error ? `⚠️ ${d.error}` : (d.text ?? (d.preview ? 'Here’s the summary — review and create:' : '')),
+        field: d.field,
+        preview: d.preview,
+        timestamp: nowTime(),
+      });
+    } catch (e) {
+      onAddMessage({ id: rid(), sender: 'assistant', text: e instanceof Error ? `Couldn’t save that: ${e.message}` : 'Something went wrong.', timestamp: nowTime() });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const commitPreview = async () => {
+    if (!conversationId) return;
+    onAddMessage({ id: rid(), sender: 'user', text: 'Create it', timestamp: nowTime() });
+    setIsLoading(true);
+    try {
+      const res = await api.post<GuidedResult>('/ai/create/commit', { conversationId });
+      const d = res.data;
+      const text = d.created
+        ? `✅ Created ${d.created.entity.replace('_', ' ')}${d.created.id ? ` (${d.created.id})` : ''}.\n` +
+          Object.entries(d.created.fields).map(([k, v]) => `• ${k.replace(/Id$/, '')}: ${v}`).join('\n')
+        : d.error ? `⚠️ ${d.error}` : 'Done.';
+      onAddMessage({ id: rid(), sender: 'assistant', text, timestamp: nowTime() });
+    } catch (e) {
+      onAddMessage({ id: rid(), sender: 'assistant', text: e instanceof Error ? `Couldn’t create it: ${e.message}` : 'Something went wrong.', timestamp: nowTime() });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const cancelPreview = async () => {
+    if (!conversationId) return;
+    setIsLoading(true);
+    try {
+      await api.post('/ai/create/cancel', { conversationId });
+      onAddMessage({ id: rid(), sender: 'assistant', text: 'Okay, cancelled — nothing was created.', timestamp: nowTime() });
+    } catch { /* ignore */ } finally {
+      setIsLoading(false);
+    }
   };
 
   // ── Conversation history ──────────────────────────────────────
@@ -253,8 +411,8 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       {/* Messages Canvas Log Area */}
       <main className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar space-y-6 bg-slate-50/50">
         <div className="max-w-2xl mx-auto space-y-6">
-          {chatHistory.map((msg) => (
-            <motion.div 
+          {chatHistory.map((msg, idx) => { const isLast = idx === chatHistory.length - 1; return (
+            <motion.div
               key={msg.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -277,9 +435,13 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
                   <div className="ai-shimmer absolute inset-0 opacity-5 pointer-events-none rounded-2xl"></div>
                 )}
                 
-                <p className="font-sans text-xs leading-relaxed font-semibold">
+                <p className="font-sans text-xs leading-relaxed font-semibold whitespace-pre-wrap">
                   {msg.text}
                 </p>
+
+                {/* Guided-create widgets (only interactive on the latest message). */}
+                {msg.field && isLast && <CreateFieldWidget field={msg.field} disabled={isLoading} onSubmit={submitField} />}
+                {msg.preview && isLast && <CreatePreviewCard preview={msg.preview} disabled={isLoading} onCreate={commitPreview} onCancel={cancelPreview} />}
 
                 {/* Sub-widget Renderer (e.g. detailed trend mini-bars) */}
                 {msg.widgetData && (
@@ -332,7 +494,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
                 </div>
               </div>
             </motion.div>
-          ))}
+          ); })}
 
           {/* AI Loader/Thinking state indicator */}
           {isLoading && (

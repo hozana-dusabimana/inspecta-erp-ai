@@ -32,12 +32,33 @@ export enum AppView {
   EXEC_DASH = 'EXEC_DASH',
 }
 
+export interface CopilotFieldOption { value: string; label: string }
+export interface CopilotField {
+  entity: string;
+  name: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  required: boolean;
+  options?: CopilotFieldOption[];
+  allowAdd?: boolean;
+  addLabel?: string;
+}
+export interface CopilotPreview {
+  entity: string;
+  title: string;
+  fields: Record<string, unknown>;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
   timestamp: string;
   isThinking?: boolean;
+  /** Guided-create: an input widget to render for the next field. */
+  field?: CopilotField;
+  /** Guided-create: a ready-to-create preview with Create/Cancel actions. */
+  preview?: CopilotPreview;
   widgetData?: {
     trendValue: string;
     trendType: 'critical' | 'warning' | 'optimal';

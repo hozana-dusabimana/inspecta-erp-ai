@@ -92,8 +92,38 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     send({ delta: tokens.slice(i, i + 3).join('') });
     await new Promise((r) => setTimeout(r, 12));
   }
-  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline });
+  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview });
   res.end();
+}));
+
+// ── Guided create: deterministic, server-driven field-by-field intake ─────────
+// The model kicks off a create (start_create); these endpoints then collect each
+// field via input widgets, build a preview, and commit — no model in the loop.
+const answerSchema = z.object({
+  conversationId: z.string(),
+  name: z.string(),
+  value: z.unknown().optional(),
+  action: z.enum(['value', 'skip', 'addNew']).optional(),
+});
+router.post('/create/answer', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const body = answerSchema.parse(req.body);
+  const result = await service.answerCreateField(body.conversationId, req.user!, body.name, body.value, body.action ?? 'value');
+  return ok(res, result);
+}));
+
+const convSchema = z.object({ conversationId: z.string() });
+router.post('/create/commit', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const { conversationId } = convSchema.parse(req.body);
+  const result = await service.commitCreateSession(conversationId, req.user!);
+  if (result.created) {
+    await prisma.aiMessage.create({ data: { conversationId, role: 'assistant', content: `Created ${result.created.entity} ${result.created.id ?? ''}`.trim() } });
+  }
+  return ok(res, result);
+}));
+router.post('/create/cancel', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const { conversationId } = convSchema.parse(req.body);
+  const result = await service.cancelCreateSession(conversationId, req.user!);
+  return ok(res, result);
 }));
 
 // ── Conversation history (per user, org-scoped) ───────────────

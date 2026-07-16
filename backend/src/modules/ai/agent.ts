@@ -1,5 +1,5 @@
 import { AiProvider, ChatMessage, ToolSpec } from './providers';
-import { Actor, executeWriteTool, ToolRunContext } from './write-tools';
+import { Actor, executeWriteTool, ToolRunContext, GuidedResult, FieldSpec } from './write-tools';
 
 export interface AgentResult {
   text: string;
@@ -7,6 +7,10 @@ export interface AgentResult {
   committed: boolean;
   provider: string;
   model: string;
+  /** A guided-create input widget to render (from start_create). */
+  field?: FieldSpec;
+  /** A ready-to-create preview (when the user supplied everything up front). */
+  preview?: { entity: string; title: string; fields: Record<string, unknown> };
 }
 
 /**
@@ -28,13 +32,15 @@ export async function runAgent(
   let committed = false;
   let toolCallsMade = 0;
   let model = provider.name;
+  let field: FieldSpec | undefined;
+  let preview: AgentResult['preview'];
 
   for (let i = 0; i < maxIterations; i++) {
     const completion = await provider.complete(convo, { tools, toolChoice: 'auto' });
     model = completion.model;
     const calls = completion.toolCalls ?? [];
     if (!calls.length) {
-      return { text: completion.text, toolCallsMade, committed, provider: provider.name, model };
+      return { text: completion.text, toolCallsMade, committed, provider: provider.name, model, field, preview };
     }
 
     // Record the assistant's tool-call turn, then run each call and feed results back.
@@ -42,10 +48,17 @@ export async function runAgent(
     for (const call of calls) {
       toolCallsMade++;
       const result = await executeWriteTool(call.name, call.arguments, actor, ctx);
-      if (result && typeof result === 'object' && (result as { created?: boolean }).created) {
-        committed = true;
+      let toolContent = JSON.stringify(result);
+      if (call.name === 'start_create') {
+        // Capture the widget for the client; feed the model only a compact status
+        // so it doesn't echo the field JSON back to the user.
+        const gr = result as GuidedResult;
+        if (gr.field) field = gr.field;
+        if (gr.preview) preview = gr.preview;
+        toolContent = JSON.stringify({ started: !gr.error, entity: (call.arguments as { entity?: string }).entity, error: gr.error ?? null });
       }
-      convo.push({ role: 'tool', tool_call_id: call.id, name: call.name, content: JSON.stringify(result) });
+      if (result && typeof result === 'object' && (result as { created?: boolean }).created) committed = true;
+      convo.push({ role: 'tool', tool_call_id: call.id, name: call.name, content: toolContent });
     }
   }
 
@@ -57,5 +70,7 @@ export async function runAgent(
     committed,
     provider: provider.name,
     model: final.model || model,
+    field,
+    preview,
   };
 }

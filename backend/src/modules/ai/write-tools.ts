@@ -242,25 +242,29 @@ const LOOKUP_SPECS: ToolSpec[] = [
   },
 ];
 
-/** All tool specs exposed to the model (lookups + preview/commit per entity). */
+// Single tool the model calls to KICK OFF a create. After this, the server drives
+// a deterministic field-by-field intake (input widgets), so data collection never
+// depends on the model behaving across turns.
+const START_CREATE_SPEC: ToolSpec = {
+  name: 'start_create',
+  description:
+    'Begin creating a record when the user wants to create/add a project, client, risk, NCR, or cost entry. ' +
+    'Pass any values the user already stated in `values` (e.g. name, budget, amount). ' +
+    'After you call this, the SYSTEM collects the remaining fields from the user via input widgets — do NOT ask for fields yourself and do NOT preview; just briefly acknowledge (one short sentence).',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['entity'],
+    properties: {
+      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry'] },
+      values: { type: 'object', description: 'Fields the user already provided, e.g. {"name":"...","budget":200000000}', additionalProperties: true },
+    },
+  },
+};
+
+/** Tool specs exposed to the model: start_create + read lookups. */
 export function writeToolSpecs(): ToolSpec[] {
-  const specs: ToolSpec[] = [...LOOKUP_SPECS];
-  for (const [key, def] of Object.entries(DEFS)) {
-    specs.push({
-      name: `preview_${key}`,
-      description:
-        `Validate and PREVIEW creating a ${def.title} (does NOT save). ${def.description} ` +
-        `BEFORE calling this, ask the user (one question at a time) about ${def.intake} — any they have not already provided; they may say "skip"/"none" to leave optional ones blank. ` +
-        `Then call this to preview, show the fields, and ask the user to confirm.`,
-      parameters: def.parameters,
-    });
-    specs.push({
-      name: `commit_${key}`,
-      description: `Save the ${def.title} the user just previewed and confirmed. Only call this after the user explicitly confirms, in a later message.`,
-      parameters: { type: 'object', additionalProperties: false, properties: {} },
-    });
-  }
-  return specs;
+  return [START_CREATE_SPEC, ...LOOKUP_SPECS];
 }
 
 export function isWriteToolName(name: string): boolean {
@@ -420,6 +424,217 @@ export async function tryConfirmPending(prompt: string, actor: Actor, conversati
   return `Done — I've created the ${def.title}${label ? ` (${label})` : ''}.\n${lines}`;
 }
 
+// ──────────────── Guided (deterministic) create sessions ────────────────
+// The model only calls start_create; from there the server asks for one field
+// at a time via typed input widgets. Sessions live in AiPendingAction:
+//   status 'collecting' → gathering fields (argsJson = values, previewJson = {skipped})
+//   status 'pending'    → all fields in, preview built (previewJson = resolved record)
+//   status 'committed' | 'cancelled' → terminal.
+
+export interface FieldOption { value: string; label: string }
+export interface FieldSpec {
+  entity: string;
+  name: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  required: boolean;
+  options?: FieldOption[];
+  allowAdd?: boolean; // reference field → offer "add new"
+  addLabel?: string;
+}
+export interface GuidedResult {
+  text?: string;
+  field?: FieldSpec;
+  preview?: { entity: string; title: string; fields: Record<string, unknown> };
+  created?: { entity: string; id?: string; fields: Record<string, unknown> };
+  done?: boolean;
+  error?: string;
+  sessionActive?: boolean;
+}
+
+// Field collection order per entity (required first). Optional ones are skippable.
+const FIELD_ORDER: Record<string, string[]> = {
+  project: ['name', 'clientId', 'location', 'budget', 'startDate', 'endDate', 'managerId'],
+  client: ['name', 'clientType', 'contactName', 'email', 'phone', 'address'],
+  risk: ['projectId', 'title', 'probability', 'impact', 'category', 'owner', 'mitigation'],
+  ncr: ['projectId', 'description', 'severity', 'rootCause', 'responsiblePerson', 'dueDate'],
+  cost_entry: ['projectId', 'description', 'amount', 'category', 'date'],
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Name', clientId: 'Client', location: 'Location', budget: 'Budget',
+  startDate: 'Start date', endDate: 'End date', managerId: 'Project manager',
+  clientType: 'Client type', contactName: 'Contact person', email: 'Email', phone: 'Phone', address: 'Address',
+  projectId: 'Project', title: 'Title', probability: 'Probability (1-5)', impact: 'Impact (1-5)',
+  category: 'Category', owner: 'Owner', mitigation: 'Mitigation',
+  description: 'Description', severity: 'Severity', rootCause: 'Root cause',
+  responsiblePerson: 'Responsible person', dueDate: 'Due date', amount: 'Amount', date: 'Date',
+};
+
+const REFERENCES: Record<string, { model: 'client' | 'project' | 'user'; allowAdd: boolean; addLabel?: string }> = {
+  clientId: { model: 'client', allowAdd: true, addLabel: 'Add a new client' },
+  projectId: { model: 'project', allowAdd: true, addLabel: 'Add a new project' },
+  managerId: { model: 'user', allowAdd: false },
+};
+
+const DATE_FIELDS_G = new Set(['startDate', 'endDate', 'dueDate', 'date']);
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+async function referenceOptions(model: 'client' | 'project' | 'user', orgId: string): Promise<FieldOption[]> {
+  if (model === 'client') {
+    const rows = await prisma.client.findMany({ where: { organizationId: orgId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
+    return rows.map((r) => ({ value: r.id, label: r.name }));
+  }
+  if (model === 'project') {
+    const rows = await prisma.project.findMany({ where: { organizationId: orgId }, select: { id: true, code: true, name: true }, orderBy: { createdAt: 'desc' }, take: 200 });
+    return rows.map((r) => ({ value: r.id, label: `${r.code} — ${r.name}` }));
+  }
+  const rows = await prisma.user.findMany({ where: { organizationId: orgId, isActive: true }, select: { id: true, fullName: true, email: true }, orderBy: { fullName: 'asc' }, take: 200 });
+  return rows.map((r) => ({ value: r.id, label: r.fullName || r.email }));
+}
+
+async function buildFieldSpec(entity: string, field: string, actor: Actor): Promise<FieldSpec> {
+  const def = DEFS[entity];
+  const props = (def.parameters.properties ?? {}) as Record<string, { type?: string; enum?: string[] }>;
+  const prop = props[field] ?? {};
+  const required = (((def.parameters.required as string[]) ?? [])).includes(field);
+  const label = FIELD_LABELS[field] ?? field;
+  const ref = REFERENCES[field];
+  if (ref) {
+    return { entity, name: field, label, type: 'select', required, options: await referenceOptions(ref.model, actor.orgId), allowAdd: ref.allowAdd, addLabel: ref.addLabel };
+  }
+  if (prop.enum) return { entity, name: field, label, type: 'select', required, options: prop.enum.map((v) => ({ value: v, label: v })) };
+  if (prop.type === 'number' || prop.type === 'integer') return { entity, name: field, label, type: 'number', required };
+  if (DATE_FIELDS_G.has(field)) return { entity, name: field, label, type: 'date', required };
+  return { entity, name: field, label, type: 'text', required };
+}
+
+type SessionRow = { id: string; entity: string; argsJson: unknown; previewJson: unknown };
+
+function collectedOf(session: SessionRow): { values: Record<string, unknown>; skipped: string[] } {
+  const values = (session.argsJson as Record<string, unknown>) ?? {};
+  const skipped = (((session.previewJson as { skipped?: string[] })?.skipped) ?? []) as string[];
+  return { values, skipped };
+}
+
+function nextFieldName(entity: string, values: Record<string, unknown>, skipped: string[]): string | null {
+  for (const f of FIELD_ORDER[entity]) {
+    const v = values[f];
+    if (v !== undefined && v !== null && v !== '') continue;
+    if (skipped.includes(f)) continue;
+    return f;
+  }
+  return null;
+}
+
+function activeSession(conversationId: string, userId: string, statuses: string[]) {
+  return prisma.aiPendingAction.findFirst({
+    where: { conversationId, userId, status: { in: statuses }, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+async function advanceSession(sessionId: string, entity: string, values: Record<string, unknown>, skipped: string[], actor: Actor, leadText?: string): Promise<GuidedResult> {
+  const nf = nextFieldName(entity, values, skipped);
+  if (nf) return { text: leadText, field: await buildFieldSpec(entity, nf, actor), sessionActive: true };
+  // All fields gathered → build a preview (dry-run through the real pipeline).
+  let data: Record<string, unknown>;
+  try {
+    ({ data } = await runCreate(DEFS[entity].crud, actorReq(actor), values, false));
+  } catch (e) {
+    return { text: leadText, error: e instanceof Error ? e.message : 'Some details are invalid.', sessionActive: true };
+  }
+  await prisma.aiPendingAction.update({ where: { id: sessionId }, data: { status: 'pending', previewJson: toJson(data) } });
+  return { text: leadText, preview: { entity, title: DEFS[entity].title, fields: previewFields(data) }, sessionActive: true };
+}
+
+export async function startCreateSession(entity: string, rawValues: Record<string, unknown>, actor: Actor, conversationId: string): Promise<GuidedResult> {
+  const def = DEFS[entity];
+  if (!def) return { error: `I can't create a "${entity}".` };
+  if (!can(actor.role, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
+  await prisma.aiPendingAction.updateMany({ where: { conversationId, userId: actor.id, status: { in: ['collecting', 'pending'] } }, data: { status: 'cancelled' } });
+  const allowed = new Set(FIELD_ORDER[entity]);
+  const coerced = coerceArgTypes(normalizeDates(rawValues || {}), def.parameters);
+  const values: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(coerced)) {
+    if (allowed.has(k) && v !== undefined && v !== null && v !== '') values[k] = v;
+  }
+  const session = await prisma.aiPendingAction.create({
+    data: {
+      conversationId, organizationId: actor.orgId, userId: actor.id,
+      tool: `create_${entity}`, entity, argsJson: toJson(values), previewJson: toJson({ skipped: [] }),
+      status: 'collecting', expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+  return advanceSession(session.id, entity, values, [], actor, `Let's create a ${def.title}. Fill in each field below — you can skip the optional ones.`);
+}
+
+async function createReference(model: 'client' | 'project' | 'user', name: string, actor: Actor): Promise<{ id?: string; error?: string }> {
+  const clean = (name || '').trim();
+  if (clean.length < 2) return { error: 'Please enter a name (at least 2 characters).' };
+  if (model === 'client') {
+    if (!can(actor.role, 'client:write')) return { error: `You don't have permission to add a client.` };
+    const { record } = await runCreate(clientCrud, actorReq(actor), { name: clean }, true);
+    return { id: String(record?.id) };
+  }
+  if (model === 'project') {
+    if (!can(actor.role, 'project:write')) return { error: `You don't have permission to add a project.` };
+    const { record } = await runCreate(projectCrud, actorReq(actor), { name: clean }, true);
+    return { id: String(record?.id) };
+  }
+  return { error: 'You can only pick an existing project manager, not add one here.' };
+}
+
+export async function answerCreateField(
+  conversationId: string,
+  actor: Actor,
+  fieldName: string,
+  value: unknown,
+  action: 'value' | 'skip' | 'addNew',
+): Promise<GuidedResult> {
+  const session = await activeSession(conversationId, actor.id, ['collecting']);
+  if (!session) return { error: `That form is no longer active — tell me what you'd like to create.`, sessionActive: false };
+  const entity = session.entity;
+  const def = DEFS[entity];
+  const { values, skipped } = collectedOf(session);
+  const required = (((def.parameters.required as string[]) ?? [])).includes(fieldName);
+
+  if (action === 'skip') {
+    if (required) return { field: await buildFieldSpec(entity, fieldName, actor), error: `${FIELD_LABELS[fieldName] ?? fieldName} is required — please provide it.`, sessionActive: true };
+    if (!skipped.includes(fieldName)) skipped.push(fieldName);
+  } else if (action === 'addNew') {
+    const ref = REFERENCES[fieldName];
+    if (!ref) return { field: await buildFieldSpec(entity, fieldName, actor), error: `You can't add a new value for this field.`, sessionActive: true };
+    const created = await createReference(ref.model, String(value ?? ''), actor);
+    if (created.error) return { field: await buildFieldSpec(entity, fieldName, actor), error: created.error, sessionActive: true };
+    values[fieldName] = created.id;
+  } else {
+    values[fieldName] = coerceArgTypes(normalizeDates({ [fieldName]: value }), def.parameters)[fieldName];
+  }
+  await prisma.aiPendingAction.update({ where: { id: session.id }, data: { argsJson: toJson(values), previewJson: toJson({ skipped }) } });
+  return advanceSession(session.id, entity, values, skipped, actor);
+}
+
+export async function commitCreateSession(conversationId: string, actor: Actor): Promise<GuidedResult> {
+  const session = await activeSession(conversationId, actor.id, ['pending']);
+  if (!session) return { error: `There's nothing ready to create yet.`, sessionActive: false };
+  const def = DEFS[session.entity];
+  if (!can(actor.role, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
+  let record: Record<string, unknown> | undefined;
+  try {
+    ({ record } = await runCreate(def.crud, actorReq(actor), session.argsJson as Record<string, unknown>, true));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Create failed.', sessionActive: true };
+  }
+  await prisma.aiPendingAction.update({ where: { id: session.id }, data: { status: 'committed' } });
+  return { created: { entity: session.entity, id: String(record?.id), fields: previewFields(record ?? {}) }, done: true };
+}
+
+export async function cancelCreateSession(conversationId: string, actor: Actor): Promise<GuidedResult> {
+  await prisma.aiPendingAction.updateMany({ where: { conversationId, userId: actor.id, status: { in: ['collecting', 'pending'] } }, data: { status: 'cancelled' } });
+  return { done: true, text: 'Okay, cancelled — nothing was created.' };
+}
+
 /** Execute one tool call from the agent loop. Never throws — returns a result
  * object (including `{ error }`) that is fed back to the model as a tool message. */
 export async function executeWriteTool(
@@ -428,6 +643,11 @@ export async function executeWriteTool(
   actor: Actor,
   ctx: ToolRunContext,
 ): Promise<unknown> {
+  if (name === 'start_create') {
+    const entity = String(args.entity ?? '');
+    const values = args.values && typeof args.values === 'object' ? (args.values as Record<string, unknown>) : {};
+    return startCreateSession(entity, values, actor, ctx.conversationId);
+  }
   if (name === 'list_projects') return listProjects(actor);
   if (name === 'list_clients') return listClients(actor);
   const preview = /^preview_(.+)$/.exec(name);

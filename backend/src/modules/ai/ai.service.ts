@@ -3,7 +3,10 @@ import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
 import { selectTools, runTools } from './tools';
 import { retrieve, RagSource } from './rag';
 import { runAgent } from './agent';
-import { Actor, writeToolSpecs, tryConfirmPending } from './write-tools';
+import { Actor, writeToolSpecs, tryConfirmPending, FieldSpec } from './write-tools';
+
+// Re-export the guided-create session operations so routes call them via `service.*`.
+export { answerCreateField, commitCreateSession, cancelCreateSession } from './write-tools';
 
 export interface CopilotContext {
   organizationName: string;
@@ -136,15 +139,12 @@ ANSWER FORMAT — use these sections (omit a section only if there is genuinely 
 When you use a fact from the RETRIEVED RECORDS, cite it inline in square brackets, e.g. [NCR NCR-01] or [Inspection "Slab pour QA"].
 End with: "Confidence: <0-100>%" (low if data is sparse).
 
-CREATING RECORDS (when tools are available) — follow this workflow EXACTLY:
-- You can CREATE projects, clients, risks, NCRs and cost entries on the user's behalf using the provided tools.
-- Step 1 — INTAKE (do NOT skip): gather the key details BEFORE previewing. Ask about the fields listed in the tool's description that the user hasn't given yet, ONE question at a time (never all at once, never a bare-minimum guess). For a project this includes the client, location, budget and dates — ask about them even though only the name is strictly required. The user may reply "skip", "none" or "that's all" to leave an optional field blank. Do NOT invent values and do NOT jump to a preview with only a name.
-- Step 2 — RESOLVE references: to attach an existing project or client by name, call list_projects / list_clients to get its id. If the user names a client that doesn't exist yet, offer to create that client first (its own preview + confirm), then continue with the project.
-- Step 3 — PREVIEW: once the key fields are gathered or explicitly skipped, call preview_<entity>. Then present the previewed fields to the user as a short, clean bulleted list (plain language, no JSON) and ask them to confirm, e.g. "Reply 'yes' to create it, or tell me what to change."
-- Step 4 — COMMIT: when the user confirms (e.g. "yes", "confirm", "ok", "go ahead", "create it", "do it"), you MUST IMMEDIATELY call commit_<entity>. Do NOT ask again and do NOT just repeat the details — call the commit tool.
-- Never confirm on the user's behalf (never preview and commit in the same reply). Never claim something was created unless a commit tool returned created:true.
-- If a tool returns an error (permission, validation), explain it plainly and, when possible, ask for what's needed. When creating records, the "Confidence" line is not required.
-- Use the actual tool-calling mechanism — NEVER write tool calls, function names, or JSON/brace payloads as text in your reply. Speak to the user only in plain language; if you intend to call a tool, call it.`;
+CREATING RECORDS (when tools are available):
+- You can CREATE projects, clients, risks, NCRs and cost entries. When the user wants to create/add one of these, call start_create with the entity and any values they already stated (e.g. name, budget, amount) in the values object.
+- After start_create, the SYSTEM collects the remaining fields from the user through on-screen input widgets and handles the preview and confirmation. So do NOT ask the user for field values yourself, do NOT list the fields, and do NOT try to preview or confirm — just reply with ONE short sentence (e.g. "Sure — let's set up that project below.").
+- Only call start_create ONCE per create request. For anything else (questions, analysis), just answer normally.
+- Never invent data. Never write tool calls, function names, or JSON/brace payloads as text in your reply — speak only in plain language.
+- The "Confidence: <n>%" line is NOT required when creating records.`;
 
 export interface CopilotAnswer {
   text: string;
@@ -154,6 +154,10 @@ export interface CopilotAnswer {
   groundedOn: { projects: number; generatedAt: string };
   sources: RagSource[];
   offline: boolean;
+  /** Guided-create input widget to render next (server-driven intake). */
+  field?: FieldSpec;
+  /** Ready-to-create preview (all fields supplied up front). */
+  preview?: { entity: string; title: string; fields: Record<string, unknown> };
 }
 
 function extractConfidence(text: string): number {
@@ -274,15 +278,17 @@ export async function ask(
     try {
       const ctx = { conversationId: opts.conversationId, sameTurnPendingIds: new Set<string>() };
       const result = await runAgent(provider, messages, writeToolSpecs(), opts.actor, ctx);
-      if (result.text?.trim()) {
+      if (result.text?.trim() || result.field || result.preview) {
         return {
-          text: result.text,
+          text: result.text || (result.field ? `Let's set up this ${result.field.entity}.` : ''),
           confidence: extractConfidence(result.text),
           provider: result.provider,
           model: result.model,
           groundedOn: { projects: context.projects.length, generatedAt: isoNow },
           sources,
           offline: false,
+          field: result.field,
+          preview: result.preview,
         };
       }
     } catch (err) {

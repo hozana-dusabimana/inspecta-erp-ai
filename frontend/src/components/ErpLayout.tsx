@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
-  GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
+  GanttChartSquare, TrendingUp, ClipboardList, ClipboardCheck, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
   Wallet, Store, Package, HardHat, Archive, Wrench, Globe, ScrollText, CreditCard,
 } from 'lucide-react';
 import { AppView } from '../types';
@@ -68,6 +68,7 @@ export const NAV_TREE: NavEntry[] = [
   {
     id: 'navgrp-supply', label: 'Supply Chain', icon: Package, children: [
       { id: 'nav-inventory', label: 'Inventory', icon: Warehouse, view: AppView.INVENTORY, perm: 'inventory:read' },
+      { id: 'nav-requisitions', label: 'Requisitions', icon: ClipboardCheck, view: AppView.REQUISITIONS, perm: 'requisition:read' },
       { id: 'nav-procurement', label: 'Procurement', icon: ShoppingCart, view: AppView.PROCUREMENT, perm: 'procurement:read' },
     ],
   },

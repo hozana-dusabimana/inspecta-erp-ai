@@ -14,6 +14,7 @@ import { getPlatformSettings, updatePlatformSettings } from './settings';
 import { notify } from '../notifications/notify';
 import { projectWhere, projectSelect, projectTotals, deliveryWatchlist, financeOverview, adoptionReport } from './insights';
 import { planPrices, addPeriod, trialEndFrom } from '../billing/billing.service';
+import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
 
 /**
  * The cross-tenant superadmin console. Every route here deliberately escapes the
@@ -249,6 +250,11 @@ router.post(
       return { org, admin };
     });
 
+    // Give the new tenant its starter org chart and put its first admin on the
+    // administrator role, so the Roles screen is usable from day one.
+    await ensureDefaultRoles(org.id);
+    await attachAdminRole(org.id, admin.id);
+
     await auditPlatform(req, org.id, AuditAction.CREATE, 'organization', org.id, {
       newValues: { name: org.name, slug: org.slug, plan, adminEmail: admin.email },
     });
@@ -478,10 +484,25 @@ router.patch(
       if (remaining === 0) throw Forbidden('Cannot demote the last active platform administrator');
     }
 
-    const updated = await prisma.user.update({ where: { id: user.id }, data: { role }, select: userSelect });
+    // The account's tenant role, if it has one, is what actually decides its
+    // permissions — so move it onto the matching built-in role of its company.
+    // Leaving a stale `roleId` behind would silently ignore this change.
+    const tenantRole =
+      role === Role.PLATFORM_ADMIN
+        ? null
+        : await prisma.roleDefinition.findFirst({
+            where: { organizationId: user.organizationId, baseRole: role, isSystem: true },
+            select: { id: true },
+          });
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role, roleId: tenantRole?.id ?? null },
+      select: userSelect,
+    });
     await auditPlatform(req, user.organizationId, AuditAction.UPDATE, 'user', user.id, {
-      oldValues: { role: user.role },
-      newValues: { role },
+      oldValues: { role: user.role, roleId: user.roleId },
+      newValues: { role, roleId: tenantRole?.id ?? null },
     });
     return ok(res, updated);
   }),

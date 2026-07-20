@@ -9,12 +9,13 @@ import {
   hashToken,
 } from '../../lib/jwt';
 import { Unauthorized, Conflict, NotFound, Forbidden, BadRequest } from '../../lib/errors';
-import { permissionsFor, isPlatformRole } from '../../auth/permissions';
+import { isPlatformRole, resolvePermissions } from '../../auth/permissions';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
 import { getPlatformSettings } from '../platform/settings';
 import { PLAN_DEFAULTS } from '../platform/plans';
 import { trialEndFrom } from '../billing/billing.service';
+import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
 
@@ -88,15 +89,30 @@ async function issueTokens(user: { id: string; organizationId: string; role: Rol
   return { accessToken, refreshToken };
 }
 
-function publicUser(u: { id: string; email: string; fullName: string; role: Role; organizationId: string }) {
+/**
+ * The session payload the client stores. `permissions` is what the whole UI
+ * gates on, so it must be resolved the same way `authenticate` resolves it —
+ * from the tenant-defined role when the account has one.
+ */
+async function publicUser(u: {
+  id: string; email: string; fullName: string; role: Role; roleId?: string | null; organizationId: string;
+}) {
+  const roleDefinition = u.roleId
+    ? await prisma.roleDefinition.findUnique({
+        where: { id: u.roleId },
+        select: { id: true, name: true, permissions: true },
+      })
+    : null;
   return {
     id: u.id,
     email: u.email,
     fullName: u.fullName,
     role: u.role,
+    roleId: roleDefinition?.id ?? null,
+    roleName: roleDefinition?.name ?? null,
     organizationId: u.organizationId,
     isPlatformAdmin: isPlatformRole(u.role),
-    permissions: permissionsFor(u.role),
+    permissions: resolvePermissions(u.role, roleDefinition),
   };
 }
 
@@ -171,6 +187,11 @@ export async function registerOrganization(input: {
     return { org, user };
   });
 
+  // Starter org chart for the new tenant; the first account holds the
+  // administrator role so it can edit the rest.
+  await ensureDefaultRoles(user.organizationId);
+  await attachAdminRole(user.organizationId, user.id);
+
   // Account is created but dormant until the email is verified — no tokens yet.
   const emailed = await sendVerification(user);
   return { verificationRequired: true, email: user.email, emailed };
@@ -200,7 +221,7 @@ export async function verifyEmail(rawToken: string) {
   });
 
   const tokens = await issueTokens(verified);
-  return { user: publicUser(verified), ...tokens };
+  return { user: await publicUser(verified), ...tokens };
 }
 
 /**
@@ -236,7 +257,7 @@ export async function login(email: string, password: string) {
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   const tokens = await issueTokens(user);
-  return { user: publicUser(user), ...tokens };
+  return { user: await publicUser(user), ...tokens };
 }
 
 export async function refresh(refreshToken: string) {
@@ -260,7 +281,7 @@ export async function refresh(refreshToken: string) {
   // Rotate: revoke old, issue new.
   await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
   const tokens = await issueTokens(user);
-  return { user: publicUser(user), ...tokens };
+  return { user: await publicUser(user), ...tokens };
 }
 
 export async function logout(refreshToken: string | undefined) {

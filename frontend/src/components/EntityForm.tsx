@@ -5,6 +5,7 @@ import { api, errorMessage } from '../lib/api';
 import { Field } from './formTypes';
 import GeoPicker from './GeoPicker';
 import DocumentAttachments from './DocumentAttachments';
+import FileOrUrlInput from './FileOrUrlInput';
 
 function DynamicSelect({ field, value, onChange, required, projectId }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean; projectId?: string }) {
   const url = useMemo(() => {
@@ -150,6 +151,10 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [createFor, setCreateFor] = useState<Field | null>(null); // inline related-record create
+  // Record just created in this modal. Attachments need an id, so on a module
+  // with evidence we stay open afterwards and offer the panel straight away —
+  // otherwise the user has to find the row again and re-open it to attach.
+  const [justCreated, setJustCreated] = useState<Record<string, any> | null>(null);
 
   const visible = fields.filter((f) => (isEdit ? !f.hideOnEdit : !f.hideOnCreate));
 
@@ -177,8 +182,10 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: [endpoint] });
       queryClient.invalidateQueries({ queryKey: ['options', endpoint] });
-      onSaved?.((res as { data?: Record<string, any> })?.data ?? {});
-      onClose();
+      const saved = (res as { data?: Record<string, any> })?.data ?? {};
+      onSaved?.(saved);
+      if (!isEdit && attachModule && saved.id) setJustCreated(saved);
+      else onClose();
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -207,11 +214,16 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   };
 
   const renderField = (f: Field) => (
-    <div key={f.name} className={`space-y-1 ${f.type === 'textarea' || f.type === 'geo' ? 'sm:col-span-2' : ''}`}>
+    <div key={f.name} className={`space-y-1 ${f.type === 'textarea' || f.type === 'geo' || f.type === 'file' ? 'sm:col-span-2' : ''}`}>
       <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">
         {f.label}{f.required && <span className="text-brand-primary"> *</span>}
       </label>
-      {f.type === 'geo' ? (
+      {f.type === 'file' ? (
+        <FileOrUrlInput
+          value={form[f.name] ?? ''} required={f.required} accept={f.accept}
+          placeholder={f.placeholder} onChange={(v) => set(f.name, v)}
+        />
+      ) : f.type === 'geo' ? (
         <GeoPicker value={form[f.name] || undefined} onChange={(v) => set(f.name, v)} />
       ) : f.optionsEndpoint ? (
         <div className="flex items-center gap-2">
@@ -260,6 +272,19 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
         <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant"><X className="w-5 h-5" /></button>
         <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{isEdit ? 'Edit' : 'New'} {entityLabel}</h3>
 
+        {/* Created — offer evidence straight away instead of closing. */}
+        {justCreated ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700">
+              {entityLabel} created. Attach any supporting files or links now, or skip — you can add them later from the record.
+            </div>
+            <DocumentAttachments module={attachModule!} recordId={justCreated.id} projectId={projectScoped ? projectId : undefined} />
+            <div className="flex justify-end pt-2">
+              <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container">Done</button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Wizard stepper */}
         {isWizard && (
           <div className="flex items-center gap-1.5 mb-5">
@@ -316,6 +341,8 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
 
         {attachModule && isEdit && editing && (
           <DocumentAttachments module={attachModule} recordId={editing.id} projectId={projectScoped ? projectId : undefined} />
+        )}
+        </>
         )}
 
         {/* Inline "create related record" (e.g. a new Client from the project form) */}

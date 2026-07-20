@@ -25,6 +25,7 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.FINANCE]: '/finance',
   [AppView.PROFITABILITY]: '/profitability',
   [AppView.INVENTORY]: '/inventory',
+  [AppView.REQUISITIONS]: '/requisitions',
   [AppView.PROCUREMENT]: '/procurement',
   [AppView.QAQC]: '/qaqc',
   [AppView.HSE]: '/hse',

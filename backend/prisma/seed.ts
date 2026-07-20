@@ -1,6 +1,7 @@
 import { PrismaClient, Role, ProjectStatus, ProjectHealth } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { ensureDefaultRoles } from '../src/modules/roles/roles.service';
 
 dotenv.config();
 
@@ -31,30 +32,43 @@ async function main() {
 
   // One user per role so RBAC can be exercised end-to-end. The PLATFORM_ADMIN
   // lives in this org too but operates across every tenant via /api/platform.
-  const userSpecs: Array<{ email: string; fullName: string; role: Role; hash: string }> = [
+  // The tenant's own editable org chart. Roles are data now, so the demo org
+  // gets the standard set (including Foreman) and every seeded account is put
+  // on one — the same thing a real company sees on its first login.
+  await ensureDefaultRoles(org.id);
+  const roleDefs = await prisma.roleDefinition.findMany({ where: { organizationId: org.id } });
+  const roleIdByKey = new Map(roleDefs.map((r) => [r.key, r.id]));
+
+  // One user per role so RBAC can be exercised end-to-end. The PLATFORM_ADMIN
+  // lives in this org too but operates across every tenant via /api/platform.
+  const userSpecs: Array<{ email: string; fullName: string; role: Role; roleKey?: string; hash: string; slot?: string }> = [
     { email: SUPERADMIN_EMAIL, fullName: 'Platform Superadmin', role: Role.PLATFORM_ADMIN, hash: superHash },
-    { email: ADMIN_EMAIL, fullName: 'Alex Thompson', role: Role.SYSTEM_ADMIN, hash: passwordHash },
-    { email: 'pm@inspecta.ai', fullName: 'Priya Mehta', role: Role.PROJECT_MANAGER, hash: demoHash },
-    { email: 'engineer@inspecta.ai', fullName: 'Sam Okoro', role: Role.SITE_ENGINEER, hash: demoHash },
-    { email: 'qs@inspecta.ai', fullName: 'Lena Fischer', role: Role.QUANTITY_SURVEYOR, hash: demoHash },
-    { email: 'store@inspecta.ai', fullName: 'Diego Ramos', role: Role.STOREKEEPER, hash: demoHash },
+    { email: ADMIN_EMAIL, fullName: 'Alex Thompson', role: Role.SYSTEM_ADMIN, roleKey: 'system-admin', hash: passwordHash },
+    { email: 'pm@inspecta.ai', fullName: 'Priya Mehta', role: Role.PROJECT_MANAGER, roleKey: 'project-manager', hash: demoHash },
+    { email: 'engineer@inspecta.ai', fullName: 'Sam Okoro', role: Role.SITE_ENGINEER, roleKey: 'site-engineer', hash: demoHash },
+    { email: 'qs@inspecta.ai', fullName: 'Lena Fischer', role: Role.QUANTITY_SURVEYOR, roleKey: 'quantity-surveyor', hash: demoHash },
+    { email: 'store@inspecta.ai', fullName: 'Diego Ramos', role: Role.STOREKEEPER, roleKey: 'storekeeper', hash: demoHash },
+    // Raises material requisitions; cannot approve or issue them.
+    { email: 'foreman@inspecta.ai', fullName: 'Eric Nkurunziza', role: Role.SITE_ENGINEER, roleKey: 'foreman', hash: demoHash, slot: 'FOREMAN' },
   ];
 
   const users: Record<string, string> = {};
   for (const spec of userSpecs) {
+    const roleId = spec.roleKey ? roleIdByKey.get(spec.roleKey) ?? null : null;
     const u = await prisma.user.upsert({
       where: { organizationId_email: { organizationId: org.id, email: spec.email } },
-      update: { fullName: spec.fullName, role: spec.role, emailVerified: true },
+      update: { fullName: spec.fullName, role: spec.role, roleId, emailVerified: true },
       create: {
         organizationId: org.id,
         email: spec.email,
         fullName: spec.fullName,
         role: spec.role,
+        roleId,
         passwordHash: spec.hash,
         emailVerified: true,
       },
     });
-    users[spec.role] = u.id;
+    users[spec.slot ?? spec.role] = u.id;
   }
 
   // Clients
@@ -189,6 +203,34 @@ async function main() {
         { organizationId: oid, materialId: rebar.id, projectId: pid, type: 'RECEIPT', quantity: 20, unitCost: 720, reference: 'GRN-002', date: day(8) },
         { organizationId: oid, materialId: rebar.id, projectId: pid, type: 'ISSUE', quantity: 16, reference: 'ISS-002', date: day(2) },
       ],
+    });
+
+    // M4b — Material requisitions, one at each stage of the chain so the
+    // workflow board is not empty on a fresh install.
+    await prisma.materialRequisition.create({
+      data: {
+        organizationId: oid, projectId: pid, number: 'REQ-0001',
+        title: 'Level 3 slab pour — cement', location: 'Block A, Level 3',
+        status: 'SUBMITTED', requestedById: users.FOREMAN, submittedAt: day(1),
+        requiredByDate: day(-2), notes: 'Needed before the Thursday pour.',
+        items: { create: [
+          { materialId: cement.id, unit: 'bag', quantityRequested: 120, quantityApproved: 120 },
+        ] },
+      },
+    });
+    await prisma.materialRequisition.create({
+      data: {
+        organizationId: oid, projectId: pid, number: 'REQ-0002',
+        title: 'Column reinforcement — rebar', location: 'Block A, Level 2',
+        status: 'APPROVED', requestedById: users.FOREMAN, submittedAt: day(3),
+        approvedById: users[Role.SITE_ENGINEER], approvedAt: day(2),
+        decisionNote: 'Approved, trimmed to what the schedule needs this week.',
+        requiredByDate: day(-1),
+        items: { create: [
+          // Approved short of the ask — the store issues against the approved figure.
+          { materialId: rebar.id, unit: 'ton', quantityRequested: 3, quantityApproved: 2 },
+        ] },
+      },
     });
 
     // M17 — Procurement

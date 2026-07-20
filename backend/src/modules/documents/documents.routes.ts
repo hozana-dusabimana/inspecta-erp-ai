@@ -1,19 +1,19 @@
 import { z } from 'zod';
 import { Request } from 'express';
 import { createCrudRouter } from '../../lib/crud';
-import { env } from '../../config/env';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest } from '../../lib/errors';
 import { requirePermission } from '../../middleware/auth';
+import { normalizeExternalUrl, signUpload } from '../../lib/storage';
 
 // ── M7 — Document register (metadata + versioned links) ──────────
-// Files are uploaded to storage (e.g. Supabase) by the client; this stores the
-// resulting URL plus metadata, versioning, and project scoping.
+// `url` is either the public URL of a file uploaded via /documents/upload-url
+// or a link the user pasted to a document hosted elsewhere. Both http and
+// https are accepted — see normalizeExternalUrl for why.
 const documentCreate = z.object({
   projectId: z.string().optional(),
   name: z.string().min(1),
   category: z.string().optional(),
-  url: z.string().url(),
+  url: z.string().min(1).transform(normalizeExternalUrl),
   version: z.number().int().positive().optional(),
 });
 
@@ -35,42 +35,16 @@ const router = createCrudRouter({
 const uploadSchema = z.object({ filename: z.string().min(1) });
 
 /**
- * Returns a Supabase Storage signed upload URL so the client can PUT the file
- * directly, then register the resulting public URL via POST /documents.
- * Honest fallback: 400 with guidance when Supabase isn't configured.
+ * Signs a direct upload to Cloudinary so the browser can POST the file itself;
+ * the caller then saves the returned secure_url on the record. Used by the
+ * document register and by the generic upload-or-link form field.
  */
 router.post(
   '/upload-url',
   requirePermission('document:write'),
   asyncHandler(async (req, res) => {
     const { filename } = uploadSchema.parse(req.body);
-    if (!env.supabase.url || !env.supabase.serviceKey) {
-      throw BadRequest(
-        'Supabase storage is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_KEY and SUPABASE_BUCKET in backend/.env, or paste a file URL directly when creating a document.',
-      );
-    }
-
-    const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const objectPath = `${req.user!.orgId}/${safeName}`;
-    const signRes = await fetch(
-      `${env.supabase.url}/storage/v1/object/upload/sign/${env.supabase.bucket}/${objectPath}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.supabase.serviceKey}`,
-          apikey: env.supabase.serviceKey,
-          'Content-Type': 'application/json',
-        },
-      },
-    );
-    if (!signRes.ok) throw BadRequest(`Supabase sign failed: ${await signRes.text()}`);
-    const json = (await signRes.json()) as { url: string };
-
-    return ok(res, {
-      uploadUrl: `${env.supabase.url}/storage/v1${json.url}`,
-      publicUrl: `${env.supabase.url}/storage/v1/object/public/${env.supabase.bucket}/${objectPath}`,
-      path: objectPath,
-    });
+    return ok(res, signUpload(`${req.user!.orgId}/documents`, filename));
   }),
 );
 

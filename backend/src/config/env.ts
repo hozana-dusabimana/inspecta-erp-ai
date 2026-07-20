@@ -46,12 +46,14 @@ export const env = {
     },
   },
 
-  supabase: {
-    url: process.env.SUPABASE_URL ?? '',
-    serviceKey: process.env.SUPABASE_SERVICE_KEY ?? '',
-    bucket: process.env.SUPABASE_BUCKET ?? 'documents',
-    // Private bucket for per-record evidence attachments (Developer Memo).
-    docBucket: process.env.SUPABASE_DOC_BUCKET ?? 'project-documents',
+  // File/document storage — Cloudinary holds the bytes, our DB holds the link.
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+    apiKey: process.env.CLOUDINARY_API_KEY ?? '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET ?? '',
+    // Everything is uploaded under this prefix so one Cloudinary account can be
+    // shared with other apps without the media libraries colliding.
+    folder: process.env.CLOUDINARY_FOLDER ?? 'inspecta',
   },
 
   smtp: {
@@ -89,7 +91,9 @@ export function validateProductionEnv(): void {
 
   const providerKey = { openrouter: env.ai.openrouter.apiKey, claude: env.ai.claude.apiKey, gemini: env.ai.gemini.apiKey }[env.ai.provider];
   if (!providerKey) warn.push(`AI provider "${env.ai.provider}" has no API key — Copilot runs in offline/deterministic mode`);
-  if (!env.supabase.url || !env.supabase.serviceKey) warn.push('Supabase storage not configured — document uploads will fail');
+  if (!env.cloudinary.cloudName || !env.cloudinary.apiKey || !env.cloudinary.apiSecret) {
+    warn.push('Cloudinary not configured — file uploads will fail (attaching links still works)');
+  }
   if (!env.smtp.host) warn.push('SMTP not configured — email notifications will not be delivered');
 
   for (const w of warn) console.warn(`[env] WARNING: ${w}`); // eslint-disable-line no-console

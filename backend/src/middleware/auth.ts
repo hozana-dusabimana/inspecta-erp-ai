@@ -4,7 +4,7 @@ import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { Unauthorized, Forbidden, BadRequest, PaymentRequired } from '../lib/errors';
-import { can, isPlatformRole, Permission } from '../auth/permissions';
+import { isPlatformRole, resolvePermissions, Permission } from '../auth/permissions';
 import { billingStateOf } from '../modules/billing/billing.service';
 
 export interface AuthUser {
@@ -16,6 +16,12 @@ export interface AuthUser {
    *  "is this me / my company?" guards, never `orgId`. */
   homeOrgId: string;
   role: Role;
+  /** The tenant-defined role attached to the account, if any. */
+  roleId?: string | null;
+  roleName?: string | null;
+  /** Resolved permission set — from the tenant role when one is attached,
+   *  otherwise from the static matrix. The only thing routes should consult. */
+  permissions: Permission[];
   email: string;
   isPlatformAdmin: boolean;
   /** True when a platform admin is viewing another tenant's workspace. */
@@ -66,8 +72,12 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
       id: true,
       email: true,
       role: true,
+      roleId: true,
       isActive: true,
       organizationId: true,
+      // Same round trip as the account read, so a tenant-defined role costs no
+      // extra query on the hot path.
+      roleDefinition: { select: { id: true, name: true, permissions: true } },
       organization: {
         select: {
           status: true,
@@ -125,6 +135,9 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
     orgId,
     homeOrgId: account.organizationId,
     role: account.role,
+    roleId: account.roleId,
+    roleName: account.roleDefinition?.name ?? null,
+    permissions: resolvePermissions(account.role, account.roleDefinition),
     email: account.email,
     isPlatformAdmin: platform,
     inspecting,
@@ -145,15 +158,29 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
-/** Guards a route by a permission from the RBAC matrix. */
+/**
+ * Guards a route by a permission. Reads the resolved set on the request, so a
+ * tenant-defined role and the built-in matrix are enforced identically and
+ * every module inherits custom roles without changing a line.
+ */
 export function requirePermission(permission: Permission) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) throw Unauthorized();
-    if (!can(req.user.role, permission)) {
+    if (!req.user.permissions.includes(permission)) {
       throw Forbidden(`Missing permission: ${permission}`);
     }
     next();
   };
+}
+
+/** Permission check for code paths that hold an AuthUser rather than a request
+ *  (the AI copilot's write tools). Same source of truth as `requirePermission`. */
+export function actorCan(
+  actor: { role: Role; permissions?: Permission[] },
+  permission: Permission,
+): boolean {
+  if (actor.role === 'PLATFORM_ADMIN') return true;
+  return (actor.permissions ?? resolvePermissions(actor.role)).includes(permission);
 }
 
 /** Guards the cross-tenant platform console. */

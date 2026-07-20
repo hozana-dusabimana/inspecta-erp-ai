@@ -76,6 +76,7 @@ In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you 
 | Site Engineer | `engineer@inspecta.ai` | `Demo@12345` |
 | Quantity Surveyor | `qs@inspecta.ai` | `Demo@12345` |
 | Storekeeper | `store@inspecta.ai` | `Demo@12345` |
+| Foreman | `foreman@inspecta.ai` | `Demo@12345` |
 
 The superadmin is the only account that sees the **Platform Console** (`/platform`).
 Override the seeded credentials with `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD`.
@@ -207,6 +208,7 @@ access); it can only be granted from the Platform Console.
 | M09 | Point of Sale | `/pos/{products,sessions,transactions,service-invoices}` | till sessions, VAT receipts, mobile-money/cash/bank, stock drawdown, service invoices |
 | M06b | Equipment Fuel/Usage | `/equipment/{fuel-logs,usage-logs}` | fuel consumption & cost, daily usage by operator + WBS cost allocation |
 | M07b | GRN & Issues | `/inventory/{grn,material-issues}` | goods-received notes + material issues that post to the stock ledger |
+| M4b | Material Requisitions | `/requisitions` (+`/submit`,`/approve`,`/reject`,`/issue`,`/board`) | site → store chain: foreman raises, engineer approves, store issues to the stock ledger |
 | M18 | Workflow | `/approvals` (+`/approve`,`/reject`) | approval requests + escalation notify |
 | M23 | Portfolio | `/portfolio/comparison` | multi-project comparison + company KPIs |
 | M19 | PWA | (frontend) | installable, offline app shell, online/offline status |
@@ -244,15 +246,67 @@ Base URL: `http://localhost:4000/api` · all responses: `{ success, data, error?
 | GET | `/audit` | `audit:read` | audit trail |
 | POST | `/ai/chat` | `ai:use` | grounded Copilot |
 
-### RBAC matrix (summary)
-| Permission | Admin | PM | Engineer | QS | Store |
-|---|:-:|:-:|:-:|:-:|:-:|
-| project:read | ✓ | ✓ | ✓ | ✓ | ✓ |
-| project:write | ✓ | ✓ | | ✓ | |
-| client:write | ✓ | ✓ | | ✓ | |
-| user:write | ✓ | | | | |
-| audit:read | ✓ | ✓ | | | |
-| ai:use | ✓ | ✓ | ✓ | ✓ | ✓ |
+### RBAC — roles are the tenant's own data
+
+Every route and every screen gates on a `resource:action` **permission**, never on a
+role name. Roles are therefore editable: a company builds the org chart it actually
+has — Foreman, Store Manager, Site Agent — and ticks the privileges each one grants,
+under **Administration → Roles & Permissions** (`/api/roles`).
+
+Each org is seeded with six starter roles (System Administrator, Project Manager,
+Site Engineer, Quantity Surveyor, Store Manager, Foreman) which can be re-scoped but
+not deleted. `authenticate` re-reads the account on every request, so **a role edit
+takes effect on the holder's very next API call** — no re-login, no token wait.
+
+Accounts that predate this feature keep `roleId = NULL` and still resolve from the
+built-in matrix in `backend/src/auth/permissions.ts`, so switching it on changed
+nobody's access.
+
+**Guard rails** (each covered in `backend/tests/tenant-roles.test.ts`):
+- `platform:manage` is stripped from a tenant role on write **and** again on read — a
+  company editing its own roles must never reach another tenant's data.
+- The seeded **System Administrator** role is locked to full access. A tenant able to
+  trim its own admin role would lock itself out of the screen needed to undo it.
+- Any change leaving nobody in the company with `user:write` is rejected — whether it
+  comes from editing a role, moving a user onto another one, or blocking one.
+- A role still held by members cannot be deleted; built-in roles cannot be deleted at all.
+- The platform console's role change re-points `roleId` too, so a stale tenant role
+  cannot silently override it.
+
+---
+
+## Material requisitions (site → store)
+
+Distinct from a **purchase request**, which buys from a supplier. A requisition draws
+on the company's *own* store, and deliberately passes through three different hands:
+
+```
+foreman raises  →  site engineer approves  →  store issues from stock
+   DRAFT → SUBMITTED  →  APPROVED / REJECTED  →  PARTIALLY_ISSUED → ISSUED → CLOSED
+```
+
+The separation of duties is enforced server-side, not just hidden in the UI:
+
+- `requisition:write` raises and submits; **`requisition:approve`** signs off;
+  **`inventory:write`** issues. The Foreman role holds only the first — it cannot
+  approve its own ask, and cannot walk into the store and take the materials either.
+- Nobody can approve a requisition they raised themselves, whatever their role.
+- The approver can **trim a line** (approve 60 of the 100 bags asked for) rather than
+  reject the whole document. Lines are frozen once submitted, so an approval obtained
+  for one set of materials cannot be quietly spent on another.
+- Issuing is blocked above the approved quantity, and above **what the store actually
+  holds** — with the shortfall named in the error.
+- Partial issues are normal: the requisition sits in `PARTIALLY_ISSUED` until the
+  balance is released, or the site closes it short.
+
+Issuing does **not** write its own ledger logic. It creates `MaterialIssue` rows,
+which post `ISSUE` movements exactly like a manual issue does — so stock balances,
+FIFO/WAVG valuation, WBS cost allocation and the low-stock alert behave identically
+whether or not a requisition was involved. Every drawdown carries a `requisitionId`,
+so the store can trace it back to who asked and who approved.
+
+`GET /requisitions/board` returns everything in flight with each line's on-hand
+position and shortfall, which is what the Requisitions screen renders.
 
 ---
 
@@ -327,8 +381,10 @@ cd backend && npm test    # RBAC matrix + ERP formula unit tests (Jest)
 
 All 24 modules from the specification are implemented end-to-end (data model + API +
 RBAC + audit + frontend), with real business formulas and the AI Copilot grounded on
-live data. Document uploads use a Supabase signed-upload endpoint when configured
-(`SUPABASE_*` env), and fall back to registering external file URLs otherwise.
+live data. Records across every module accept supporting evidence as either an
+**uploaded file or a pasted link** — uploads go straight from the browser to
+Cloudinary via a backend-signed request (`CLOUDINARY_*` env) and the database
+stores the resulting link; attaching links needs no configuration at all.
 
 **Known limitations (honest):**
 - PWA offline is an installable **app shell** with an online/offline indicator; a full

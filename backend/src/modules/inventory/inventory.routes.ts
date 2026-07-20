@@ -7,6 +7,7 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
+import { stockForMaterial } from './stock';
 
 const router = Router();
 
@@ -68,22 +69,6 @@ export const requirementCrud: CrudOptions = {
 };
 router.use('/requirements', createCrudRouter(requirementCrud));
 
-/** Compute net stock for a material = Σreceipts − Σissues (+adjustments). */
-async function stockForMaterial(orgId: string, materialId: string): Promise<number> {
-  const groups = await prisma.stockMovement.groupBy({
-    by: ['type'],
-    where: { organizationId: orgId, materialId },
-    _sum: { quantity: true },
-  });
-  let stock = 0;
-  for (const g of groups) {
-    const qty = Number(g._sum.quantity ?? 0);
-    if (g.type === 'OPENING' || g.type === 'RECEIPT' || g.type === 'ADJUSTMENT' || g.type === 'RETURN') stock += qty;
-    if (g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE') stock -= qty;
-    // TRANSFER nets to zero org-wide.
-  }
-  return stock;
-}
 
 // ── Stock movements (GRN / issues / adjustments) ──────────────
 const movementCreate = z.object({

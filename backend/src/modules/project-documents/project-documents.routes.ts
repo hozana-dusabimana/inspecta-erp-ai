@@ -2,39 +2,21 @@ import { Router } from 'express';
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import { prisma } from '../../lib/prisma';
-import { env } from '../../config/env';
 import { asyncHandler, ok, paginated } from '../../lib/http';
 import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
+import { normalizeExternalUrl, signUpload } from '../../lib/storage';
 
 // Central polymorphic evidence store (Developer Memo: project_documents).
-// Files are stored in a private Supabase bucket; this module manages the
-// metadata rows, signed upload/download URLs, and soft-delete.
+// A row is either an uploaded FILE (the bytes live in Cloudinary; we keep its
+// URL + public_id) or a LINK to evidence hosted elsewhere. Either way the DB
+// holds a link, so both kinds open the same way.
 
 const router = Router();
 router.use(authenticate);
 
-const ALLOWED_FILE_TYPES = ['photo', 'pdf', 'excel'] as const;
-
-function supabaseConfigured(): boolean {
-  return Boolean(env.supabase.url && env.supabase.serviceKey);
-}
-
-// Auto-provision the private evidence bucket on first use (idempotent) so the
-// only manual setup is pasting SUPABASE_URL/SERVICE_KEY into the env.
-let bucketReady = false;
-async function ensureDocBucket(): Promise<void> {
-  if (bucketReady || !supabaseConfigured()) return;
-  const res = await fetch(`${env.supabase.url}/storage/v1/bucket`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.supabase.serviceKey}`, apikey: env.supabase.serviceKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: env.supabase.docBucket, name: env.supabase.docBucket, public: false, file_size_limit: 52428800 }),
-  });
-  // 200 = created; 400/409 = already exists — all fine. Anything else: let the
-  // subsequent sign call surface the real error.
-  if (res.ok || res.status === 400 || res.status === 409) bucketReady = true;
-}
+const ALLOWED_FILE_TYPES = ['photo', 'pdf', 'excel', 'doc', 'link', 'other'] as const;
 
 // ── LIST — polymorphic + filterable (excludes soft-deleted) ──────
 router.get(
@@ -43,7 +25,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const page = Math.max(1, Number(req.query.page ?? 1));
     const pageSize = Math.min(200, Math.max(1, Number(req.query.pageSize ?? 50)));
-    const { module, recordId, projectId, fileType, documentCategory, from, to } = req.query as Record<string, string | undefined>;
+    const { module, recordId, projectId, fileType, sourceType, documentCategory, from, to } = req.query as Record<string, string | undefined>;
     const search = (req.query.search as string)?.trim();
 
     const where: Record<string, unknown> = { organizationId: req.user!.orgId, deletedAt: null };
@@ -51,6 +33,7 @@ router.get(
     if (recordId) where.recordId = recordId;
     if (projectId) where.projectId = projectId;
     if (fileType) where.fileType = fileType;
+    if (sourceType) where.sourceType = sourceType;
     if (documentCategory) where.documentCategory = documentCategory;
     if (from || to) where.createdAt = { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) };
     if (search) where.OR = [
@@ -80,7 +63,23 @@ router.get(
   }),
 );
 
-// ── Signed upload URL (path convention {org}/{project}/{module}/{record}/{name}_{ts}) ──
+// ── Distinct modules that actually hold evidence ─────────────────
+// The register's module filter is built from this rather than a hardcoded list,
+// which silently went stale every time a module gained attachments.
+router.get(
+  '/modules',
+  requirePermission('document:read'),
+  asyncHandler(async (req, res) => {
+    const { projectId } = req.query as Record<string, string | undefined>;
+    const where: Record<string, unknown> = { organizationId: req.user!.orgId, deletedAt: null };
+    if (projectId) where.projectId = projectId;
+    const rows = await prisma.projectDocument.findMany({ where, select: { module: true }, distinct: ['module'], orderBy: { module: 'asc' } });
+    return ok(res, { modules: rows.map((r) => r.module) });
+  }),
+);
+
+// ── Signed direct upload (folder {org}/{project}/{module}/{record}) ──
+// Returns a signature only; the browser POSTs the bytes to Cloudinary itself.
 const uploadSchema = z.object({
   module: z.string().min(1),
   recordId: z.string().min(1),
@@ -92,37 +91,38 @@ router.post(
   requirePermission('document:write'),
   asyncHandler(async (req, res) => {
     const { module, recordId, projectId, fileName } = uploadSchema.parse(req.body);
-    if (!supabaseConfigured()) {
-      throw BadRequest('Supabase storage is not configured. Set SUPABASE_URL, SUPABASE_SERVICE_KEY and SUPABASE_DOC_BUCKET in backend/.env.');
-    }
-    await ensureDocBucket();
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const stamp = Date.now();
-    const objectPath = `${req.user!.orgId}/${projectId ?? 'org'}/${module}/${recordId}/${safeName}_${stamp}`;
-    const signRes = await fetch(
-      `${env.supabase.url}/storage/v1/object/upload/sign/${env.supabase.docBucket}/${objectPath}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${env.supabase.serviceKey}`, apikey: env.supabase.serviceKey, 'Content-Type': 'application/json' } },
-    );
-    if (!signRes.ok) throw BadRequest(`Supabase sign failed: ${await signRes.text()}`);
-    const json = (await signRes.json()) as { url: string };
-    return ok(res, { uploadUrl: `${env.supabase.url}/storage/v1${json.url}`, storagePath: objectPath });
+    const folder = `${req.user!.orgId}/${projectId ?? 'org'}/${module}/${recordId}`;
+    return ok(res, signUpload(folder, fileName));
   }),
 );
 
-// ── Register an uploaded document (metadata row) ─────────────────
-const createSchema = z.object({
-  module: z.string().min(1),
-  recordId: z.string().min(1),
-  projectId: z.string().optional(),
-  fileName: z.string().min(1),
-  fileType: z.enum(ALLOWED_FILE_TYPES),
-  mimeType: z.string().min(1),
-  fileSizeBytes: z.number().int().nonnegative().optional(),
-  storagePath: z.string().min(1),
-  documentCategory: z.string().optional(),
-  description: z.string().optional(),
-  isClientVisible: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
-});
+// ── Register an attachment (uploaded file OR external link) ──────
+// Both kinds store the openable URL in `externalUrl`. FILE rows additionally
+// keep Cloudinary's public_id in `storagePath` so the asset can be managed
+// later; LINK rows have no public_id because we host nothing.
+const createSchema = z
+  .object({
+    module: z.string().min(1),
+    recordId: z.string().min(1),
+    projectId: z.string().optional(),
+    fileName: z.string().min(1),
+    fileType: z.enum(ALLOWED_FILE_TYPES).optional(),
+    mimeType: z.string().min(1).optional(),
+    fileSizeBytes: z.number().int().nonnegative().optional(),
+    sourceType: z.enum(['FILE', 'LINK']).default('FILE'),
+    /** Cloudinary public_id — uploads only. */
+    storagePath: z.string().min(1).optional(),
+    /** The openable URL: Cloudinary's secure_url, or the pasted link. */
+    externalUrl: z.string().min(1),
+    documentCategory: z.string().optional(),
+    description: z.string().optional(),
+    isClientVisible: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.sourceType === 'FILE' && !v.storagePath) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['storagePath'], message: 'storagePath (Cloudinary public_id) is required for an uploaded file' });
+    }
+  });
 router.post(
   '/',
   requirePermission('document:write'),
@@ -132,29 +132,38 @@ router.post(
       const p = await prisma.project.findFirst({ where: { id: body.projectId, organizationId: req.user!.orgId }, select: { id: true } });
       if (!p) throw BadRequest('projectId does not belong to your organization');
     }
+    const isLink = body.sourceType === 'LINK';
     const record = await prisma.projectDocument.create({
-      data: { ...body, organizationId: req.user!.orgId, uploadedBy: req.user!.id },
+      data: {
+        ...body,
+        // A link has no bytes of ours to describe, so give it honest defaults
+        // rather than pretending it's a file we hold.
+        fileType: body.fileType ?? (isLink ? 'link' : 'other'),
+        mimeType: body.mimeType ?? (isLink ? 'text/uri-list' : 'application/octet-stream'),
+        externalUrl: normalizeExternalUrl(body.externalUrl),
+        storagePath: isLink ? null : body.storagePath,
+        fileSizeBytes: isLink ? null : body.fileSizeBytes,
+        organizationId: req.user!.orgId,
+        uploadedBy: req.user!.id,
+      },
     });
     await auditFromRequest(req, 'CREATE', 'project-document', record.id, { newValues: record });
     return ok(res, record, 201);
   }),
 );
 
-// ── Signed download URL for a stored file ────────────────────────
+// ── Resolve an attachment to an openable URL ─────────────────────
+// Uploads and links both resolve to a URL, so this stays uniform. Kept as an
+// endpoint (rather than the client using externalUrl directly) so access is
+// permission-checked and tenant-scoped at open time.
 router.get(
   '/:id/download',
   requirePermission('document:read'),
   asyncHandler(async (req, res) => {
     const doc = await prisma.projectDocument.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId, deletedAt: null } });
     if (!doc) throw NotFound('Document not found');
-    if (!supabaseConfigured()) throw BadRequest('Supabase storage is not configured.');
-    const signRes = await fetch(
-      `${env.supabase.url}/storage/v1/object/sign/${env.supabase.docBucket}/${doc.storagePath}`,
-      { method: 'POST', headers: { Authorization: `Bearer ${env.supabase.serviceKey}`, apikey: env.supabase.serviceKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) },
-    );
-    if (!signRes.ok) throw BadRequest(`Supabase sign failed: ${await signRes.text()}`);
-    const json = (await signRes.json()) as { signedURL: string };
-    return ok(res, { downloadUrl: `${env.supabase.url}/storage/v1${json.signedURL}` });
+    if (!doc.externalUrl) throw BadRequest('This attachment has no file or link recorded.');
+    return ok(res, { downloadUrl: doc.externalUrl, external: doc.sourceType === 'LINK' });
   }),
 );
 
@@ -176,12 +185,13 @@ router.get(
   '/export.xlsx',
   requirePermission('document:read'),
   asyncHandler(async (req, res) => {
-    const { projectId, module, documentCategory, fileType } = req.query as Record<string, string | undefined>;
+    const { projectId, module, documentCategory, fileType, sourceType } = req.query as Record<string, string | undefined>;
     const where: Record<string, unknown> = { organizationId: req.user!.orgId, deletedAt: null };
     if (projectId) where.projectId = projectId;
     if (module) where.module = module;
     if (documentCategory) where.documentCategory = documentCategory;
     if (fileType) where.fileType = fileType;
+    if (sourceType) where.sourceType = sourceType;
     const docs = await prisma.projectDocument.findMany({ where, orderBy: { createdAt: 'desc' } });
 
     const wb = new ExcelJS.Workbook();
@@ -192,6 +202,8 @@ router.get(
       { header: 'Record ID', key: 'recordId', width: 26 },
       { header: 'File Name', key: 'fileName', width: 30 },
       { header: 'Type', key: 'fileType', width: 10 },
+      { header: 'Source', key: 'sourceType', width: 10 },
+      { header: 'Link', key: 'externalUrl', width: 40 },
       { header: 'Category', key: 'documentCategory', width: 18 },
       { header: 'Description', key: 'description', width: 30 },
       { header: 'Size (KB)', key: 'sizeKb', width: 12 },
@@ -202,6 +214,7 @@ router.get(
     ws.getRow(1).font = { bold: true };
     docs.forEach((d) => ws.addRow({
       module: d.module, recordId: d.recordId, fileName: d.fileName, fileType: d.fileType,
+      sourceType: d.sourceType, externalUrl: d.externalUrl ?? '',
       documentCategory: d.documentCategory ?? '', description: d.description ?? '',
       sizeKb: d.fileSizeBytes ? Math.round(d.fileSizeBytes / 1024) : '',
       isClientVisible: d.isClientVisible ? 'Yes' : 'No', uploadedBy: d.uploadedBy ?? '',

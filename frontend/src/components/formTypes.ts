@@ -3,7 +3,10 @@
 export interface Field {
   name: string;
   label: string;
-  type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv' | 'geo';
+  /** `file` = upload-or-paste-link control whose value is a single URL. */
+  type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv' | 'geo' | 'file';
+  /** For `type: 'file'` — override the accepted upload types (default: any document). */
+  accept?: string;
   options?: { value: string; label: string }[];
   /** For a `select` with preset `options`: let the user add a value not in the
    *  list via an inline "＋ New" (remembered per-field in the browser). Use for

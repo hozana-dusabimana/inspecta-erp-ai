@@ -6,6 +6,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { NotFound, Conflict, BadRequest, Forbidden } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { isPlatformRole } from '../../auth/permissions';
+import { assertAdminCoverage, ensureDefaultRoles } from '../roles/roles.service';
 import { assertSeatAvailable } from '../platform/plans';
 import { hashPassword } from '../../lib/password';
 import { auditFromRequest } from '../../auth/audit';
@@ -18,6 +19,8 @@ const selectPublic = {
   email: true,
   fullName: true,
   role: true,
+  roleId: true,
+  roleDefinition: { select: { id: true, name: true, key: true } },
   isActive: true,
   lastLoginAt: true,
   createdAt: true,
@@ -28,6 +31,7 @@ router.get(
   '/',
   requirePermission('user:read'),
   asyncHandler(async (req, res) => {
+    await ensureDefaultRoles(req.user!.orgId);
     const users = await prisma.user.findMany({
       where: { organizationId: req.user!.orgId },
       select: selectPublic,
@@ -51,8 +55,41 @@ const inviteSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
   password: z.string().min(8),
-  role: tenantRole,
+  // Either shape works: `roleId` picks one of the company's own roles (the
+  // normal path now), `role` still accepts the built-in enum for API clients
+  // written before tenant roles existed.
+  roleId: z.string().optional(),
+  role: tenantRole.optional(),
 });
+
+/**
+ * Resolves the role to store on a user row. A tenant role is authoritative and
+ * also stamps its `baseRole` onto the enum column, so the platform console and
+ * notification targeting keep working off a single coarse label.
+ */
+async function resolveRoleAssignment(
+  organizationId: string,
+  input: { roleId?: string; role?: Role },
+): Promise<{ roleId: string | null; role: Role } | null> {
+  if (input.roleId) {
+    const def = await prisma.roleDefinition.findFirst({
+      where: { id: input.roleId, organizationId },
+      select: { id: true, baseRole: true },
+    });
+    if (!def) throw BadRequest('Unknown role for this company');
+    return { roleId: def.id, role: def.baseRole };
+  }
+  if (input.role) {
+    // Enum given explicitly: mirror it onto the matching seeded role so the
+    // account still shows up under a role in the admin screen.
+    const def = await prisma.roleDefinition.findFirst({
+      where: { organizationId, baseRole: input.role, isSystem: true },
+      select: { id: true },
+    });
+    return { roleId: def?.id ?? null, role: input.role };
+  }
+  return null;
+}
 
 // INVITE a user into the caller's organization (admin only)
 router.post(
@@ -66,26 +103,43 @@ router.post(
     });
     if (dup) throw Conflict('A user with this email already exists in your organization');
     await assertSeatAvailable(req.user!.orgId);
+    await ensureDefaultRoles(req.user!.orgId);
+
+    let assigned = await resolveRoleAssignment(req.user!.orgId, body);
+    if (!assigned) {
+      // No role given — fall back to whichever role the company marked default.
+      const fallback = await prisma.roleDefinition.findFirst({
+        where: { organizationId: req.user!.orgId, isDefault: true },
+        select: { id: true, baseRole: true },
+      });
+      assigned = fallback
+        ? { roleId: fallback.id, role: fallback.baseRole }
+        : { roleId: null, role: Role.SITE_ENGINEER };
+    }
 
     const user = await prisma.user.create({
       data: {
         organizationId: req.user!.orgId,
         email,
         fullName: body.fullName,
-        role: body.role,
+        role: assigned.role,
+        roleId: assigned.roleId,
         passwordHash: await hashPassword(body.password),
         // Vouched for by an admin — no self-service email verification needed.
         emailVerified: true,
       },
       select: selectPublic,
     });
-    await auditFromRequest(req, 'CREATE', 'user', user.id, { newValues: { email, role: body.role } });
+    await auditFromRequest(req, 'CREATE', 'user', user.id, {
+      newValues: { email, role: assigned.role, roleId: assigned.roleId },
+    });
     return ok(res, user, 201);
   }),
 );
 
 const updateSchema = z.object({
   fullName: z.string().min(2).optional(),
+  roleId: z.string().optional(),
   role: tenantRole.optional(),
   isActive: z.boolean().optional(),
 });
@@ -109,19 +163,33 @@ router.put(
     // Guard against an admin locking themselves out of their own account.
     if (existing.id === req.user!.id) {
       if (body.isActive === false) throw BadRequest('You cannot deactivate your own account');
-      if (body.role && body.role !== existing.role) {
+      if ((body.role && body.role !== existing.role) || (body.roleId && body.roleId !== existing.roleId)) {
         throw BadRequest('You cannot change your own role');
       }
     }
 
+    const assigned = await resolveRoleAssignment(req.user!.orgId, body);
+    // Moving someone off an administrating role, or blocking them, must not
+    // leave the company with nobody who can manage users.
+    if ((assigned && assigned.roleId !== existing.roleId) || body.isActive === false) {
+      await assertAdminCoverage(req.user!.orgId, {
+        roleId: assigned?.roleId ?? existing.roleId ?? '',
+        losingUserId: existing.id,
+      });
+    }
+
     const user = await prisma.user.update({
       where: { id: existing.id },
-      data: body,
+      data: {
+        fullName: body.fullName,
+        isActive: body.isActive,
+        ...(assigned ? { role: assigned.role, roleId: assigned.roleId } : {}),
+      },
       select: selectPublic,
     });
     await auditFromRequest(req, 'UPDATE', 'user', user.id, {
-      oldValues: { role: existing.role, isActive: existing.isActive },
-      newValues: body,
+      oldValues: { role: existing.role, roleId: existing.roleId, isActive: existing.isActive },
+      newValues: { ...body, ...(assigned ?? {}) },
     });
     return ok(res, user);
   }),

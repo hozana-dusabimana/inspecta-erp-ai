@@ -7,16 +7,17 @@ import { AppView } from '../types';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
+import FileOrUrlInput from './FileOrUrlInput';
 
 interface Props {
   onNavigate: (view: AppView) => void;
   onLogout: () => void;
 }
 
-// Roles a company admin can assign. PLATFORM_ADMIN is intentionally absent —
-// it is cross-tenant and only grantable from the Platform Console (the backend
-// rejects it here too).
-const ROLES = [
+// Base roles a company admin can pick as a role's coarse label. PLATFORM_ADMIN
+// is intentionally absent — it is cross-tenant and only grantable from the
+// Platform Console (the backend rejects it here too).
+const BASE_ROLES = [
   'SYSTEM_ADMIN',
   'PROJECT_MANAGER',
   'SITE_ENGINEER',
@@ -25,7 +26,7 @@ const ROLES = [
 ] as const;
 
 // Mirror of the backend Role enum — used for display only.
-const ALL_ROLES = ['PLATFORM_ADMIN', ...ROLES] as const;
+const ALL_ROLES = ['PLATFORM_ADMIN', ...BASE_ROLES] as const;
 type RoleName = (typeof ALL_ROLES)[number];
 
 interface AdminUser {
@@ -33,14 +34,36 @@ interface AdminUser {
   email: string;
   fullName: string;
   role: RoleName;
+  roleId: string | null;
+  roleDefinition: { id: string; name: string; key: string } | null;
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }
 
-interface RoleEntry {
-  role: RoleName;
+/** A role the company defined for itself. */
+interface RoleDef {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
   permissions: string[];
+  baseRole: RoleName;
+  isSystem: boolean;
+  isDefault: boolean;
+  userCount: number;
+}
+
+interface RolesResponse {
+  roles: RoleDef[];
+  permissions: string[];
+}
+
+function useRoles() {
+  return useQuery({
+    queryKey: ['admin-roles'],
+    queryFn: () => api.get<RolesResponse>('/roles'),
+  });
 }
 
 interface Organization {
@@ -71,6 +94,28 @@ const ROLE_TONE: Record<RoleName, string> = {
   QUANTITY_SURVEYOR: 'bg-violet-100 text-violet-700',
   STOREKEEPER: 'bg-emerald-100 text-emerald-700',
 };
+
+// A company can name any number of roles, so the chip colour comes from the
+// role's base role rather than a fixed per-name lookup.
+function toneFor(baseRole: string | undefined): string {
+  return ROLE_TONE[(baseRole as RoleName) ?? 'SITE_ENGINEER'] ?? ROLE_TONE.SITE_ENGINEER;
+}
+
+/** What to call an account's role: its company role if it has one, else the
+ *  built-in role it still falls back to. */
+function userRoleLabel(u: AdminUser): string {
+  return u.roleDefinition?.name ?? roleLabel(u.role);
+}
+
+/** Groups permissions by their resource so the editor reads as modules. */
+function groupPermissions(permissions: string[]): [string, string[]][] {
+  const groups = new Map<string, string[]>();
+  for (const p of permissions) {
+    const resource = p.split(':')[0];
+    groups.set(resource, [...(groups.get(resource) ?? []), p]);
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
 
 const inputCls =
   'w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary transition-all';
@@ -156,7 +201,9 @@ function UsersTab() {
                 </td>
                 <td className="px-4 py-3 text-brand-on-surface-variant">{u.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${ROLE_TONE[u.role]}`}>{roleLabel(u.role)}</span>
+                  {/* `role` is kept in sync with the company role's base role,
+                      so it is the right colour even for a custom role. */}
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${toneFor(u.role)}`}>{userRoleLabel(u)}</span>
                 </td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
@@ -199,17 +246,41 @@ function UsersTab() {
   );
 }
 
-function RoleSelect({ value, onChange }: { value: RoleName; onChange: (r: RoleName) => void }) {
+/** Picks one of the company's own roles. Falls back to a disabled hint while
+ *  the roles load, so the form never silently submits without a role. */
+function RoleSelect({
+  value, onChange, disabled,
+}: { value: string; onChange: (roleId: string) => void; disabled?: boolean }) {
+  const { data, isLoading } = useRoles();
+  const roles = data?.data.roles ?? [];
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value as RoleName)} className={inputCls}>
-      {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+    <select
+      value={value}
+      disabled={disabled || isLoading}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputCls}
+    >
+      {isLoading && <option value="">Loading roles…</option>}
+      {roles.map((r) => (
+        <option key={r.id} value={r.id}>
+          {r.name}{r.isDefault ? ' (default)' : ''}
+        </option>
+      ))}
     </select>
   );
 }
 
 function InviteModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState({ fullName: '', email: '', password: '', role: 'SITE_ENGINEER' as RoleName });
+  const { data: rolesData } = useRoles();
+  const roles = rolesData?.data.roles ?? [];
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', roleId: '' });
+  // Preselect whichever role the company marked as the default for new members.
+  useEffect(() => {
+    if (!form.roleId && roles.length) {
+      setForm((f) => ({ ...f, roleId: (roles.find((r) => r.isDefault) ?? roles[0]).id }));
+    }
+  }, [roles, form.roleId]);
   const mutation = useMutation({
     mutationFn: () => api.post('/users', form),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['admin-org'] }); onClose(); },
@@ -222,7 +293,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
         <div><label className={labelCls}>FULL NAME</label><input className={inputCls} required value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></div>
         <div><label className={labelCls}>EMAIL</label><input className={inputCls} type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div><label className={labelCls}>TEMPORARY PASSWORD</label><input className={inputCls} type="text" required minLength={8} placeholder="Min. 8 characters" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
-        <div><label className={labelCls}>ROLE</label><RoleSelect value={form.role} onChange={(role) => setForm({ ...form, role })} /></div>
+        <div><label className={labelCls}>ROLE</label><RoleSelect value={form.roleId} onChange={(roleId) => setForm({ ...form, roleId })} /></div>
         {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
         <button type="submit" disabled={mutation.isPending} className="w-full h-11 bg-brand-primary text-white font-bold text-xs rounded-lg hover:bg-brand-primary-container transition-all disabled:opacity-60">
           {mutation.isPending ? 'Creating…' : 'Create User'}
@@ -237,9 +308,9 @@ function EditModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
   const { user: me } = useAuth();
   const isSelf = user.id === me?.id;
   const [fullName, setFullName] = useState(user.fullName);
-  const [role, setRole] = useState<RoleName>(user.role);
+  const [roleId, setRoleId] = useState<string>(user.roleId ?? '');
   const mutation = useMutation({
-    mutationFn: () => api.put(`/users/${user.id}`, { fullName, role }),
+    mutationFn: () => api.put(`/users/${user.id}`, { fullName, ...(roleId ? { roleId } : {}) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['admin-org'] }); onClose(); },
   });
   const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Failed to update user' : null;
@@ -250,7 +321,7 @@ function EditModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
         <div><label className={labelCls}>FULL NAME</label><input className={inputCls} required value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
         <div>
           <label className={labelCls}>ROLE</label>
-          <RoleSelect value={role} onChange={setRole} />
+          <RoleSelect value={roleId} onChange={setRoleId} disabled={isSelf} />
           {isSelf && <p className="text-brand-on-surface-variant text-[10px] mt-1">You cannot change your own role.</p>}
         </div>
         {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
@@ -285,26 +356,87 @@ function ResetPasswordModal({ user, onClose }: { user: AdminUser; onClose: () =>
 }
 
 // ───────────────────────── Roles & Permissions tab ─────────────────────────
+// Roles are the company's own data: an admin builds the org chart they actually
+// have (Foreman, Store Manager, Site Agent…) and ticks the privileges each one
+// gets. Every API route and every screen is gated on those privileges, so a
+// change here takes effect on the holder's very next request.
 function RolesTab() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-roles'],
-    queryFn: () => api.get<{ roles: RoleEntry[]; permissions: string[] }>('/roles'),
-  });
+  const qc = useQueryClient();
+  const { data, isLoading } = useRoles();
   const roles = data?.data.roles ?? [];
+  const catalog = data?.data.permissions ?? [];
+
+  const [editing, setEditing] = useState<RoleDef | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const remove = useMutation({
+    mutationFn: (role: RoleDef) => api.del(`/roles/${role.id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-roles'] }),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Failed to delete role'),
+  });
+  const makeDefault = useMutation({
+    mutationFn: (role: RoleDef) => api.post(`/roles/${role.id}/default`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-roles'] }),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Failed to set default role'),
+  });
 
   return (
     <div>
-      <p className="text-brand-on-surface-variant text-xs mb-4">
-        Role-based access control matrix. Each role grants the permissions below; <strong>System Administrator</strong> has full access to every module.
-      </p>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <p className="text-brand-on-surface-variant text-xs max-w-2xl">
+          Your company's roles. Tick the privileges each one grants — every module, API and
+          button is gated on them, and changes apply on the holder's next action.
+          Built-in roles can be re-scoped but not deleted, and the{' '}
+          <strong>System Administrator</strong> role always keeps full access.
+        </p>
+        <button
+          onClick={() => setCreating(true)}
+          className="shrink-0 flex items-center gap-2 bg-brand-primary text-white font-bold text-xs rounded-lg px-4 py-2.5 hover:bg-brand-primary-container transition-all"
+        >
+          <Plus className="w-4 h-4" /> New Role
+        </button>
+      </div>
+
       {isLoading && <p className="text-brand-on-surface-variant text-xs">Loading roles…</p>}
       <div className="grid gap-4 md:grid-cols-2">
         {roles.map((r) => (
-          <div key={r.role} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${ROLE_TONE[r.role]}`}>{roleLabel(r.role)}</span>
-              <span className="text-[10px] font-bold text-brand-on-surface-variant">{r.permissions.length} permissions</span>
+          <div key={r.id} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-1 rounded-full text-[11px] font-bold ${toneFor(r.baseRole)}`}>{r.name}</span>
+                  {r.isDefault && <span className="px-2 py-0.5 rounded-full bg-brand-surface text-[9px] font-bold text-brand-on-surface-variant">DEFAULT</span>}
+                  {r.isSystem && <span className="px-2 py-0.5 rounded-full bg-brand-surface text-[9px] font-bold text-brand-on-surface-variant">BUILT-IN</span>}
+                </div>
+                {r.description && <p className="text-[11px] text-brand-on-surface-variant mt-1.5">{r.description}</p>}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button title="Edit permissions" onClick={() => setEditing(r)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  title={r.isSystem ? 'Built-in roles cannot be deleted' : r.userCount > 0 ? 'Move its members to another role first' : 'Delete role'}
+                  disabled={r.isSystem || r.userCount > 0 || remove.isPending}
+                  onClick={() => { if (confirm(`Delete the "${r.name}" role?`)) remove.mutate(r); }}
+                  className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
+
+            <div className="flex items-center justify-between text-[10px] font-bold text-brand-on-surface-variant mb-2">
+              <span>{r.permissions.length} permission{r.permissions.length === 1 ? '' : 's'}</span>
+              <span className="flex items-center gap-2">
+                {r.userCount} member{r.userCount === 1 ? '' : 's'}
+                {!r.isDefault && (
+                  <button onClick={() => makeDefault.mutate(r)} className="underline hover:text-brand-primary">
+                    make default
+                  </button>
+                )}
+              </span>
+            </div>
+
             <div className="flex flex-wrap gap-1.5">
               {r.permissions.map((p) => (
                 <span key={p} className="px-2 py-0.5 rounded-md bg-brand-surface text-brand-on-surface-variant text-[10px] font-mono font-semibold">{p}</span>
@@ -312,6 +444,112 @@ function RolesTab() {
             </div>
           </div>
         ))}
+      </div>
+
+      {(editing || creating) && (
+        <RoleEditor
+          role={editing}
+          catalog={catalog}
+          onClose={() => { setEditing(null); setCreating(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Create/edit a role: name, base role, and a permission grid by module. */
+function RoleEditor({
+  role, catalog, onClose,
+}: { role: RoleDef | null; catalog: string[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const isAdminRole = role?.key === 'system-admin';
+  const [name, setName] = useState(role?.name ?? '');
+  const [description, setDescription] = useState(role?.description ?? '');
+  const [baseRole, setBaseRole] = useState<RoleName>(role?.baseRole ?? 'SITE_ENGINEER');
+  const [selected, setSelected] = useState<Set<string>>(new Set(role?.permissions ?? []));
+
+  const toggle = (perm: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(perm)) next.delete(perm); else next.add(perm);
+      return next;
+    });
+  };
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = { name, description, baseRole, permissions: [...selected] };
+      return role ? api.put(`/roles/${role.id}`, body) : api.post('/roles', body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-roles'] });
+      qc.invalidateQueries({ queryKey: ['admin-users'] });
+      onClose();
+    },
+  });
+  const err = save.error instanceof ApiError ? save.error.message : save.isError ? 'Failed to save role' : null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-brand-on-surface/50 backdrop-blur-md flex items-center justify-center px-4 py-8">
+      <div className="bg-brand-surface-container-lowest max-w-3xl w-full max-h-full overflow-y-auto rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30">
+        <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
+          <X className="w-5 h-5" />
+        </button>
+        <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">
+          {role ? `Edit role — ${role.name}` : 'New role'}
+        </h3>
+
+        <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>ROLE NAME</label>
+              <input className={inputCls} required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Foreman" />
+            </div>
+            <div>
+              <label className={labelCls}>BASED ON</label>
+              <select className={inputCls} value={baseRole} disabled={isAdminRole} onChange={(e) => setBaseRole(e.target.value as RoleName)}>
+                {BASE_ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+              </select>
+              <p className="text-brand-on-surface-variant text-[10px] mt-1">Used for reporting and alert routing, not for access.</p>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>DESCRIPTION</label>
+            <input className={inputCls} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this role is responsible for" />
+          </div>
+
+          {isAdminRole ? (
+            <p className="text-[11px] text-brand-on-surface-variant bg-brand-surface rounded-lg p-3">
+              The System Administrator role always holds every permission. Trimming it would
+              leave nobody able to put the permission back.
+            </p>
+          ) : (
+            <div>
+              <label className={labelCls}>PERMISSIONS</label>
+              <div className="grid sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+                {groupPermissions(catalog.filter((p) => p !== 'platform:manage')).map(([resource, perms]) => (
+                  <div key={resource} className="bg-brand-surface rounded-lg p-3">
+                    <p className="text-[10px] font-bold text-brand-primary uppercase tracking-wider mb-2">{resource}</p>
+                    <div className="space-y-1.5">
+                      {perms.map((p) => (
+                        <label key={p} className="flex items-center gap-2 text-[11px] font-semibold text-brand-on-surface-variant cursor-pointer">
+                          <input type="checkbox" checked={selected.has(p)} onChange={() => toggle(p)} className="accent-brand-primary" />
+                          <span className="font-mono">{p.split(':')[1]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-brand-on-surface-variant text-[10px] mt-2">{selected.size} selected</p>
+            </div>
+          )}
+
+          {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+          <button type="submit" disabled={save.isPending} className="w-full h-11 bg-brand-primary text-white font-bold text-xs rounded-lg hover:bg-brand-primary-container transition-all disabled:opacity-60">
+            {save.isPending ? 'Saving…' : role ? 'Save Role' : 'Create Role'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -326,7 +564,6 @@ const SETTING_FIELDS: { name: keyof Organization; label: string }[] = [
   { name: 'timezone', label: 'Timezone' },
   { name: 'currency', label: 'Currency (e.g. RWF)' },
   { name: 'phone', label: 'Phone' },
-  { name: 'logoUrl', label: 'Logo URL' },
 ];
 
 function CompanyTab() {
@@ -368,6 +605,13 @@ function CompanyTab() {
               <input className={inputCls} value={form[f.name] ?? ''} onChange={(e) => setForm({ ...form, [f.name]: e.target.value })} />
             </div>
           ))}
+        </div>
+        <div>
+          <label className={labelCls}>COMPANY LOGO</label>
+          <FileOrUrlInput
+            value={form.logoUrl ?? ''} accept="image/*"
+            onChange={(v) => setForm({ ...form, logoUrl: v })}
+          />
         </div>
         <div>
           <label className={labelCls}>ADDRESS</label>

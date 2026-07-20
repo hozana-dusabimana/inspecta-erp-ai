@@ -46,7 +46,7 @@ Generate secrets: `openssl rand -base64 48`
 |-----|-----------------|
 | `SEED_ADMIN_PASSWORD` | Defaults to public `Admin@12345` — **change immediately** |
 | `AI_PROVIDER` + provider key (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) | Copilot runs in offline/deterministic mode (still answers from live data) |
-| `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` | Document uploads disabled |
+| `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | File uploads disabled (attaching links still works) |
 | `SMTP_HOST` + creds | Email notifications disabled (in-app still works) |
 
 ---

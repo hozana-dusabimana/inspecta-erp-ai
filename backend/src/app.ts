@@ -25,6 +25,7 @@ import planningRoutes from './modules/planning/planning.routes';
 import productionRoutes from './modules/production/production.routes';
 import financeRoutes from './modules/finance/finance.routes';
 import inventoryRoutes from './modules/inventory/inventory.routes';
+import requisitionRoutes from './modules/requisitions/requisitions.routes';
 import procurementRoutes from './modules/procurement/procurement.routes';
 import qaqcRoutes from './modules/qaqc/qaqc.routes';
 import hseRoutes from './modules/hse/hse.routes';
@@ -125,6 +126,7 @@ export function createApp() {
   app.use('/api/production', productionRoutes); // M2
   app.use('/api/finance', financeRoutes); // M3
   app.use('/api/inventory', inventoryRoutes); // M4
+  app.use('/api/requisitions', requisitionRoutes); // M4b — site → store requisitions
   app.use('/api/procurement', procurementRoutes); // M17
   app.use('/api/qaqc', qaqcRoutes); // M5
   app.use('/api/hse', hseRoutes); // M6

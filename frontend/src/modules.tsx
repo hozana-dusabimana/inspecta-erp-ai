@@ -13,6 +13,7 @@ import FinanceAnalytics from './components/FinanceAnalytics';
 import ComplianceAnalytics from './components/ComplianceAnalytics';
 import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
+import RequisitionWorkspace from './components/RequisitionWorkspace';
 import {
   PROJECT_FIELDS, CLIENT_FIELDS, SUPPLIER_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
   SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
@@ -394,7 +395,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <PlanningIO projectId={pid} />,
     tabs: [
       {
-        key: 'projects', label: 'Project Setup', endpoint: '/projects', entityLabel: 'Project',
+        key: 'projects', label: 'Project Setup', endpoint: '/projects', entityLabel: 'Project', attachModule: 'project',
         filters: [{ field: 'status', label: 'Status', options: opt(['PLANNING', 'ACTIVE', 'ON_HOLD', 'AT_RISK', 'COMPLETED', 'CANCELLED']) }],
         readPerm: 'project:read', writePerm: 'project:write',
         columns: [
@@ -408,7 +409,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: PROJECT_FIELDS,
       },
       {
-        key: 'clients', label: 'Clients', endpoint: '/clients', entityLabel: 'Client',
+        key: 'clients', label: 'Clients', endpoint: '/clients', entityLabel: 'Client', attachModule: 'client',
         readPerm: 'client:read', writePerm: 'client:write',
         columns: [
           { key: 'name', label: 'Name', sortable: true }, { key: 'contactName', label: 'Contact' },
@@ -417,7 +418,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: CLIENT_FIELDS,
       },
       {
-        key: 'contracts', label: 'Contracts', endpoint: '/contracts', entityLabel: 'Contract',
+        key: 'contracts', label: 'Contracts', endpoint: '/contracts', entityLabel: 'Contract', attachModule: 'contract',
         readPerm: 'contract:read', writePerm: 'contract:write',
         columns: [
           { key: 'reference', label: 'Reference' },
@@ -432,7 +433,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'contractNumber', label: 'Contract Number', section: 'Contract' },
           { name: 'type', label: 'Contract Type', type: 'select', options: opt(['LUMP_SUM', 'UNIT_PRICE', 'COST_PLUS', 'TIME_AND_MATERIAL']), section: 'Contract' },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'ACTIVE', 'CLOSED']), section: 'Contract' },
-          { name: 'documentsUrl', label: 'Contract Documents (URL)', section: 'Contract' },
+          { name: 'documentsUrl', label: 'Contract Documents', type: 'file', section: 'Contract' },
           { name: 'clientId', label: 'Client', type: 'select', optionsEndpoint: '/clients', optionLabel: (r) => r.name, required: true, section: 'Parties & Project', createConfig: { endpoint: '/clients', entityLabel: 'Client', fields: CLIENT_FIELDS } },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}`, section: 'Parties & Project' },
           { name: 'value', label: 'Contract Value', type: 'number', section: 'Commercials' },
@@ -448,7 +449,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'wbs', label: 'WBS', endpoint: '/planning/wbs', entityLabel: 'WBS Item',
+        key: 'wbs', label: 'WBS', endpoint: '/planning/wbs', entityLabel: 'WBS Item', attachModule: 'wbs',
         projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Activity' },
@@ -475,7 +476,7 @@ export const MODULES: Record<string, ModuleDef> = {
         component: WbsTree, columns: [], fields: [],
       },
       {
-        key: 'boq', label: 'BOQ', endpoint: '/planning/boq', entityLabel: 'BOQ Item',
+        key: 'boq', label: 'BOQ', endpoint: '/planning/boq', entityLabel: 'BOQ Item', attachModule: 'boq',
         projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'category', label: 'Category' },
@@ -530,7 +531,7 @@ export const MODULES: Record<string, ModuleDef> = {
     subtitle: 'Employee register, trades, wages, crews & availability (Module 1)',
     tabs: [
       {
-        key: 'employees', label: 'Employees', endpoint: '/hr/employees', entityLabel: 'Employee',
+        key: 'employees', label: 'Employees', endpoint: '/hr/employees', entityLabel: 'Employee', attachModule: 'employee',
         filters: [{ field: 'status', label: 'Status', options: opt(['active', 'on_leave', 'terminated']) }],
         summaryCards: [{ key: '__count', label: 'Employees' }, { key: 'grossMonthlySalary', label: 'Monthly Wage Bill', money: true }],
         readPerm: 'hr:read', writePerm: 'hr:write',
@@ -583,7 +584,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'name', label: 'Full Name', required: true },
           { name: 'title', label: 'Title / Role', required: true },
           { name: 'bio', label: 'Short Bio', type: 'textarea' },
-          { name: 'photoUrl', label: 'Photo URL (upload to /public or paste a link)' },
+          { name: 'photoUrl', label: 'Photo', type: 'file', accept: 'image/*' },
           { name: 'sortOrder', label: 'Display Order', type: 'number' },
           { name: 'published', label: 'Show on website?', type: 'select', options: [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }] },
         ],
@@ -661,7 +662,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: () => <PayrollSummary />,
     tabs: [
       {
-        key: 'runs', label: 'Payroll Runs', endpoint: '/payroll/runs', entityLabel: 'Payroll Run',
+        key: 'runs', label: 'Payroll Runs', endpoint: '/payroll/runs', entityLabel: 'Payroll Run', attachModule: 'payroll_run',
         readPerm: 'payroll:read', writePerm: 'payroll:write',
         columns: [], fields: [],
         component: PayrollWorkspace,
@@ -723,7 +724,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'service-invoices', label: 'Service Invoices', endpoint: '/pos/service-invoices', entityLabel: 'Service Invoice',
+        key: 'service-invoices', label: 'Service Invoices', endpoint: '/pos/service-invoices', entityLabel: 'Service Invoice', attachModule: 'service_invoice',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['PENDING', 'PAID', 'OVERDUE', 'CANCELLED']) }],
         summaryCards: [{ key: 'totalAmount', label: 'Total Billed', money: true }, { key: '__count', label: 'Invoices' }],
         readPerm: 'pos:read', writePerm: 'pos:write',
@@ -754,7 +755,7 @@ export const MODULES: Record<string, ModuleDef> = {
     subtitle: 'Register, categories, rates, utilization & maintenance (Module 1)',
     tabs: [
       {
-        key: 'register', label: 'Register', endpoint: '/equipment/register', entityLabel: 'Equipment',
+        key: 'register', label: 'Register', endpoint: '/equipment/register', entityLabel: 'Equipment', attachModule: 'equipment',
         readPerm: 'equipment:read', writePerm: 'equipment:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
@@ -806,7 +807,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'maintenance', label: 'Maintenance', endpoint: '/equipment/maintenance', entityLabel: 'Maintenance',
+        key: 'maintenance', label: 'Maintenance', endpoint: '/equipment/maintenance', entityLabel: 'Maintenance', attachModule: 'equipment_maintenance',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['SCHEDULED', 'DONE', 'OVERDUE']) }],
         summaryCards: [{ key: 'cost', label: 'Total Cost', money: true }, { key: 'downtimeHours', label: 'Downtime (h)' }],
         readPerm: 'equipment:read', writePerm: 'equipment:write',
@@ -830,7 +831,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'fuel', label: 'Fuel Logs', endpoint: '/equipment/fuel-logs', entityLabel: 'Fuel Log',
+        key: 'fuel', label: 'Fuel Logs', endpoint: '/equipment/fuel-logs', entityLabel: 'Fuel Log', attachModule: 'fuel_log',
         dateFilter: true,
         summaryCards: [{ key: 'liters', label: 'Total Liters' }, { key: 'totalCost', label: 'Total Fuel Cost', money: true }],
         readPerm: 'equipment:read', writePerm: 'equipment:write',
@@ -901,7 +902,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'entries', label: 'Daily Entries', endpoint: '/production', entityLabel: 'Production Entry',
+        key: 'entries', label: 'Daily Entries', endpoint: '/production', entityLabel: 'Production Entry', attachModule: 'production_entry',
         dateFilter: true,
         summaryCards: [{ key: 'actualQty', label: 'Actual Qty' }, { key: 'plannedQty', label: 'Planned Qty' }, { key: 'laborHours', label: 'Labor Hours' }],
         projectScoped: true, readPerm: 'production:read', writePerm: 'production:write',
@@ -963,7 +964,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <FinanceAnalytics projectId={pid} />,
     tabs: [
       {
-        key: 'budget', label: 'Budget', endpoint: '/finance/budget', entityLabel: 'Budget Line',
+        key: 'budget', label: 'Budget', endpoint: '/finance/budget', entityLabel: 'Budget Line', attachModule: 'budget_line',
         filters: [{ field: 'category', label: 'Category', options: COST_CATEGORIES }],
         summaryCards: [{ key: 'amount', label: 'Total Budget', money: true }, { key: '__count', label: 'Lines' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -982,7 +983,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'costs', label: 'Actual Costs', endpoint: '/finance/costs', entityLabel: 'Cost Entry',
+        key: 'costs', label: 'Actual Costs', endpoint: '/finance/costs', entityLabel: 'Cost Entry', attachModule: 'cost_entry',
         dateFilter: true, filters: [{ field: 'category', label: 'Category', options: COST_CATEGORIES }],
         summaryCards: [{ key: 'amount', label: 'Total Cost', money: true }, { key: '__count', label: 'Entries' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1001,7 +1002,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'cashflow', label: 'Cash Flow', endpoint: '/finance/cash-flow-entries', entityLabel: 'Cash Movement',
+        key: 'cashflow', label: 'Cash Flow', endpoint: '/finance/cash-flow-entries', entityLabel: 'Cash Movement', attachModule: 'cash_flow',
         dateFilter: true, filters: [{ field: 'direction', label: 'Direction', options: opt(['IN', 'OUT']) }],
         summaryCards: [{ key: 'amount', label: 'Total Movement', money: true }, { key: '__count', label: 'Entries' }],
         readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1054,7 +1055,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'payments', label: 'Payments', endpoint: '/finance/payments', entityLabel: 'Payment',
+        key: 'payments', label: 'Payments', endpoint: '/finance/payments', entityLabel: 'Payment', attachModule: 'payment',
         dateFilter: true,
         summaryCards: [{ key: 'amount', label: 'Total Received', money: true }, { key: '__count', label: 'Payments' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1072,6 +1073,22 @@ export const MODULES: Record<string, ModuleDef> = {
     ],
   },
 
+  [AppView.REQUISITIONS]: {
+    view: AppView.REQUISITIONS,
+    title: 'Material Requisitions',
+    subtitle: 'Site asks the store, engineer approves, store issues (Module 4b)',
+    tabs: [
+      {
+        // The whole module is one workflow screen: line items and status
+        // transitions are beyond what the generic table can drive.
+        key: 'board', label: 'Requisitions', endpoint: '/requisitions', entityLabel: 'Requisition',
+        projectScoped: true,
+        readPerm: 'requisition:read', writePerm: 'requisition:write',
+        columns: [], fields: [],
+        component: RequisitionWorkspace,
+      },
+    ],
+  },
   [AppView.INVENTORY]: {
     view: AppView.INVENTORY,
     title: 'Inventory Control',
@@ -1079,7 +1096,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: () => <InventorySummary />,
     tabs: [
       {
-        key: 'materials', label: 'Materials', endpoint: '/inventory/materials', entityLabel: 'Material',
+        key: 'materials', label: 'Materials', endpoint: '/inventory/materials', entityLabel: 'Material', attachModule: 'material',
         readPerm: 'inventory:read', writePerm: 'inventory:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true }, { key: 'unit', label: 'Unit' },
@@ -1200,7 +1217,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: () => <ProcurementPanel />,
     tabs: [
       {
-        key: 'suppliers', label: 'Suppliers', endpoint: '/procurement/suppliers', entityLabel: 'Supplier',
+        key: 'suppliers', label: 'Suppliers', endpoint: '/procurement/suppliers', entityLabel: 'Supplier', attachModule: 'supplier',
         readPerm: 'procurement:read', writePerm: 'procurement:write',
         columns: [
           { key: 'name', label: 'Name', sortable: true }, { key: 'contactName', label: 'Contact' },
@@ -1240,7 +1257,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'prs', label: 'Purchase Requests', endpoint: '/procurement/purchase-requests', entityLabel: 'Purchase Request',
+        key: 'prs', label: 'Purchase Requests', endpoint: '/procurement/purchase-requests', entityLabel: 'Purchase Request', attachModule: 'purchase_request',
         filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'ORDERED', 'DELIVERED', 'CLOSED']) }],
         summaryCards: [{ key: 'total', label: 'Total Requested', money: true }, { key: '__count', label: 'Requests' }],
         readPerm: 'procurement:read', writePerm: 'procurement:write',
@@ -1259,7 +1276,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'rfqs', label: 'RFQs', endpoint: '/procurement/rfqs', entityLabel: 'RFQ',
+        key: 'rfqs', label: 'RFQs', endpoint: '/procurement/rfqs', entityLabel: 'RFQ', attachModule: 'rfq',
         readPerm: 'procurement:read', writePerm: 'procurement:write',
         columns: [
           { key: 'number', label: 'Number', sortable: true }, { key: 'status', label: 'Status' },
@@ -1274,7 +1291,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'quotes', label: 'Quotes', endpoint: '/procurement/rfq-quotes', entityLabel: 'Quote',
+        key: 'quotes', label: 'Quotes', endpoint: '/procurement/rfq-quotes', entityLabel: 'Quote', attachModule: 'rfq_quote',
         readPerm: 'procurement:read', writePerm: 'procurement:write',
         columns: [
           { key: 'rfq', label: 'RFQ', render: (r) => r.rfq?.number ?? '—' },
@@ -1291,7 +1308,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'deliveries', label: 'Deliveries', endpoint: '/procurement/deliveries', entityLabel: 'Delivery',
+        key: 'deliveries', label: 'Deliveries', endpoint: '/procurement/deliveries', entityLabel: 'Delivery', attachModule: 'delivery',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['PENDING', 'PARTIAL', 'RECEIVED']) }],
         readPerm: 'procurement:read', writePerm: 'procurement:write',
         columns: [
@@ -1338,7 +1355,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'tests', label: 'Material Tests', endpoint: '/qaqc/material-tests', entityLabel: 'Material Test',
+        key: 'tests', label: 'Material Tests', endpoint: '/qaqc/material-tests', entityLabel: 'Material Test', attachModule: 'material_test',
         filters: [{ field: 'result', label: 'Result', options: opt(['PASS', 'FAIL', 'PENDING']) }, { field: 'testType', label: 'Type', options: opt(['CONCRETE', 'SOIL', 'ASPHALT', 'STEEL', 'OTHER']) }],
         projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
         columns: [
@@ -1382,7 +1399,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'corrective', label: 'Corrective Actions', endpoint: '/qaqc/corrective-actions', entityLabel: 'Corrective Action',
+        key: 'corrective', label: 'Corrective Actions', endpoint: '/qaqc/corrective-actions', entityLabel: 'Corrective Action', attachModule: 'corrective_action',
         readPerm: 'qaqc:read', writePerm: 'qaqc:write',
         columns: [
           { key: 'description', label: 'Action' }, { key: 'responsiblePerson', label: 'Responsible' },
@@ -1398,7 +1415,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'rework', label: 'Rework', endpoint: '/qaqc/reworks', entityLabel: 'Rework',
+        key: 'rework', label: 'Rework', endpoint: '/qaqc/reworks', entityLabel: 'Rework', attachModule: 'rework',
         filters: [{ field: 'status', label: 'Status', options: opt(['OPEN', 'IN_PROGRESS', 'DONE']) }],
         summaryCards: [{ key: 'reworkCost', label: 'Total Rework Cost', money: true }, { key: '__count', label: 'Items' }],
         projectScoped: true, readPerm: 'qaqc:read', writePerm: 'qaqc:write',
@@ -1420,7 +1437,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'compliance-docs', label: 'Compliance Docs', endpoint: '/compliance/documents', entityLabel: 'Compliance Document',
+        key: 'compliance-docs', label: 'Compliance Docs', endpoint: '/compliance/documents', entityLabel: 'Compliance Document', attachModule: 'compliance_document',
         readPerm: 'document:read', writePerm: 'document:write',
         columns: [
           { key: 'docType', label: 'Type' }, { key: 'title', label: 'Title' },
@@ -1434,7 +1451,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'APPROVED', 'EXPIRED']) },
           { name: 'issueDate', label: 'Issue Date', type: 'date' },
           { name: 'expiryDate', label: 'Expiry Date', type: 'date' },
-          { name: 'fileUrl', label: 'File URL' },
+          { name: 'fileUrl', label: 'Document File', type: 'file' },
         ],
       },
     ],
@@ -1471,7 +1488,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'ppe', label: 'PPE', endpoint: '/hse/ppe', entityLabel: 'PPE Issue',
+        key: 'ppe', label: 'PPE', endpoint: '/hse/ppe', entityLabel: 'PPE Issue', attachModule: 'ppe_issue',
         readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
           { key: 'ppeType', label: 'PPE Type' }, { key: 'quantity', label: 'Qty', align: 'right' },
@@ -1488,7 +1505,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'safety-inspections', label: 'Safety Inspections', endpoint: '/hse/safety-inspections', entityLabel: 'Safety Inspection',
+        key: 'safety-inspections', label: 'Safety Inspections', endpoint: '/hse/safety-inspections', entityLabel: 'Safety Inspection', attachModule: 'safety_inspection',
         dateFilter: true, filters: [{ field: 'result', label: 'Result', options: opt(['PASS', 'FAIL', 'PENDING']) }],
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
@@ -1508,7 +1525,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'talks', label: 'Toolbox Talks', endpoint: '/hse/toolbox-talks', entityLabel: 'Toolbox Talk',
+        key: 'talks', label: 'Toolbox Talks', endpoint: '/hse/toolbox-talks', entityLabel: 'Toolbox Talk', attachModule: 'toolbox_talk',
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
@@ -1522,7 +1539,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'risk-assessments', label: 'Risk Assessments', endpoint: '/hse/risk-assessments', entityLabel: 'Risk Assessment',
+        key: 'risk-assessments', label: 'Risk Assessments', endpoint: '/hse/risk-assessments', entityLabel: 'Risk Assessment', attachModule: 'risk_assessment',
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
           { key: 'activityName', label: 'Activity' },
@@ -1540,7 +1557,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'ppe-checks', label: 'PPE Checks', endpoint: '/hse/ppe-checks', entityLabel: 'PPE Check',
+        key: 'ppe-checks', label: 'PPE Checks', endpoint: '/hse/ppe-checks', entityLabel: 'PPE Check', attachModule: 'ppe_check',
         dateFilter: true, filters: [{ field: 'result', label: 'Result', options: opt(['PASS', 'FAIL']) }],
         projectScoped: true, readPerm: 'hse:read', writePerm: 'hse:write',
         columns: [
@@ -1564,7 +1581,7 @@ export const MODULES: Record<string, ModuleDef> = {
     subtitle: 'Risk scoring & mitigation tracking (Module 24)',
     tabs: [
       {
-        key: 'risks', label: 'Risks', endpoint: '/risk', entityLabel: 'Risk',
+        key: 'risks', label: 'Risks', endpoint: '/risk', entityLabel: 'Risk', attachModule: 'risk',
         projectScoped: true, readPerm: 'risk:read', writePerm: 'risk:write',
         columns: [
           { key: 'title', label: 'Title' }, { key: 'category', label: 'Category' },
@@ -1595,7 +1612,7 @@ export const MODULES: Record<string, ModuleDef> = {
     ),
     tabs: [
       {
-        key: 'activities', label: 'Activities', endpoint: '/scheduling', entityLabel: 'Activity',
+        key: 'activities', label: 'Activities', endpoint: '/scheduling', entityLabel: 'Activity', attachModule: 'activity',
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
@@ -1647,7 +1664,7 @@ export const MODULES: Record<string, ModuleDef> = {
     subtitle: 'Site diary, task assignment & attendance (Module 16)',
     tabs: [
       {
-        key: 'diary', label: 'Site Diary', endpoint: '/fieldops/diary', entityLabel: 'Diary Entry',
+        key: 'diary', label: 'Site Diary', endpoint: '/fieldops/diary', entityLabel: 'Diary Entry', attachModule: 'diary_entry',
         projectScoped: true, readPerm: 'fieldops:read', writePerm: 'fieldops:write',
         columns: [
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
@@ -1661,7 +1678,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'tasks', label: 'Tasks', endpoint: '/fieldops/tasks', entityLabel: 'Task',
+        key: 'tasks', label: 'Tasks', endpoint: '/fieldops/tasks', entityLabel: 'Task', attachModule: 'task',
         filters: [{ field: 'status', label: 'Status', options: opt(['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED']) }],
         projectScoped: true, readPerm: 'fieldops:read', writePerm: 'fieldops:write',
         columns: [
@@ -1676,7 +1693,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'attendance', label: 'Attendance', endpoint: '/fieldops/attendance', entityLabel: 'Attendance',
+        key: 'attendance', label: 'Attendance', endpoint: '/fieldops/attendance', entityLabel: 'Attendance', attachModule: 'attendance',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['present', 'half_day', 'absent', 'leave']) }],
         summaryCards: [{ key: 'hoursWorked', label: 'Total Hours' }, { key: '__count', label: 'Records' }],
         projectScoped: true, readPerm: 'fieldops:read', writePerm: 'fieldops:write',
@@ -1706,7 +1723,7 @@ export const MODULES: Record<string, ModuleDef> = {
         component: DocumentRegister, columns: [], fields: [],
       },
       {
-        key: 'documents', label: 'Documents', endpoint: '/documents', entityLabel: 'Document',
+        key: 'documents', label: 'Documents', endpoint: '/documents', entityLabel: 'Document', attachModule: 'document',
         readPerm: 'document:read', writePerm: 'document:write',
         columns: [
           { key: 'name', label: 'Name', sortable: true }, { key: 'category', label: 'Category' },
@@ -1715,7 +1732,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category', ...pick(DOCUMENT_CATEGORY_OPTIONS) },
-          { name: 'url', label: 'File URL', required: true, placeholder: 'https://…' },
+          { name: 'url', label: 'Document', type: 'file', required: true, placeholder: 'https://… link to the document' },
           { name: 'version', label: 'Version', type: 'number' },
         ],
       },

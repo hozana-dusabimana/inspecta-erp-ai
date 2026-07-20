@@ -242,6 +242,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   users         User[]
+  roleDefinitions RoleDefinition[]
   clients       Client[]
   projects      Project[]
   contracts     Contract[]
@@ -354,6 +355,11 @@ model User {
   passwordHash   String
   fullName       String
   role           Role      @default(SITE_ENGINEER)
+  // Tenant-defined role. When set, THIS is the source of the account's
+  // permissions and `role` above degrades to a coarse label kept for the
+  // platform console and the system-role guards. When null the static matrix in
+  // auth/permissions.ts applies, which is what every pre-existing row does.
+  roleId         String?
   isActive       Boolean   @default(true)
   // Email verification for self-service company signup. Defaults to true so that
   // trusted creation paths (seed, admin-invite) and all pre-existing rows are
@@ -368,6 +374,7 @@ model User {
   updatedAt      DateTime  @updatedAt
 
   organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roleDefinition  RoleDefinition? @relation(fields: [roleId], references: [id], onDelete: SetNull)
   refreshTokens   RefreshToken[]
   managedProjects Project[]      @relation("ProjectManager")
   auditLogs       AuditLog[]
@@ -375,7 +382,46 @@ model User {
 
   @@unique([organizationId, email])
   @@index([organizationId])
+  @@index([roleId])
   @@map("users")
+}
+
+// ─────────────────── Tenant-defined roles (RBAC) ──────────────
+// A company builds its own org chart — Foreman, Store Manager, Site Agent —
+// instead of being forced into the fixed `Role` enum. `permissions` holds
+// "resource:action" strings validated against the catalog in auth/permissions.ts.
+//
+// `isSystem` marks the roles seeded for every org. They can be re-scoped but
+// never deleted, and the admin role's permission set is locked: a tenant that
+// could strip its own administrator would lock itself out of this very screen.
+// `platform:manage` is rejected on write — a tenant role must never be able to
+// mint cross-tenant access.
+model RoleDefinition {
+  id             String   @id @default(cuid())
+  organizationId String
+  // Stable machine key (e.g. "foreman"). Unique per org; used by seeds and
+  // by the base-role mapping below.
+  key            String
+  name           String
+  description    String?
+  permissions    String[] @default([])
+  // The enum role stamped on users who hold this role. Keeps the platform
+  // console, notification targeting and the system-role guards working.
+  baseRole       Role     @default(SITE_ENGINEER)
+  isSystem       Boolean  @default(false)
+  // Assigned to new members when no role is specified.
+  isDefault      Boolean  @default(false)
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users        User[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("role_definitions")
 }
 
 model RefreshToken {
@@ -833,6 +879,7 @@ model Material {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
   requirements   MaterialRequirement[]
+  requisitionItems MaterialRequisitionItem[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1107,10 +1154,16 @@ model ProjectDocument {
   module           String   // e.g. 'daily_report','ncr','grn','incident','ipc'
   recordId         String   // id of the record in the module's table (polymorphic)
   fileName         String
-  fileType         String   // 'photo' | 'pdf' | 'excel'
+  fileType         String   // 'photo' | 'pdf' | 'excel' | 'doc' | 'link' | 'other'
   mimeType         String
   fileSizeBytes    Int?
-  storagePath      String   // Supabase Storage object path
+  /// FILE = uploaded to remote storage (storagePath set).
+  /// LINK = an external reference the user pasted (externalUrl set) — e.g. a
+  /// SharePoint/Drive doc or a lab's online certificate. Evidence is often
+  /// hosted elsewhere; forcing an upload would just make people skip it.
+  sourceType       String   @default("FILE")
+  storagePath      String?  // remote storage object path (sourceType = FILE)
+  externalUrl      String?  // absolute http(s) URL (sourceType = LINK)
   documentCategory String?  // 'test_result','delivery_note','progress_photo',...
   description      String?
   isClientVisible  Boolean  @default(false)
@@ -2306,6 +2359,9 @@ model MaterialIssue {
   dateIssued     DateTime @default(now())
   issuedTo       String?
   issueNumber    String?
+  // Set when the issue was raised by fulfilling an approved requisition line,
+  // so the store can trace every drawdown back to who asked and who approved.
+  requisitionId  String?
   confirmed      Boolean  @default(false) // requires a signed issue slip to confirm (Memo §6)
   note           String?
   createdBy String?
@@ -2317,7 +2373,81 @@ model MaterialIssue {
   @@index([organizationId])
   @@index([materialId])
   @@index([projectId])
+  @@index([requisitionId])
   @@map("material_issues")
+}
+
+// ════════════ MODULE 4b — Material Requisitions (internal store) ════════════
+// The site's own request against the company store, distinct from a
+// PurchaseRequest (which buys from a supplier). Chain:
+//   foreman raises → site engineer approves → storekeeper issues from stock.
+//
+// Issuing does NOT invent its own ledger logic: it creates MaterialIssue rows,
+// which post ISSUE movements to the stock ledger, so balances, FIFO/WAVG
+// valuation and WBS cost allocation stay consistent with everything else.
+enum RequisitionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PARTIALLY_ISSUED
+  ISSUED
+  CANCELLED
+  CLOSED
+}
+
+model MaterialRequisition {
+  id             String            @id @default(cuid())
+  organizationId String
+  projectId      String
+  number         String
+  title          String?
+  status         RequisitionStatus @default(DRAFT)
+  // Where on site the materials are wanted, and when.
+  location       String?
+  requiredByDate DateTime?
+  dateRequested  DateTime          @default(now())
+  requestedById  String?
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
+  issuedById     String?
+  issuedAt       DateTime?
+  notes          String?
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MaterialRequisitionItem[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([projectId])
+  @@map("material_requisitions")
+}
+
+model MaterialRequisitionItem {
+  id            String  @id @default(cuid())
+  requisitionId String
+  materialId    String
+  wbsItemId     String? // cost allocation to activity, carried onto the issue
+  unit          String  @default("unit")
+  quantityRequested Decimal @default(0) @db.Decimal(18, 3)
+  // The approver may trim a line rather than reject the whole requisition.
+  quantityApproved  Decimal @default(0) @db.Decimal(18, 3)
+  // Filled in as the storekeeper issues; partial issues are normal.
+  quantityIssued    Decimal @default(0) @db.Decimal(18, 3)
+  note          String?
+
+  requisition MaterialRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  material    Material            @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@index([requisitionId])
+  @@index([materialId])
+  @@map("material_requisition_items")
 }
 
 // ════════════════ MODULE 12 — HSE Risk Assessments & PPE Checks ════════════════

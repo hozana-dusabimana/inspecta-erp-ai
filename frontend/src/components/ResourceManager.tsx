@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Plus, Trash2, Pencil, Eye, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
 import EntityForm from './EntityForm';
+import RecordDetail from './RecordDetail';
 
 // Re-exported so existing imports (`from './ResourceManager'`) keep working.
 export type { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
@@ -37,6 +38,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
+  const [viewingRow, setViewingRow] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Toolbar state
@@ -257,12 +259,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                     </th>
                   ))}
                   {attachModule && <th className="px-5 py-2.5">Evidence</th>}
-                  {canWrite && <th className="px-5 py-2.5 text-right">Actions</th>}
+                  {/* Always present: viewing a record is available to read-only users too. */}
+                  <th className="px-5 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + (canWrite ? 1 : 0)} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
+                  <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + 1} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
                 )}
                 {rows.map((row) => (
                   <tr key={row.id} className="border-b border-brand-outline-variant/10 hover:bg-brand-surface/40">
@@ -278,12 +281,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                           : <span className="text-amber-600 font-bold" title="No documents attached">⚠</span>}
                       </td>
                     )}
-                    {canWrite && (
-                      <td className="px-5 py-2.5 text-right whitespace-nowrap">
-                        <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button disabled={remove.isPending} onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-40" aria-label="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </td>
-                    )}
+                    <td className="px-5 py-2.5 text-right whitespace-nowrap">
+                      <button onClick={() => setViewingRow(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-on-surface-variant" aria-label="View details" title="View all details"><Eye className="w-3.5 h-3.5" /></button>
+                      {canWrite && <>
+                        <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button disabled={remove.isPending} onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-40" aria-label="Delete" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -317,6 +321,22 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           projectScoped={projectScoped}
           attachModule={attachModule}
           onClose={() => setFormOpen(false)}
+        />
+      )}
+
+      {/* Read-only "view everything" for a single record */}
+      {viewingRow && (
+        <RecordDetail
+          entityLabel={entityLabel}
+          row={viewingRow}
+          fields={fields}
+          columns={columns}
+          attachModule={attachModule}
+          projectId={projectId}
+          projectScoped={projectScoped}
+          canWrite={canWrite}
+          onEdit={() => { const r = viewingRow; setViewingRow(null); openEdit(r); }}
+          onClose={() => setViewingRow(null)}
         />
       )}
     </div>

@@ -60,7 +60,7 @@ function NavLink({ item, active, nested, onSelect }: {
  */
 function PlatformSidebar({ active, onSelect }: { active?: AppView; onSelect: (v: AppView) => void }) {
   return (
-    <nav className="px-3 space-y-1">
+    <nav className="px-3 space-y-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
       <p className="px-4 pb-2 text-[9px] font-bold uppercase tracking-widest text-brand-on-primary-container/50">
         Platform
       </p>
@@ -103,7 +103,7 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
       {open && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={onClose} />}
 
       <aside
-        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-nav border-r border-brand-outline-variant flex flex-col justify-between py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`w-64 h-screen fixed lg:sticky top-0 left-0 bg-brand-nav border-r border-brand-outline-variant flex flex-col py-4 shadow-md z-50 shrink-0 transition-transform duration-300 lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <button
           onClick={onClose}
@@ -112,9 +112,9 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
         >
           <X className="w-5 h-5" />
         </button>
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 flex-1 min-h-0">
           <div
-            className="px-6 py-2 flex items-center gap-3 cursor-pointer"
+            className="px-6 py-2 flex items-center gap-3 cursor-pointer shrink-0"
             onClick={() => go(platformMode ? AppView.PLATFORM : AppView.DASHBOARD)}
           >
             <img src="/inspecta-icon.svg" alt="Inspecta" className="w-10 h-10 rounded-xl shadow-lg" />
@@ -129,7 +129,7 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
           {platformMode ? (
             <PlatformSidebar active={active} onSelect={go} />
           ) : (
-          <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]">
+          <nav className="px-3 space-y-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
             {NAV_TREE.map((entry) => {
               if (!isGroup(entry)) {
                 return visible(entry)
@@ -175,7 +175,7 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
           )}
         </div>
 
-        <div className="px-4 py-2 space-y-3">
+        <div className="px-4 py-2 space-y-3 shrink-0">
           {/* Lets the superadmin drop into their own company's ERP without
               leaving the console for good. */}
           {platformMode && (

@@ -13,7 +13,9 @@ interface Props {
   onLogout: () => void;
 }
 
-// Mirror of the backend Role enum.
+// Roles a company admin can assign. PLATFORM_ADMIN is intentionally absent —
+// it is cross-tenant and only grantable from the Platform Console (the backend
+// rejects it here too).
 const ROLES = [
   'SYSTEM_ADMIN',
   'PROJECT_MANAGER',
@@ -21,7 +23,10 @@ const ROLES = [
   'QUANTITY_SURVEYOR',
   'STOREKEEPER',
 ] as const;
-type RoleName = (typeof ROLES)[number];
+
+// Mirror of the backend Role enum — used for display only.
+const ALL_ROLES = ['PLATFORM_ADMIN', ...ROLES] as const;
+type RoleName = (typeof ALL_ROLES)[number];
 
 interface AdminUser {
   id: string;
@@ -59,6 +64,7 @@ function roleLabel(role: string) {
 }
 
 const ROLE_TONE: Record<RoleName, string> = {
+  PLATFORM_ADMIN: 'bg-brand-secondary-container/20 text-brand-secondary-container',
   SYSTEM_ADMIN: 'bg-brand-primary/10 text-brand-primary',
   PROJECT_MANAGER: 'bg-amber-100 text-amber-700',
   SITE_ENGINEER: 'bg-sky-100 text-sky-700',
@@ -140,7 +146,10 @@ function UsersTab() {
             {isLoading && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-brand-on-surface-variant">Loading users…</td></tr>
             )}
-            {users.map((u) => (
+            {users.map((u) => {
+              // Platform admins are managed from the Platform Console, not here.
+              const locked = u.role === 'PLATFORM_ADMIN';
+              return (
               <tr key={u.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
                 <td className="px-4 py-3 font-bold text-brand-primary">
                   {u.fullName}{u.id === me?.id && <span className="ml-2 text-[9px] font-bold text-brand-on-surface-variant">(you)</span>}
@@ -157,15 +166,15 @@ function UsersTab() {
                 <td className="px-4 py-3 text-brand-on-surface-variant">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <button title="Edit role / name" onClick={() => setEditUser(u)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                    <button title={locked ? 'Managed from the Platform Console' : 'Edit role / name'} disabled={locked} onClick={() => setEditUser(u)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary disabled:opacity-30 disabled:cursor-not-allowed">
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button title="Reset password" onClick={() => setPwUser(u)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                    <button title={locked ? 'Managed from the Platform Console' : 'Reset password'} disabled={locked} onClick={() => setPwUser(u)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary disabled:opacity-30 disabled:cursor-not-allowed">
                       <KeyRound className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      title={u.isActive ? 'Deactivate' : 'Activate'}
-                      disabled={u.id === me?.id || toggleActive.isPending}
+                      title={locked ? 'Managed from the Platform Console' : u.isActive ? 'Deactivate' : 'Activate'}
+                      disabled={locked || u.id === me?.id || toggleActive.isPending}
                       onClick={() => toggleActive.mutate(u)}
                       className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary disabled:opacity-30 disabled:cursor-not-allowed"
                     >
@@ -174,7 +183,8 @@ function UsersTab() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {!isLoading && users.length === 0 && (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-brand-on-surface-variant">No users yet.</td></tr>
             )}
@@ -377,7 +387,7 @@ function CompanyTab() {
         <p className="font-mono text-3xl font-extrabold text-brand-primary mb-4">{org.totalUsers}</p>
         <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-2">By Role</p>
         <div className="space-y-2">
-          {ROLES.map((r) => (
+          {ALL_ROLES.filter((r) => r !== 'PLATFORM_ADMIN' || (org.usersByRole?.[r] ?? 0) > 0).map((r) => (
             <div key={r} className="flex items-center justify-between text-xs">
               <span className="text-brand-on-surface-variant">{roleLabel(r)}</span>
               <span className="font-bold text-brand-primary">{org.usersByRole?.[r] ?? 0}</span>

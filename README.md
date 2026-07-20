@@ -70,11 +70,48 @@ In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you 
 ### Sign in
 | Role | Email | Password |
 |---|---|---|
+| Platform Superadmin | `superadmin@inspecta.ai` | `Super@12345` |
 | System Administrator | `admin@inspecta.ai` | `Admin@12345` |
 | Project Manager | `pm@inspecta.ai` | `Demo@12345` |
 | Site Engineer | `engineer@inspecta.ai` | `Demo@12345` |
 | Quantity Surveyor | `qs@inspecta.ai` | `Demo@12345` |
 | Storekeeper | `store@inspecta.ai` | `Demo@12345` |
+
+The superadmin is the only account that sees the **Platform Console** (`/platform`).
+Override the seeded credentials with `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD`.
+
+---
+
+## Two levels of administration
+
+INSPECTA is multi-tenant, so "admin" means two different things:
+
+| | **System Administrator** (`SYSTEM_ADMIN`) | **Platform Superadmin** (`PLATFORM_ADMIN`) |
+|---|---|---|
+| Scope | One company | Every company |
+| Screen | Administration (`/admin`) | Platform Console (`/platform`) |
+| API | the normal `/api/*` modules, org-scoped | `/api/platform/*`, cross-tenant |
+| Permission | every `resource:action` except `platform:manage` | all of them, plus `platform:manage` |
+| Can | invite/edit users, set roles, edit company settings | list & suspend companies, block/unblock any user anywhere, change any role, reset any password, see platform analytics and the cross-company audit trail |
+
+**Platform Console tabs**
+- **Overview** — companies/users/projects totals, 12-month signup growth, users by role, busiest and newest tenants.
+- **Companies** — search & filter every tenant, drill into one (users, projects, recent activity), suspend or reinstate.
+- **Users** — every user across every company; block/unblock, change role, reset password.
+- **Audit Trail** — the audit log of all tenants at once, filterable by action/entity/date.
+
+All four lists export to CSV/XLSX.
+
+**Blocking is enforced immediately.** `authenticate` re-reads the account on every
+request, so blocking a user or suspending a company takes effect on their very next
+API call — not when their 15-minute access token expires. Both actions also revoke
+the affected refresh tokens.
+
+**Guard rails** — a superadmin cannot block, demote or lock out themselves, cannot
+suspend the company their own account belongs to, and the last active platform admin
+cannot be demoted. `PLATFORM_ADMIN` is not assignable from the company-level
+Administration screen or `/api/users` (that would let one tenant mint cross-tenant
+access); it can only be granted from the Platform Console.
 
 ---
 

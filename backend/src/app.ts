@@ -41,6 +41,7 @@ import approvalsRoutes from './modules/approvals/approvals.routes';
 import portfolioRoutes from './modules/portfolio/portfolio.routes';
 import geoRoutes from './modules/geo/geo.routes';
 import publicRoutes from './modules/public/public.routes';
+import platformRoutes from './modules/platform/platform.routes';
 
 export function createApp() {
   const app = express();
@@ -114,6 +115,7 @@ export function createApp() {
   app.use('/api/compliance', complianceRoutes);
   app.use('/api/projects', projectsRoutes);
   app.use('/api/audit', auditRoutes);
+  app.use('/api/platform', platformRoutes); // cross-tenant superadmin console
   app.use('/api/ai', aiRoutes);
 
   // ERP modules

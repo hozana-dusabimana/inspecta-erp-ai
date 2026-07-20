@@ -4,7 +4,7 @@ import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
   GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
-  Wallet, Store, Package, HardHat, Archive, Wrench,
+  Wallet, Store, Package, HardHat, Archive, Wrench, Globe,
 } from 'lucide-react';
 import { AppView } from '../types';
 
@@ -88,6 +88,8 @@ export const NAV_TREE: NavEntry[] = [
   { id: 'nav-copilot', label: 'AI Copilot', icon: Bot, view: AppView.COPILOT, perm: 'ai:use' },
   // Admin-only: only SYSTEM_ADMIN holds 'user:write'.
   { id: 'nav-admin', label: 'Administration', icon: ShieldCheck, view: AppView.ADMIN, perm: 'user:write' },
+  // Cross-tenant console: only PLATFORM_ADMIN holds 'platform:manage'.
+  { id: 'nav-platform', label: 'Platform Console', icon: Globe, view: AppView.PLATFORM, perm: 'platform:manage' },
 ];
 
 // Flat list of every navigable item, in sidebar order.

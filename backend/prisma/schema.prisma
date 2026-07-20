@@ -16,11 +16,22 @@ datasource db {
 // ─────────────────────────── Enums ───────────────────────────
 
 enum Role {
+  // Platform superadmin — operates ACROSS tenants (companies, cross-org users,
+  // platform analytics/audit). Also holds every in-org permission so the normal
+  // ERP screens keep working inside their home organization.
+  PLATFORM_ADMIN
   SYSTEM_ADMIN
   PROJECT_MANAGER
   SITE_ENGINEER
   QUANTITY_SURVEYOR
   STOREKEEPER
+}
+
+// Lifecycle of a tenant. SUSPENDED blocks every login and every API call from
+// that company's users (platform admins excepted).
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
 }
 
 enum ProjectStatus {
@@ -181,6 +192,11 @@ model Organization {
   // Tax / statutory (Rwanda RRA TIN, working-week basis for payroll & productivity)
   tinNumber          String?
   workingDaysPerWeek Int     @default(6)
+  // Platform-level tenant lifecycle (managed by PLATFORM_ADMIN via /api/platform)
+  status           OrgStatus @default(ACTIVE)
+  suspendedAt      DateTime?
+  suspendedReason  String?
+  suspendedById    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -195,6 +211,7 @@ model Organization {
   projectDocuments ProjectDocument[]
   notifications Notification[]
 
+  @@index([status])
   @@map("organizations")
 }
 

@@ -36,6 +36,7 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.NOTIFICATIONS]: '/notifications',
   [AppView.DAILY_ENTRY]: '/daily-entry',
   [AppView.ADMIN]: '/admin',
+  [AppView.PLATFORM]: '/platform',
 };
 
 export const PATH_TO_VIEW: Record<string, AppView> = Object.fromEntries(

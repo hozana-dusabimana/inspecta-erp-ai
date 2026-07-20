@@ -24,6 +24,7 @@ export enum AppView {
   APPROVALS = 'APPROVALS',
   PORTFOLIO = 'PORTFOLIO',
   ADMIN = 'ADMIN',
+  PLATFORM = 'PLATFORM',
   HR = 'HR',
   PAYROLL = 'PAYROLL',
   POS = 'POS',

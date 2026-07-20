@@ -2,7 +2,8 @@ import { Role } from '@prisma/client';
 
 /**
  * Permission matrix. Permissions are "resource:action" strings.
- * SYSTEM_ADMIN implicitly has every permission (handled in `can`).
+ * SYSTEM_ADMIN implicitly has every *tenant* permission (handled in `can`).
+ * PLATFORM_ADMIN additionally holds the cross-tenant `platform:manage`.
  * Single source of truth for RBAC across every API module.
  */
 export type Permission =
@@ -54,7 +55,8 @@ export type Permission =
   | 'report:read'
   | 'dashboard:read'
   | 'audit:read'
-  | 'ai:use';
+  | 'ai:use'
+  | 'platform:manage';
 
 const ALL: Permission[] = [
   'user:read', 'user:write',
@@ -87,6 +89,11 @@ const ALL: Permission[] = [
   'ai:use',
 ];
 
+// Cross-tenant permissions. Deliberately NOT part of `ALL`: a company's own
+// SYSTEM_ADMIN is the top of *their* tenant, but must never reach other tenants.
+// Only PLATFORM_ADMIN holds these.
+const PLATFORM_ONLY: Permission[] = ['platform:manage'];
+
 // Baseline every authenticated role gets. NOTE: `ai:use` (AI Copilot + Executive
 // Intelligence) and `report:read` (cross-module exports) are deliberately NOT
 // here — they expose cross-project financial/compliance data and are granted
@@ -97,6 +104,9 @@ const COMMON: Permission[] = [
 ];
 
 const matrix: Record<Role, Permission[]> = {
+  // Everything a SYSTEM_ADMIN can do inside a tenant, plus the cross-tenant console.
+  PLATFORM_ADMIN: [...ALL, ...PLATFORM_ONLY],
+
   SYSTEM_ADMIN: ALL,
 
   PROJECT_MANAGER: [
@@ -176,11 +186,17 @@ const matrix: Record<Role, Permission[]> = {
 };
 
 export function permissionsFor(role: Role): Permission[] {
+  if (role === 'PLATFORM_ADMIN') return [...ALL, ...PLATFORM_ONLY];
   return role === 'SYSTEM_ADMIN' ? ALL : matrix[role] ?? [];
 }
 
+/** True for roles that operate above the tenant boundary. */
+export function isPlatformRole(role: Role): boolean {
+  return role === 'PLATFORM_ADMIN';
+}
+
 /** The full permission catalog (used by the roles/admin endpoint). */
-export const allPermissions: Permission[] = ALL;
+export const allPermissions: Permission[] = [...ALL, ...PLATFORM_ONLY];
 
 /** Every role paired with its granted permissions — drives the admin RBAC viewer. */
 export function roleMatrix(): { role: Role; permissions: Permission[] }[] {
@@ -191,6 +207,8 @@ export function roleMatrix(): { role: Role; permissions: Permission[] }[] {
 }
 
 export function can(role: Role, permission: Permission): boolean {
-  if (role === 'SYSTEM_ADMIN') return true;
+  if (role === 'PLATFORM_ADMIN') return true;
+  // A tenant's SYSTEM_ADMIN gets every permission EXCEPT the cross-tenant ones.
+  if (role === 'SYSTEM_ADMIN') return !PLATFORM_ONLY.includes(permission);
   return (matrix[role] ?? []).includes(permission);
 }

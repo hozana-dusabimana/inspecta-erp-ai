@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { NotFound, Conflict, BadRequest } from '../../lib/errors';
+import { NotFound, Conflict, BadRequest, Forbidden } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
+import { isPlatformRole } from '../../auth/permissions';
 import { hashPassword } from '../../lib/password';
 import { auditFromRequest } from '../../auth/audit';
 
@@ -35,11 +36,21 @@ router.get(
   }),
 );
 
+/**
+ * Roles a tenant admin may assign. PLATFORM_ADMIN is deliberately excluded:
+ * this endpoint is reachable by any SYSTEM_ADMIN, so accepting it would let a
+ * single company mint itself cross-tenant access. Only the platform console
+ * (/api/platform, requirePlatformAdmin) can grant that role.
+ */
+const tenantRole = z
+  .nativeEnum(Role)
+  .refine((r) => !isPlatformRole(r), { message: 'This role can only be assigned from the platform console' });
+
 const inviteSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(2),
   password: z.string().min(8),
-  role: z.nativeEnum(Role),
+  role: tenantRole,
 });
 
 // INVITE a user into the caller's organization (admin only)
@@ -73,7 +84,7 @@ router.post(
 
 const updateSchema = z.object({
   fullName: z.string().min(2).optional(),
-  role: z.nativeEnum(Role).optional(),
+  role: tenantRole.optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -87,6 +98,11 @@ router.put(
       where: { id: req.params.id, organizationId: req.user!.orgId },
     });
     if (!existing) throw NotFound('User not found');
+    // A platform admin may sit inside this org, but a tenant admin must not be
+    // able to demote or block them out of the console.
+    if (isPlatformRole(existing.role)) {
+      throw Forbidden('This account is managed from the platform console');
+    }
 
     // Guard against an admin locking themselves out of their own account.
     if (existing.id === req.user!.id) {
@@ -124,6 +140,9 @@ router.post(
       select: selectPublic,
     });
     if (!existing) throw NotFound('User not found');
+    if (isPlatformRole(existing.role)) {
+      throw Forbidden('This account is managed from the platform console');
+    }
 
     await prisma.user.update({
       where: { id: existing.id },

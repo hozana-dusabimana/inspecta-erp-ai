@@ -8,6 +8,8 @@ const prisma = new PrismaClient();
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@inspecta.ai';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345';
+const SUPERADMIN_EMAIL = process.env.SEED_SUPERADMIN_EMAIL ?? 'superadmin@inspecta.ai';
+const SUPERADMIN_PASSWORD = process.env.SEED_SUPERADMIN_PASSWORD ?? 'Super@12345';
 
 async function main() {
   console.log('🌱 Seeding INSPECTA BUILDOS...');
@@ -22,10 +24,13 @@ async function main() {
   });
 
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const superHash = await bcrypt.hash(SUPERADMIN_PASSWORD, 10);
   const demoHash = await bcrypt.hash('Demo@12345', 10);
 
-  // One user per role so RBAC can be exercised end-to-end.
+  // One user per role so RBAC can be exercised end-to-end. The PLATFORM_ADMIN
+  // lives in this org too but operates across every tenant via /api/platform.
   const userSpecs: Array<{ email: string; fullName: string; role: Role; hash: string }> = [
+    { email: SUPERADMIN_EMAIL, fullName: 'Platform Superadmin', role: Role.PLATFORM_ADMIN, hash: superHash },
     { email: ADMIN_EMAIL, fullName: 'Alex Thompson', role: Role.SYSTEM_ADMIN, hash: passwordHash },
     { email: 'pm@inspecta.ai', fullName: 'Priya Mehta', role: Role.PROJECT_MANAGER, hash: demoHash },
     { email: 'engineer@inspecta.ai', fullName: 'Sam Okoro', role: Role.SITE_ENGINEER, hash: demoHash },

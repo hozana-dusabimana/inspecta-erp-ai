@@ -9,7 +9,7 @@ import {
   hashToken,
 } from '../../lib/jwt';
 import { Unauthorized, Conflict, NotFound, Forbidden, BadRequest } from '../../lib/errors';
-import { permissionsFor } from '../../auth/permissions';
+import { permissionsFor, isPlatformRole } from '../../auth/permissions';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
 
@@ -92,8 +92,24 @@ function publicUser(u: { id: string; email: string; fullName: string; role: Role
     fullName: u.fullName,
     role: u.role,
     organizationId: u.organizationId,
+    isPlatformAdmin: isPlatformRole(u.role),
     permissions: permissionsFor(u.role),
   };
+}
+
+/**
+ * Rejects sign-in for a member of a suspended tenant. Platform admins are exempt
+ * so they can always get in to inspect or reinstate a company.
+ */
+async function assertOrgUsable(user: { organizationId: string; role: Role }) {
+  if (isPlatformRole(user.role)) return;
+  const org = await prisma.organization.findUnique({
+    where: { id: user.organizationId },
+    select: { status: true },
+  });
+  if (org?.status === 'SUSPENDED') {
+    throw Forbidden('This company account is suspended. Contact support.');
+  }
 }
 
 /**
@@ -151,6 +167,7 @@ export async function verifyEmail(rawToken: string) {
   if (!user || !user.verificationExpiresAt || user.verificationExpiresAt < new Date()) {
     throw BadRequest('This verification link is invalid or has expired. Request a new one.');
   }
+  await assertOrgUsable(user);
 
   const verified = await prisma.user.update({
     where: { id: user.id },
@@ -194,6 +211,8 @@ export async function login(email: string, password: string) {
     throw Forbidden('Please verify your email before signing in. Check your inbox for the verification link.');
   }
 
+  await assertOrgUsable(user);
+
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
   const tokens = await issueTokens(user);
@@ -216,6 +235,7 @@ export async function refresh(refreshToken: string) {
 
   const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
   if (!user || !user.isActive) throw Unauthorized('User no longer active');
+  await assertOrgUsable(user);
 
   // Rotate: revoke old, issue new.
   await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });

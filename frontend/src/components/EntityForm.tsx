@@ -6,6 +6,7 @@ import { Field } from './formTypes';
 import GeoPicker from './GeoPicker';
 import DocumentAttachments from './DocumentAttachments';
 import FileOrUrlInput from './FileOrUrlInput';
+import { flushPending, type PendingAttachment } from '../lib/attachments';
 
 function DynamicSelect({ field, value, onChange, required, projectId }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean; projectId?: string }) {
   const url = useMemo(() => {
@@ -155,6 +156,10 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   // with evidence we stay open afterwards and offer the panel straight away —
   // otherwise the user has to find the row again and re-open it to attach.
   const [justCreated, setJustCreated] = useState<Record<string, any> | null>(null);
+  // Evidence chosen before the record existed, uploaded right after it saves.
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [attaching, setAttaching] = useState(false);
+  const [attachErrors, setAttachErrors] = useState<string[]>([]);
 
   const visible = fields.filter((f) => (isEdit ? !f.hideOnEdit : !f.hideOnCreate));
 
@@ -179,13 +184,29 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   const save = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       isEdit ? api.put(`${endpoint}/${editing!.id}`, payload) : api.post(endpoint, payload),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: [endpoint] });
       queryClient.invalidateQueries({ queryKey: ['options', endpoint] });
       const saved = (res as { data?: Record<string, any> })?.data ?? {};
       onSaved?.(saved);
-      if (!isEdit && attachModule && saved.id) setJustCreated(saved);
-      else onClose();
+      if (isEdit || !attachModule || !saved.id) { onClose(); return; }
+
+      // Upload anything queued on the form now that the record has an id. A
+      // failed attachment must not read as a failed create — the record is
+      // already saved, so surface the problem and keep the panel open.
+      if (pending.length) {
+        setAttaching(true);
+        const errors = await flushPending(
+          { module: attachModule, recordId: saved.id, projectId: projectScoped ? projectId : undefined },
+          pending,
+        );
+        setAttaching(false);
+        setPending([]);
+        setAttachErrors(errors);
+        queryClient.invalidateQueries({ queryKey: ['/project-documents', attachModule, saved.id] });
+        queryClient.invalidateQueries({ queryKey: ['/project-documents/coverage', attachModule] });
+      }
+      setJustCreated(saved);
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -278,6 +299,12 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-700">
               {entityLabel} created. Attach any supporting files or links now, or skip — you can add them later from the record.
             </div>
+            {attachErrors.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+                <p>The {entityLabel.toLowerCase()} saved, but {attachErrors.length} attachment(s) failed — you can retry below:</p>
+                <ul className="list-disc pl-4 mt-1 font-normal">{attachErrors.map((e) => <li key={e}>{e}</li>)}</ul>
+              </div>
+            )}
             <DocumentAttachments module={attachModule!} recordId={justCreated.id} projectId={projectScoped ? projectId : undefined} />
             <div className="flex justify-end pt-2">
               <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container">Done</button>
@@ -331,17 +358,24 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
                   Next <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <button type="submit" disabled={save.isPending} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container disabled:opacity-60">
-                  {save.isPending ? 'Saving…' : isEdit ? 'Save changes' : `Create ${entityLabel}`}
+                <button type="submit" disabled={save.isPending || attaching} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container disabled:opacity-60">
+                  {attaching ? `Uploading ${pending.length} attachment${pending.length === 1 ? '' : 's'}…`
+                    : save.isPending ? 'Saving…'
+                    : isEdit ? 'Save changes'
+                    : `Create ${entityLabel}${pending.length ? ` + ${pending.length} attachment${pending.length === 1 ? '' : 's'}` : ''}`}
                 </button>
               )}
             </div>
           </div>
         </form>
 
-        {attachModule && isEdit && editing && (
+        {attachModule && (isEdit && editing ? (
           <DocumentAttachments module={attachModule} recordId={editing.id} projectId={projectScoped ? projectId : undefined} />
-        )}
+        ) : !isEdit && (
+          // Create form: no record id yet, so choices are queued and uploaded
+          // on save. Showing the panel here is what makes the feature findable.
+          <DocumentAttachments module={attachModule} pending={pending} onPendingChange={setPending} />
+        ))}
         </>
         )}
 

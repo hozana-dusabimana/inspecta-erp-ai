@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Upload, Camera, FileText, FileSpreadsheet, File, Link2, Trash2, Download, ExternalLink, X } from 'lucide-react';
+import { Paperclip, Upload, Camera, FileText, FileSpreadsheet, File, Link2, Trash2, Download, ExternalLink, Clock, X } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import {
-  ACCEPT_ANY_DOCUMENT, classifyFileType, compressImage, isAcceptableUrl,
-  kb, uploadToCloudinary, withRetry, type FileKind, type SignedUpload,
-} from '../lib/upload';
+import { ACCEPT_ANY_DOCUMENT, isAcceptableUrl, kb, type FileKind } from '../lib/upload';
+import { attachFile, attachLink, pendingLabel, type PendingAttachment } from '../lib/attachments';
 
 interface Doc {
   id: string;
@@ -33,17 +31,34 @@ function KindIcon({ doc }: { doc: Doc }) {
   return <File className="w-4 h-4 text-brand-on-surface-variant shrink-0" />;
 }
 
+interface Props {
+  module: string;
+  /** Omit on a create form — the record has no id yet, so choices are queued. */
+  recordId?: string;
+  projectId?: string;
+  /** Queue state, owned by the parent so it survives until the record is saved. */
+  pending?: PendingAttachment[];
+  onPendingChange?: (next: PendingAttachment[]) => void;
+}
+
 /**
  * Reusable evidence panel (Developer Memo §5.1). Lists everything attached to a
  * specific record and lets authorized users add more — either by uploading a
  * file or by pasting a link to evidence hosted elsewhere (a lab portal, a
- * SharePoint/Drive document, a supplier's certificate page). Embed at the
- * bottom of a record's edit form via `module` + `recordId` (+ `projectId`).
+ * SharePoint/Drive document, a supplier's certificate page).
+ *
+ * Two modes:
+ * - `recordId` set (edit form): acts immediately on that record.
+ * - no `recordId` (create form): the record doesn't exist yet, so uploads have
+ *   nothing to attach to. Choices are queued in the parent and replayed by
+ *   `flushPending` the moment the record is saved — otherwise users have to
+ *   create the record, find the row again and reopen it just to add evidence.
  */
-export default function DocumentAttachments({ module, recordId, projectId }: { module: string; recordId: string; projectId?: string }) {
+export default function DocumentAttachments({ module, recordId, projectId, pending, onPendingChange }: Props) {
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('document:write');
+  const deferred = !recordId;
   const [category, setCategory] = useState('progress_photo');
   const [description, setDescription] = useState('');
   const [progress, setProgress] = useState<Record<string, number>>({}); // fileName → %
@@ -56,8 +71,10 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
   const { data, isLoading } = useQuery({
     queryKey: key,
     queryFn: () => api.get<Doc[]>(`/project-documents?module=${module}&recordId=${recordId}&pageSize=200`),
+    enabled: !deferred, // nothing to fetch before the record exists
   });
   const docs = data?.data ?? [];
+  const queued = pending ?? [];
 
   const del = useMutation({
     mutationFn: (id: string) => api.del(`/project-documents/${id}`),
@@ -65,55 +82,49 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
     onError: (e) => setError(errorMessage(e)),
   });
 
-  const addLink = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.post('/project-documents', body),
-    onSuccess: () => {
-      setLinkUrl(''); setLinkLabel(''); setShowLink(false); setDescription('');
-      qc.invalidateQueries({ queryKey: key });
-    },
-    onError: (e) => setError(errorMessage(e)),
-  });
+  const queue = (item: PendingAttachment) => onPendingChange?.([...queued, item]);
+  const unqueue = (k: string) => onPendingChange?.(queued.filter((p) => p.key !== k));
+  // Date.now alone collides when several files are picked in one go.
+  const newKey = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const [busy, setBusy] = useState(false);
 
-  function submitLink() {
+  async function submitLink() {
     setError(null);
     const url = linkUrl.trim();
     if (!isAcceptableUrl(url)) {
       setError('Enter a full link starting with http:// or https://');
       return;
     }
-    addLink.mutate({
-      module, recordId, projectId,
-      sourceType: 'LINK',
-      // Default the display name to the host so the list stays readable when
-      // the URL itself is a 200-character signed link.
-      fileName: linkLabel.trim() || new URL(url).hostname,
-      fileType: 'link',
-      externalUrl: url,
-      documentCategory: category,
-      description: description || undefined,
-    });
+    const meta = { documentCategory: category, description: description || undefined };
+    if (deferred) {
+      queue({ key: newKey(), kind: 'link', url, label: linkLabel, ...meta });
+    } else {
+      setBusy(true);
+      try {
+        await attachLink({ module, recordId: recordId!, projectId }, url, linkLabel, meta);
+        qc.invalidateQueries({ queryKey: key });
+      } catch (e) {
+        setError(errorMessage(e)); setBusy(false); return;
+      }
+      setBusy(false);
+    }
+    setLinkUrl(''); setLinkLabel(''); setShowLink(false); setDescription('');
   }
 
-  async function upload(original: File) {
+  async function upload(file: File) {
     setError(null);
-    const file = await compressImage(original); // resize/HEIC-passthrough before upload
+    const meta = { documentCategory: category, description: description || undefined };
+    if (deferred) {
+      // Hold the File in memory; it is uploaded once the record has an id.
+      queue({ key: newKey(), kind: 'file', file, ...meta });
+      setDescription('');
+      return;
+    }
     const name = file.name;
-    const contentType = file.type || 'application/octet-stream';
     setProgress((p) => ({ ...p, [name]: 0 }));
     try {
-      // 1. sign  2. POST the file to Cloudinary (with progress)  3. store the
-      // returned link as metadata — each step retried on a flaky connection.
-      const signed = await withRetry(() => api.post<SignedUpload>(
-        '/project-documents/upload-url', { module, recordId, projectId, fileName: name },
-      ));
-      const asset = await withRetry(() => uploadToCloudinary(signed.data, file, (pct) => setProgress((p) => ({ ...p, [name]: pct }))));
-      await withRetry(() => api.post('/project-documents', {
-        module, recordId, projectId,
-        sourceType: 'FILE',
-        fileName: name, fileType: classifyFileType(contentType, name), mimeType: contentType,
-        fileSizeBytes: asset.bytes, storagePath: asset.publicId, externalUrl: asset.secureUrl,
-        documentCategory: category, description: description || undefined,
-      }));
+      await attachFile({ module, recordId: recordId!, projectId }, file, meta,
+        (pct) => setProgress((p) => ({ ...p, [name]: pct })));
       setDescription('');
       qc.invalidateQueries({ queryKey: key });
     } catch (e) {
@@ -147,13 +158,34 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
       <div className="flex items-center gap-2 mb-3">
         <Paperclip className="w-4 h-4 text-brand-primary" />
         <h4 className="text-xs font-bold text-brand-primary uppercase tracking-wide">Attachments (evidence)</h4>
-        <span className="text-[10px] text-brand-on-surface-variant">{docs.length} item{docs.length === 1 ? '' : 's'}</span>
+        <span className="text-[10px] text-brand-on-surface-variant">
+          {docs.length + queued.length} item{docs.length + queued.length === 1 ? '' : 's'}
+        </span>
       </div>
+
+      {/* Queued on a create form — uploaded automatically once the record saves. */}
+      {queued.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+          {queued.map((p) => (
+            <div key={p.key} className="flex items-center gap-2 bg-amber-50 rounded-lg border border-amber-200 px-3 py-2">
+              {p.kind === 'link' ? <Link2 className="w-4 h-4 text-sky-600 shrink-0" /> : <File className="w-4 h-4 text-amber-600 shrink-0" />}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-brand-on-surface truncate" title={pendingLabel(p)}>{pendingLabel(p)}</p>
+                <p className="text-[10px] text-amber-700 flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" /> attaches when saved
+                  {p.kind === 'file' && kb(p.file.size) ? ` · ${kb(p.file.size)}` : ''}
+                </p>
+              </div>
+              <button type="button" onClick={() => unqueue(p.key)} title="Remove" className="p-1 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-xs text-brand-on-surface-variant animate-pulse">Loading…</p>
       ) : docs.length === 0 ? (
-        <p className="text-xs text-brand-on-surface-variant mb-3">Nothing attached yet — upload a file or paste a link.</p>
+        queued.length === 0 && <p className="text-xs text-brand-on-surface-variant mb-3">Nothing attached yet — upload a file or paste a link.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
           {docs.map((d) => (
@@ -210,9 +242,9 @@ export default function DocumentAttachments({ module, recordId, projectId }: { m
                 placeholder="Label (optional)"
                 className="w-32 h-8 bg-brand-surface-container-lowest border border-brand-outline-variant rounded-lg px-2 text-[11px] outline-none focus:border-brand-primary"
               />
-              <button type="button" onClick={submitLink} disabled={addLink.isPending}
+              <button type="button" onClick={() => void submitLink()} disabled={busy}
                 className="h-8 px-3 rounded-lg bg-brand-primary text-white text-[11px] font-bold hover:bg-brand-primary-container disabled:opacity-60">
-                {addLink.isPending ? 'Adding…' : 'Add'}
+                {busy ? 'Adding…' : 'Add'}
               </button>
             </div>
           )}

@@ -45,6 +45,43 @@ jobs:
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
+      # Runtime credentials live in GitHub secrets, not in the repo. This syncs
+      # them into the server .env before compose restarts, so a rebuilt server
+      # (or a wiped .env) recovers its configuration automatically instead of
+      # needing someone to remember a manual step.
+      # No-ops when the secret is unset, so it can never blank out a value that
+      # was configured by hand.
+      - name: Sync storage credentials into the server .env
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          HOST: 176.126.87.142
+          USER: root
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_FOLDER: ${{ secrets.CLOUDINARY_FOLDER }}
+        run: |
+          if [ -z "$CLOUDINARY_CLOUD_NAME" ] || [ -z "$CLOUDINARY_API_KEY" ] || [ -z "$CLOUDINARY_API_SECRET" ]; then
+            echo "ℹ️  Cloudinary secrets not set in this repo — leaving the server .env untouched."
+            echo "    File uploads stay disabled until they are configured; attaching links still works."
+            exit 0
+          fi
+          OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          # Replace rather than append, so re-running never duplicates keys.
+          sshpass -e ssh $OPTS "$USER@$HOST" "
+            set -e
+            cd /home/inspectaapi/app
+            touch .env
+            sed -i '/^CLOUDINARY_/d' .env
+            {
+              echo 'CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME'
+              echo 'CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY'
+              echo 'CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET'
+              echo 'CLOUDINARY_FOLDER=${CLOUDINARY_FOLDER:-inspecta}'
+            } >> .env
+          "
+          echo "✅ storage credentials synced (values come from repo secrets, never the repo)"
+
       - name: Ship & redeploy (exec channel; SFTP is disabled on host)
         env:
           SSHPASS: ${{ secrets.SSH_PASSWORD }}

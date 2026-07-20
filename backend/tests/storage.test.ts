@@ -1,11 +1,8 @@
 import crypto from 'crypto';
 
-// Credentials must exist before the module reads env at import time.
-process.env.CLOUDINARY_CLOUD_NAME = 'testcloud';
-process.env.CLOUDINARY_API_KEY = 'test-key';
-process.env.CLOUDINARY_API_SECRET = 'test-secret';
-process.env.CLOUDINARY_FOLDER = 'inspecta';
-
+// Credentials come from tests/setup-env.ts, which jest loads before this
+// module — the config is snapshotted at import time, so setting them here
+// would be too late (import statements are hoisted above assignments).
 import { classifyFileType, normalizeExternalUrl, safeFileName, signUpload } from '../src/lib/storage';
 
 describe('attachment links', () => {

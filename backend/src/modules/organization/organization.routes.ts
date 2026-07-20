@@ -7,6 +7,8 @@ import { NotFound } from '../../lib/errors';
 import { authenticate, requireRole } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 
+import { usageFor } from '../platform/plans';
+
 const router = Router();
 router.use(authenticate);
 
@@ -24,6 +26,10 @@ const selectOrg = {
   logoUrl: true,
   tinNumber: true,
   workingDaysPerWeek: true,
+  status: true,
+  plan: true,
+  maxUsers: true,
+  maxProjects: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -47,8 +53,10 @@ router.get(
       grouped.map((g) => [g.role, g._count._all]),
     ) as Record<Role, number>;
     const totalUsers = grouped.reduce((sum, g) => sum + g._count._all, 0);
+    // So a company admin can see their own plan usage without the console.
+    const usage = await usageFor(req.user!.orgId);
 
-    return ok(res, { ...org, totalUsers, usersByRole });
+    return ok(res, { ...org, totalUsers, usersByRole, usage });
   }),
 );
 

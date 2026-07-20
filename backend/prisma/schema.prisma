@@ -34,6 +34,16 @@ enum OrgStatus {
   SUSPENDED
 }
 
+// Commercial tier of a tenant. Drives the default seat/project quotas
+// (see PLAN_DEFAULTS in modules/platform/plans.ts); a platform admin can
+// override the numbers per company.
+enum OrgPlan {
+  TRIAL
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
 enum ProjectStatus {
   PLANNING
   ACTIVE
@@ -197,6 +207,10 @@ model Organization {
   suspendedAt      DateTime?
   suspendedReason  String?
   suspendedById    String?
+  // Commercial tier + quotas. A null limit means unlimited.
+  plan             OrgPlan   @default(TRIAL)
+  maxUsers         Int?
+  maxProjects      Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -213,6 +227,25 @@ model Organization {
 
   @@index([status])
   @@map("organizations")
+}
+
+// Platform-wide configuration. Deliberately a single row (id = "global") rather
+// than a key/value table so the settings are typed and validated like any other
+// model. Only PLATFORM_ADMIN can read or write it.
+model PlatformSetting {
+  id                 String   @id @default("global")
+  // When false, /api/auth/register is closed and tenants can only be created
+  // from the platform console.
+  allowSelfSignup    Boolean  @default(true)
+  defaultCurrency    String   @default("RWF")
+  defaultTimezone    String?
+  supportEmail       String?
+  // Shown as a banner to every user in every tenant while set.
+  maintenanceMessage String?
+  updatedAt          DateTime @updatedAt
+  updatedById        String?
+
+  @@map("platform_settings")
 }
 
 // ──────────────────────────── Users ──────────────────────────

@@ -1,5 +1,6 @@
 // Typed API client for the INSPECTA BUILDOS backend.
 // Handles bearer-token auth, transparent refresh, and a uniform response shape.
+import { getInspectedOrg } from './inspectStore';
 
 const API_URL =
   (import.meta as unknown as { env: Record<string, string> }).env?.VITE_API_URL ??
@@ -85,15 +86,27 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * Headers common to every call: bearer token, plus the inspected-tenant header
+ * when a platform admin is viewing another company's workspace (the server
+ * scopes the request to that tenant and refuses anything but reads).
+ */
+function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const headers = { ...base };
+  const access = tokenStore.access;
+  if (access) headers.Authorization = `Bearer ${access}`;
+  const inspected = getInspectedOrg();
+  if (inspected) headers['X-Platform-Org'] = inspected.id;
+  return headers;
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   retry = true,
 ): Promise<ApiEnvelope<T>> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const access = tokenStore.access;
-  if (access) headers.Authorization = `Bearer ${access}`;
+  const headers = authHeaders({ 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_URL}${path}`, {
     method,
@@ -123,9 +136,7 @@ export const api = {
 
   /** Authenticated file download (Excel/CSV/PDF reports). */
   async download(path: string, filename: string) {
-    const headers: Record<string, string> = {};
-    const access = tokenStore.access;
-    if (access) headers.Authorization = `Bearer ${access}`;
+    const headers = authHeaders();
     const res = await fetch(`${API_URL}${path}`, { headers });
     if (!res.ok) throw new ApiError(res.status, `Download failed (${res.status})`);
     const blob = await res.blob();
@@ -141,9 +152,7 @@ export const api = {
 
   /** POST and consume a Server-Sent-Events stream. Calls onEvent per data frame. */
   async stream(path: string, body: unknown, onEvent: (evt: any) => void): Promise<void> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const access = tokenStore.access;
-    if (access) headers.Authorization = `Bearer ${access}`;
+    const headers = authHeaders({ 'Content-Type': 'application/json' });
     const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
     if (!res.ok || !res.body) throw new ApiError(res.status, `Stream failed (${res.status})`);
     const reader = res.body.getReader();
@@ -164,11 +173,7 @@ export const api = {
 
   /** Upload a file as the raw request body (e.g. .xlsx import). */
   async upload<T>(path: string, file: File): Promise<ApiEnvelope<T>> {
-    const headers: Record<string, string> = {
-      'Content-Type': file.type || 'application/octet-stream',
-    };
-    const access = tokenStore.access;
-    if (access) headers.Authorization = `Bearer ${access}`;
+    const headers = authHeaders({ 'Content-Type': file.type || 'application/octet-stream' });
     const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: file });
     const json = (await res.json().catch(() => ({}))) as ApiEnvelope<T>;
     if (!res.ok || json.success === false) {

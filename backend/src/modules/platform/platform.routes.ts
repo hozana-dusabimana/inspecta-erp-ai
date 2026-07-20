@@ -1,14 +1,17 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { z } from 'zod';
-import { Prisma, Role, AuditAction, OrgStatus } from '@prisma/client';
+import { Prisma, Role, AuditAction, OrgStatus, OrgPlan } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
 import { sendTabularExport, exportFormat } from '../../lib/export';
-import { BadRequest, NotFound, Forbidden } from '../../lib/errors';
+import { BadRequest, NotFound, Forbidden, Conflict } from '../../lib/errors';
 import { authenticate, requirePlatformAdmin } from '../../middleware/auth';
-import { auditFromRequest } from '../../auth/audit';
+import { recordAudit } from '../../auth/audit';
 import { hashPassword } from '../../lib/password';
 import { platformOverview } from './platform.service';
+import { PLAN_DEFAULTS, PLAN_LABELS, usageFor } from './plans';
+import { getPlatformSettings, updatePlatformSettings } from './settings';
+import { notify } from '../notifications/notify';
 
 /**
  * The cross-tenant superadmin console. Every route here deliberately escapes the
@@ -19,6 +22,32 @@ const router = Router();
 router.use(authenticate, requirePlatformAdmin);
 
 const EXPORT_CAP = 10_000; // matches the CRUD factory's export cap
+
+/**
+ * Audits a platform action against the tenant it AFFECTS, not against the
+ * superadmin's own company — so a customer's audit trail shows "your company
+ * was suspended" rather than the event vanishing into another org's log.
+ */
+function auditPlatform(
+  req: Request,
+  organizationId: string,
+  action: AuditAction,
+  entity: string,
+  entityId: string | null,
+  changes?: { oldValues?: unknown; newValues?: unknown },
+) {
+  return recordAudit({
+    organizationId,
+    userId: req.user!.id,
+    action,
+    entity,
+    entityId,
+    oldValues: changes?.oldValues,
+    newValues: { ...(changes?.newValues as object), by: req.user!.email, viaPlatformConsole: true },
+    ipAddress: req.ip ?? null,
+    userAgent: req.headers['user-agent'] ?? null,
+  });
+}
 
 function pageParams(query: Record<string, unknown>) {
   const page = Math.max(1, Number(query.page ?? 1));
@@ -79,6 +108,9 @@ const companySelect = {
   status: true,
   suspendedAt: true,
   suspendedReason: true,
+  plan: true,
+  maxUsers: true,
+  maxProjects: true,
   createdAt: true,
   _count: { select: { users: true, projects: true, clients: true, contracts: true } },
 } satisfies Prisma.OrganizationSelect;
@@ -93,7 +125,7 @@ router.get(
       select: {
         name: true, slug: true, legalName: true, industry: true, country: true,
         currency: true, tinNumber: true, status: true, suspendedAt: true,
-        suspendedReason: true, createdAt: true,
+        suspendedReason: true, plan: true, maxUsers: true, maxProjects: true, createdAt: true,
       },
     });
     return sendTabularExport(res, rows, 'companies', exportFormat(req.query.format));
@@ -143,6 +175,135 @@ router.get(
   }),
 );
 
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40) || 'org';
+}
+
+const provisionSchema = z.object({
+  name: z.string().trim().min(2),
+  country: z.string().trim().optional(),
+  currency: z.string().trim().length(3).optional(),
+  industry: z.string().trim().optional(),
+  plan: z.nativeEnum(OrgPlan).optional(),
+  adminFullName: z.string().trim().min(2),
+  adminEmail: z.string().email(),
+  adminPassword: z.string().min(8),
+});
+
+// PROVISION a tenant plus its first SYSTEM_ADMIN.
+router.post(
+  '/companies',
+  asyncHandler(async (req, res) => {
+    const body = provisionSchema.parse(req.body);
+    const email = body.adminEmail.toLowerCase().trim();
+
+    // Email uniqueness is per-org in the schema, but login resolves globally,
+    // so a duplicate across tenants would make sign-in ambiguous.
+    if (await prisma.user.findFirst({ where: { email }, select: { id: true } })) {
+      throw Conflict('A user with this email already exists');
+    }
+
+    let slug = slugify(body.name);
+    if (await prisma.organization.findUnique({ where: { slug }, select: { id: true } })) {
+      slug = `${slug}-${Date.now().toString(36)}`;
+    }
+
+    const plan = body.plan ?? OrgPlan.TRIAL;
+    const limits = PLAN_DEFAULTS[plan];
+    const settings = await getPlatformSettings();
+    const passwordHash = await hashPassword(body.adminPassword);
+
+    const { org, admin } = await prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
+        data: {
+          name: body.name,
+          slug,
+          country: body.country ?? null,
+          industry: body.industry ?? null,
+          currency: (body.currency ?? settings.defaultCurrency).toUpperCase(),
+          timezone: settings.defaultTimezone,
+          plan,
+          maxUsers: limits.maxUsers,
+          maxProjects: limits.maxProjects,
+        },
+      });
+      const admin = await tx.user.create({
+        data: {
+          organizationId: org.id,
+          email,
+          fullName: body.adminFullName,
+          role: Role.SYSTEM_ADMIN,
+          passwordHash,
+          // Provisioned by a platform admin — no self-service verification needed.
+          emailVerified: true,
+        },
+        select: { id: true, email: true, fullName: true, role: true },
+      });
+      return { org, admin };
+    });
+
+    await auditPlatform(req, org.id, AuditAction.CREATE, 'organization', org.id, {
+      newValues: { name: org.name, slug: org.slug, plan, adminEmail: admin.email },
+    });
+    return ok(res, { ...org, admin }, 201);
+  }),
+);
+
+const planSchema = z.object({
+  plan: z.nativeEnum(OrgPlan),
+  // Omit to take the plan's defaults; null means explicitly unlimited.
+  maxUsers: z.number().int().min(0).nullable().optional(),
+  maxProjects: z.number().int().min(0).nullable().optional(),
+});
+
+router.patch(
+  '/companies/:id/plan',
+  asyncHandler(async (req, res) => {
+    const body = planSchema.parse(req.body);
+    const org = await prisma.organization.findUnique({ where: { id: req.params.id } });
+    if (!org) throw NotFound('Company not found');
+
+    const defaults = PLAN_DEFAULTS[body.plan];
+    const maxUsers = body.maxUsers === undefined ? defaults.maxUsers : body.maxUsers;
+    const maxProjects = body.maxProjects === undefined ? defaults.maxProjects : body.maxProjects;
+
+    // Refuse a limit the tenant is already over — it would not delete anything,
+    // but it would silently put them in a permanently blocked state.
+    const [users, projects] = await Promise.all([
+      prisma.user.count({ where: { organizationId: org.id } }),
+      prisma.project.count({ where: { organizationId: org.id } }),
+    ]);
+    if (maxUsers !== null && users > maxUsers) {
+      throw BadRequest(`${org.name} already has ${users} users — the seat limit cannot be set below that.`);
+    }
+    if (maxProjects !== null && projects > maxProjects) {
+      throw BadRequest(`${org.name} already has ${projects} projects — the project limit cannot be set below that.`);
+    }
+
+    const updated = await prisma.organization.update({
+      where: { id: org.id },
+      data: { plan: body.plan, maxUsers, maxProjects },
+      select: companySelect,
+    });
+
+    await auditPlatform(req, org.id, AuditAction.UPDATE, 'organization', org.id, {
+      oldValues: { plan: org.plan, maxUsers: org.maxUsers, maxProjects: org.maxProjects },
+      newValues: { plan: body.plan, maxUsers, maxProjects },
+    });
+
+    // Tell the tenant their plan changed — it affects what they can create.
+    await notify({
+      organizationId: org.id,
+      type: 'GENERAL',
+      severity: 'MEDIUM',
+      title: `Plan updated to ${PLAN_LABELS[body.plan]}`,
+      message: `Your workspace is now on the ${PLAN_LABELS[body.plan]} plan (${maxUsers ?? 'unlimited'} users, ${maxProjects ?? 'unlimited'} projects).`,
+    });
+
+    return ok(res, updated);
+  }),
+);
+
 const statusSchema = z.object({
   status: z.nativeEnum(OrgStatus),
   reason: z.string().trim().max(500).optional(),
@@ -156,7 +317,7 @@ router.patch(
     if (!org) throw NotFound('Company not found');
 
     // Guard rail: suspending your own tenant would lock you out of the console.
-    if (status === 'SUSPENDED' && org.id === req.user!.orgId) {
+    if (status === 'SUSPENDED' && org.id === req.user!.homeOrgId) {
       throw Forbidden('You cannot suspend the company your own account belongs to');
     }
     if (status === 'SUSPENDED' && !reason) {
@@ -181,9 +342,9 @@ router.patch(
       });
     }
 
-    await auditFromRequest(req, AuditAction.UPDATE, 'organization', org.id, {
+    await auditPlatform(req, org.id, AuditAction.UPDATE, 'organization', org.id, {
       oldValues: { status: org.status },
-      newValues: { status, reason: reason ?? null, by: req.user!.email },
+      newValues: { status, reason: reason ?? null },
     });
     return ok(res, updated);
   }),
@@ -286,9 +447,9 @@ router.patch(
       });
     }
 
-    await auditFromRequest(req, AuditAction.UPDATE, 'user', user.id, {
+    await auditPlatform(req, user.organizationId, AuditAction.UPDATE, 'user', user.id, {
       oldValues: { isActive: user.isActive },
-      newValues: { isActive, reason: reason ?? null, by: req.user!.email },
+      newValues: { isActive, reason: reason ?? null },
     });
     return ok(res, updated);
   }),
@@ -311,9 +472,9 @@ router.patch(
     }
 
     const updated = await prisma.user.update({ where: { id: user.id }, data: { role }, select: userSelect });
-    await auditFromRequest(req, AuditAction.UPDATE, 'user', user.id, {
+    await auditPlatform(req, user.organizationId, AuditAction.UPDATE, 'user', user.id, {
       oldValues: { role: user.role },
-      newValues: { role, by: req.user!.email },
+      newValues: { role },
     });
     return ok(res, updated);
   }),
@@ -334,8 +495,8 @@ router.post(
     // Force a fresh sign-in everywhere with the new credentials.
     await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
 
-    await auditFromRequest(req, AuditAction.UPDATE, 'user', user.id, {
-      newValues: { passwordReset: true, by: req.user!.email },
+    await auditPlatform(req, user.organizationId, AuditAction.UPDATE, 'user', user.id, {
+      newValues: { passwordReset: true },
     });
     return ok(res, { id: user.id, reset: true });
   }),
@@ -397,6 +558,98 @@ router.get(
       prisma.auditLog.count({ where }),
     ]);
     return paginated(res, rows, { page, pageSize, total });
+  }),
+);
+
+// ─────────────────────── Plans & usage ──────────────────────────
+
+router.get(
+  '/plans',
+  asyncHandler(async (_req, res) =>
+    ok(res, {
+      plans: (Object.keys(PLAN_DEFAULTS) as OrgPlan[]).map((plan) => ({
+        plan,
+        label: PLAN_LABELS[plan],
+        ...PLAN_DEFAULTS[plan],
+      })),
+    }),
+  ),
+);
+
+router.get(
+  '/companies/:id/usage',
+  asyncHandler(async (req, res) => {
+    const org = await prisma.organization.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!org) throw NotFound('Company not found');
+    return ok(res, await usageFor(org.id));
+  }),
+);
+
+// ─────────────────────── Platform settings ──────────────────────
+
+const settingsSchema = z.object({
+  allowSelfSignup: z.boolean().optional(),
+  defaultCurrency: z.string().trim().length(3).optional(),
+  defaultTimezone: z.string().trim().nullable().optional(),
+  supportEmail: z.string().email().nullable().optional(),
+  maintenanceMessage: z.string().trim().max(500).nullable().optional(),
+});
+
+router.get('/settings', asyncHandler(async (_req, res) => ok(res, await getPlatformSettings())));
+
+router.put(
+  '/settings',
+  asyncHandler(async (req, res) => {
+    const body = settingsSchema.parse(req.body);
+    const before = await getPlatformSettings();
+    const updated = await updatePlatformSettings(
+      { ...body, defaultCurrency: body.defaultCurrency?.toUpperCase() },
+      req.user!.id,
+    );
+    await auditPlatform(req, req.user!.homeOrgId, AuditAction.UPDATE, 'platform-settings', updated.id, {
+      oldValues: before,
+      newValues: body,
+    });
+    return ok(res, updated);
+  }),
+);
+
+// ───────────────────────── Announcements ────────────────────────
+
+const announcementSchema = z.object({
+  title: z.string().trim().min(3).max(120),
+  message: z.string().trim().min(3).max(2000),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  // Omit to broadcast to every tenant.
+  organizationId: z.string().trim().optional(),
+});
+
+router.post(
+  '/announcements',
+  asyncHandler(async (req, res) => {
+    const body = announcementSchema.parse(req.body);
+
+    const targets = body.organizationId
+      ? await prisma.organization.findMany({ where: { id: body.organizationId }, select: { id: true, name: true } })
+      : await prisma.organization.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true } });
+    if (targets.length === 0) throw NotFound('No matching company to announce to');
+
+    // Sequential rather than Promise.all: notify() also fans out email, and a
+    // broadcast across many tenants should not open one connection per org at once.
+    for (const target of targets) {
+      await notify({
+        organizationId: target.id,
+        type: 'GENERAL',
+        severity: body.severity ?? 'MEDIUM',
+        title: body.title,
+        message: body.message,
+      });
+      await auditPlatform(req, target.id, AuditAction.CREATE, 'announcement', null, {
+        newValues: { title: body.title, severity: body.severity ?? 'MEDIUM' },
+      });
+    }
+
+    return ok(res, { delivered: targets.length, companies: targets.map((t) => t.name) }, 201);
   }),
 );
 

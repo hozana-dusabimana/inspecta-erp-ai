@@ -279,14 +279,18 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
               
               <div className="flex items-center gap-3">
-                <button
-                  id="btn-dashboard-new-project"
-                  onClick={() => setIsNewProjectOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-secondary-container text-white font-bold text-xs hover:opacity-95 transition-opacity cursor-pointer shadow-sm shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">New Project</span>
-                </button>
+                {/* Also hidden while a platform admin inspects a tenant read-only,
+                    since hasPermission withholds every :write there. */}
+                {hasPermission('project:write') && (
+                  <button
+                    id="btn-dashboard-new-project"
+                    onClick={() => setIsNewProjectOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-secondary-container text-white font-bold text-xs hover:opacity-95 transition-opacity cursor-pointer shadow-sm shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="hidden sm:inline">New Project</span>
+                  </button>
+                )}
                 <div className="flex gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10">
                 <button
                   id="tab-portfolio"

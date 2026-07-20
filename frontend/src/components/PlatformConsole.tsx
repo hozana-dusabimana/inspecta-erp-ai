@@ -4,12 +4,15 @@ import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import {
-  Globe, Building2, Users as UsersIcon, ScrollText, X, Ban, Check, KeyRound, ShieldCheck,
+  X, Ban, Check, KeyRound, ShieldCheck, Plus, CreditCard, LogIn, Megaphone,
   Download, Search, ChevronLeft, ChevronRight, AlertTriangle, Eye,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { AppView } from '../types';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { enterInspect } from '../lib/inspectStore';
+import { pathForView } from '../lib/routes';
 import ErpLayout from './ErpLayout';
 
 interface Props {
@@ -20,6 +23,20 @@ interface Props {
 // ─────────────────────────────── Types ───────────────────────────────
 
 type OrgStatus = 'ACTIVE' | 'SUSPENDED';
+type PlanTier = 'TRIAL' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
+
+const PLAN_TIERS: PlanTier[] = ['TRIAL', 'STARTER', 'PROFESSIONAL', 'ENTERPRISE'];
+
+const PLAN_TONE: Record<PlanTier, string> = {
+  TRIAL: 'bg-brand-surface text-brand-on-surface-variant',
+  STARTER: 'bg-sky-100 text-sky-700',
+  PROFESSIONAL: 'bg-violet-100 text-violet-700',
+  ENTERPRISE: 'bg-brand-primary/10 text-brand-primary',
+};
+
+const planLabel = (p: PlanTier) => p.charAt(0) + p.slice(1).toLowerCase();
+/** Renders a quota as "3 / 10" or "3 / ∞". */
+const quota = (used: number, limit: number | null) => `${used} / ${limit ?? '∞'}`;
 
 interface Company {
   id: string;
@@ -34,6 +51,9 @@ interface Company {
   status: OrgStatus;
   suspendedAt: string | null;
   suspendedReason: string | null;
+  plan: PlanTier;
+  maxUsers: number | null;
+  maxProjects: number | null;
   createdAt: string;
   _count: { users: number; projects: number; clients: number; contracts: number };
 }
@@ -338,7 +358,9 @@ function CompaniesTab() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [suspendTarget, setSuspendTarget] = useState<Company | null>(null);
+  const [planTarget, setPlanTarget] = useState<Company | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [provisioning, setProvisioning] = useState(false);
   const q = useDebounced(search);
   const pageSize = 25;
 
@@ -349,6 +371,13 @@ function CompaniesTab() {
   });
   const rows = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+
+  const navigate = useNavigate();
+  /** Enters read-only inspect mode and lands on that tenant's dashboard. */
+  const openWorkspace = (c: Company) => {
+    enterInspect({ id: c.id, name: c.name, slug: c.slug });
+    navigate(pathForView(AppView.DASHBOARD));
+  };
 
   const qc = useQueryClient();
   const reinstate = useMutation({
@@ -362,6 +391,13 @@ function CompaniesTab() {
 
   return (
     <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-brand-on-surface-variant text-xs">{fmtNum(total)} compan{total === 1 ? 'y' : 'ies'} on the platform</p>
+        <button onClick={() => setProvisioning(true)} className={`flex items-center gap-2 ${btnCls}`}>
+          <Plus className="w-4 h-4" /> New Company
+        </button>
+      </div>
+
       <Toolbar search={search} onSearch={(v) => { setSearch(v); setPage(1); }} exportPath={`/platform/companies/export?search=${encodeURIComponent(q)}&status=${status}`}>
         <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className={`${controlCls} w-40`}>
           <option value="">All statuses</option>
@@ -375,7 +411,7 @@ function CompaniesTab() {
           <thead>
             <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
               <th className="px-4 py-3 font-bold">Company</th>
-              <th className="px-4 py-3 font-bold">Country</th>
+              <th className="px-4 py-3 font-bold">Plan</th>
               <th className="px-4 py-3 font-bold text-right">Users</th>
               <th className="px-4 py-3 font-bold text-right">Projects</th>
               <th className="px-4 py-3 font-bold">Status</th>
@@ -391,9 +427,11 @@ function CompaniesTab() {
                   <p className="font-bold text-brand-primary">{c.name}</p>
                   <p className="text-[10px] text-brand-on-surface-variant font-mono">{c.slug}</p>
                 </td>
-                <td className="px-4 py-3 text-brand-on-surface-variant">{c.country ?? '—'}</td>
-                <td className="px-4 py-3 text-right font-mono">{c._count.users}</td>
-                <td className="px-4 py-3 text-right font-mono">{c._count.projects}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${PLAN_TONE[c.plan]}`}>{planLabel(c.plan)}</span>
+                </td>
+                <td className="px-4 py-3 text-right font-mono">{quota(c._count.users, c.maxUsers)}</td>
+                <td className="px-4 py-3 text-right font-mono">{quota(c._count.projects, c.maxProjects)}</td>
                 <td className="px-4 py-3">
                   <StatusPill status={c.status} />
                   {c.suspendedReason && <p className="text-[10px] text-brand-on-surface-variant mt-1 max-w-[16rem] truncate" title={c.suspendedReason}>{c.suspendedReason}</p>}
@@ -401,8 +439,14 @@ function CompaniesTab() {
                 <td className="px-4 py-3 text-brand-on-surface-variant">{fmtDate(c.createdAt)}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <button title="View company" onClick={() => setDetailId(c.id)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                    <button title="Company details" onClick={() => setDetailId(c.id)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
                       <Eye className="w-3.5 h-3.5" />
+                    </button>
+                    <button title="Open this company's workspace (read-only)" onClick={() => openWorkspace(c)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                      <LogIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button title="Plan & limits" onClick={() => setPlanTarget(c)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                      <CreditCard className="w-3.5 h-3.5" />
                     </button>
                     {c.status === 'ACTIVE' ? (
                       <button title="Suspend company" onClick={() => setSuspendTarget(c)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-status-critical">
@@ -426,8 +470,141 @@ function CompaniesTab() {
       </div>
 
       {suspendTarget && <SuspendModal company={suspendTarget} onClose={() => setSuspendTarget(null)} />}
+      {planTarget && <PlanModal company={planTarget} onClose={() => setPlanTarget(null)} />}
       {detailId && <CompanyDetailModal id={detailId} onClose={() => setDetailId(null)} />}
+      {provisioning && <ProvisionModal onClose={() => setProvisioning(false)} />}
     </div>
+  );
+}
+
+function ProvisionModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: '', country: '', currency: 'RWF', industry: '', plan: 'TRIAL' as PlanTier,
+    adminFullName: '', adminEmail: '', adminPassword: '',
+  });
+  const mutation = useMutation({
+    mutationFn: () => api.post('/platform/companies', form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['platform-companies'] });
+      qc.invalidateQueries({ queryKey: ['platform-overview'] });
+      onClose();
+    },
+  });
+  const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Failed to create company' : null;
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm({ ...form, [k]: e.target.value });
+
+  return (
+    <Modal title="New Company" onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="space-y-3">
+        <p className="text-brand-on-surface-variant text-[11px]">
+          Creates the tenant and its first System Administrator. The account is pre-verified —
+          hand them the password and they can sign in immediately.
+        </p>
+        <div><label className={labelCls}>COMPANY NAME</label><input className={inputCls} required value={form.name} onChange={set('name')} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className={labelCls}>COUNTRY</label><input className={inputCls} value={form.country} onChange={set('country')} /></div>
+          <div><label className={labelCls}>CURRENCY</label><input className={inputCls} maxLength={3} value={form.currency} onChange={set('currency')} /></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className={labelCls}>INDUSTRY</label><input className={inputCls} value={form.industry} onChange={set('industry')} /></div>
+          <div>
+            <label className={labelCls}>PLAN</label>
+            <select className={inputCls} value={form.plan} onChange={set('plan')}>
+              {PLAN_TIERS.map((p) => <option key={p} value={p}>{planLabel(p)}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="h-[1px] bg-brand-outline-variant/30 my-1" />
+        <div><label className={labelCls}>ADMIN FULL NAME</label><input className={inputCls} required value={form.adminFullName} onChange={set('adminFullName')} /></div>
+        <div><label className={labelCls}>ADMIN EMAIL</label><input className={inputCls} type="email" required value={form.adminEmail} onChange={set('adminEmail')} /></div>
+        <div><label className={labelCls}>TEMPORARY PASSWORD</label><input className={inputCls} type="text" required minLength={8} placeholder="Min. 8 characters" value={form.adminPassword} onChange={set('adminPassword')} /></div>
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <button type="submit" disabled={mutation.isPending} className={`w-full h-11 ${btnCls}`}>
+          {mutation.isPending ? 'Creating…' : 'Create Company'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+function PlanModal({ company, onClose }: { company: Company; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [plan, setPlan] = useState<PlanTier>(company.plan);
+  // Empty string means "unlimited" — sent as null.
+  const [maxUsers, setMaxUsers] = useState(company.maxUsers?.toString() ?? '');
+  const [maxProjects, setMaxProjects] = useState(company.maxProjects?.toString() ?? '');
+  const [touched, setTouched] = useState(false);
+
+  const { data: plans } = useQuery({
+    queryKey: ['platform-plans'],
+    queryFn: () => api.get<{ plans: { plan: PlanTier; label: string; maxUsers: number | null; maxProjects: number | null }[] }>('/platform/plans'),
+  });
+
+  // Switching tier pre-fills that tier's defaults until the admin overrides them.
+  const choosePlan = (next: PlanTier) => {
+    setPlan(next);
+    if (!touched) {
+      const d = plans?.data.plans.find((p) => p.plan === next);
+      if (d) {
+        setMaxUsers(d.maxUsers?.toString() ?? '');
+        setMaxProjects(d.maxProjects?.toString() ?? '');
+      }
+    }
+  };
+
+  const mutation = useMutation({
+    mutationFn: () => api.patch(`/platform/companies/${company.id}/plan`, {
+      plan,
+      maxUsers: maxUsers.trim() === '' ? null : Number(maxUsers),
+      maxProjects: maxProjects.trim() === '' ? null : Number(maxProjects),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['platform-companies'] });
+      onClose();
+    },
+  });
+  const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Failed to update plan' : null;
+
+  return (
+    <Modal title={`Plan & limits — ${company.name}`} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className={`${cardCls} p-3`}>
+            <p className={labelCls}>USERS</p>
+            <p className="font-mono text-lg font-extrabold text-brand-primary">{quota(company._count.users, company.maxUsers)}</p>
+          </div>
+          <div className={`${cardCls} p-3`}>
+            <p className={labelCls}>PROJECTS</p>
+            <p className="font-mono text-lg font-extrabold text-brand-primary">{quota(company._count.projects, company.maxProjects)}</p>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>PLAN</label>
+          <select className={inputCls} value={plan} onChange={(e) => choosePlan(e.target.value as PlanTier)}>
+            {PLAN_TIERS.map((p) => <option key={p} value={p}>{planLabel(p)}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>MAX USERS</label>
+            <input className={inputCls} type="number" min={0} placeholder="Unlimited"
+              value={maxUsers} onChange={(e) => { setTouched(true); setMaxUsers(e.target.value); }} />
+          </div>
+          <div>
+            <label className={labelCls}>MAX PROJECTS</label>
+            <input className={inputCls} type="number" min={0} placeholder="Unlimited"
+              value={maxProjects} onChange={(e) => { setTouched(true); setMaxProjects(e.target.value); }} />
+          </div>
+        </div>
+        <p className="text-brand-on-surface-variant text-[10px]">Leave a limit empty for unlimited. Limits are enforced when the tenant creates records.</p>
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <button type="submit" disabled={mutation.isPending} className={`w-full h-11 ${btnCls}`}>
+          {mutation.isPending ? 'Saving…' : 'Save Plan'}
+        </button>
+      </form>
+    </Modal>
   );
 }
 
@@ -820,26 +997,217 @@ function AuditTab() {
   );
 }
 
+// ───────────────────── Settings & announcements ─────────────────────
+
+interface PlatformSettings {
+  allowSelfSignup: boolean;
+  defaultCurrency: string;
+  defaultTimezone: string | null;
+  supportEmail: string | null;
+  maintenanceMessage: string | null;
+  updatedAt: string;
+}
+
+function SettingsTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-settings'],
+    queryFn: () => api.get<PlatformSettings>('/platform/settings'),
+  });
+  const settings = data?.data;
+
+  const [form, setForm] = useState<PlatformSettings | null>(null);
+  const [saved, setSaved] = useState(false);
+  React.useEffect(() => { if (settings) setForm(settings); }, [settings]);
+
+  const save = useMutation({
+    mutationFn: () => api.put('/platform/settings', {
+      allowSelfSignup: form?.allowSelfSignup,
+      defaultCurrency: form?.defaultCurrency,
+      defaultTimezone: form?.defaultTimezone || null,
+      supportEmail: form?.supportEmail || null,
+      maintenanceMessage: form?.maintenanceMessage || null,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['platform-settings'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+  });
+  const err = save.error instanceof ApiError ? save.error.message : save.isError ? 'Failed to save settings' : null;
+
+  if (isLoading || !form) return <p className="text-brand-on-surface-variant text-xs">Loading platform settings…</p>;
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className={`${cardCls} p-5 space-y-4`}>
+        <h3 className="font-display text-sm font-extrabold text-brand-primary">Global settings</h3>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.allowSelfSignup}
+            onChange={(e) => setForm({ ...form, allowSelfSignup: e.target.checked })}
+            className="mt-0.5 w-4 h-4 accent-brand-secondary-container"
+          />
+          <span>
+            <span className="text-xs font-bold text-brand-primary block">Allow self-service signup</span>
+            <span className="text-[11px] text-brand-on-surface-variant">
+              When off, /signup is closed and companies exist only when you provision them here.
+            </span>
+          </span>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>DEFAULT CURRENCY</label>
+            <input className={inputCls} maxLength={3} value={form.defaultCurrency}
+              onChange={(e) => setForm({ ...form, defaultCurrency: e.target.value.toUpperCase() })} />
+          </div>
+          <div>
+            <label className={labelCls}>DEFAULT TIMEZONE</label>
+            <input className={inputCls} value={form.defaultTimezone ?? ''} placeholder="Africa/Kigali"
+              onChange={(e) => setForm({ ...form, defaultTimezone: e.target.value })} />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>SUPPORT EMAIL</label>
+          <input className={inputCls} type="email" value={form.supportEmail ?? ''}
+            onChange={(e) => setForm({ ...form, supportEmail: e.target.value })} />
+        </div>
+
+        <div>
+          <label className={labelCls}>MAINTENANCE BANNER</label>
+          <textarea className={`${inputCls} h-20 py-2 resize-none`} value={form.maintenanceMessage ?? ''}
+            placeholder="Leave empty for no banner"
+            onChange={(e) => setForm({ ...form, maintenanceMessage: e.target.value })} />
+          <p className="text-brand-on-surface-variant text-[10px] mt-1">Shown to every user in every company, including on the sign-in page.</p>
+        </div>
+
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <div className="flex items-center gap-3">
+          <button type="submit" disabled={save.isPending} className={btnCls}>
+            {save.isPending ? 'Saving…' : 'Save Settings'}
+          </button>
+          {saved && <span className="text-emerald-600 text-[11px] font-bold flex items-center gap-1"><Check className="w-4 h-4" /> Saved</span>}
+        </div>
+      </form>
+
+      <AnnouncementCard />
+    </div>
+  );
+}
+
+function AnnouncementCard() {
+  const [form, setForm] = useState({ title: '', message: '', severity: 'MEDIUM', organizationId: '' });
+  const [result, setResult] = useState<string | null>(null);
+
+  const { data: companies } = useQuery({
+    queryKey: ['platform-companies', '', '', 1],
+    queryFn: () => api.get<Company[]>('/platform/companies?pageSize=200'),
+  });
+
+  const send = useMutation({
+    mutationFn: () => api.post<{ delivered: number }>('/platform/announcements', {
+      title: form.title,
+      message: form.message,
+      severity: form.severity,
+      ...(form.organizationId ? { organizationId: form.organizationId } : {}),
+    }),
+    onSuccess: (res) => {
+      setResult(`Delivered to ${res.data.delivered} compan${res.data.delivered === 1 ? 'y' : 'ies'}.`);
+      setForm({ ...form, title: '', message: '' });
+      setTimeout(() => setResult(null), 4000);
+    },
+  });
+  const err = send.error instanceof ApiError ? send.error.message : send.isError ? 'Failed to send announcement' : null;
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); send.mutate(); }} className={`${cardCls} p-5 space-y-4 self-start`}>
+      <h3 className="font-display text-sm font-extrabold text-brand-primary">Announcement</h3>
+      <p className="text-brand-on-surface-variant text-[11px]">
+        Drops a notification into the bell of every user in the selected tenants. Medium severity and
+        above is also emailed.
+      </p>
+
+      <div>
+        <label className={labelCls}>AUDIENCE</label>
+        <select className={inputCls} value={form.organizationId} onChange={(e) => setForm({ ...form, organizationId: e.target.value })}>
+          <option value="">All active companies</option>
+          {companies?.data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>SEVERITY</label>
+          <select className={inputCls} value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}>
+            {['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>TITLE</label>
+          <input className={inputCls} required minLength={3} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        </div>
+      </div>
+
+      <div>
+        <label className={labelCls}>MESSAGE</label>
+        <textarea className={`${inputCls} h-24 py-2 resize-none`} required minLength={3}
+          value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} />
+      </div>
+
+      {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+      {result && <p className="text-emerald-600 text-[11px] font-bold flex items-center gap-1"><Check className="w-4 h-4" /> {result}</p>}
+      <button type="submit" disabled={send.isPending} className={`flex items-center gap-2 ${btnCls}`}>
+        <Megaphone className="w-4 h-4" /> {send.isPending ? 'Sending…' : 'Send Announcement'}
+      </button>
+    </form>
+  );
+}
+
 // ─────────────────────────────── Page shell ───────────────────────────────
 
-const TABS = [
-  { key: 'overview', label: 'Overview', icon: Globe },
-  { key: 'companies', label: 'Companies', icon: Building2 },
-  { key: 'users', label: 'Users', icon: UsersIcon },
-  { key: 'audit', label: 'Audit Trail', icon: ScrollText },
-] as const;
+export type PlatformTab = 'overview' | 'companies' | 'users' | 'audit' | 'settings';
 
-type TabKey = (typeof TABS)[number]['key'];
+const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: string }> = {
+  overview: {
+    view: AppView.PLATFORM,
+    title: 'Platform Overview',
+    subtitle: 'Every company on the platform at a glance — growth, usage and health.',
+  },
+  companies: {
+    view: AppView.PLATFORM_COMPANIES,
+    title: 'Companies',
+    subtitle: 'Provision, inspect, set plans for and suspend the tenants on this platform.',
+  },
+  users: {
+    view: AppView.PLATFORM_USERS,
+    title: 'Users',
+    subtitle: 'Every user across every company — block, promote or reset any account.',
+  },
+  audit: {
+    view: AppView.PLATFORM_AUDIT,
+    title: 'Audit Trail',
+    subtitle: 'The audit log of all tenants at once.',
+  },
+  settings: {
+    view: AppView.PLATFORM_SETTINGS,
+    title: 'Platform Settings',
+    subtitle: 'Global defaults, signup control, and announcements to your tenants.',
+  },
+};
 
-export default function PlatformConsole({ onNavigate, onLogout }: Props) {
+export default function PlatformConsole({ tab, onNavigate, onLogout }: Props & { tab: PlatformTab }) {
   const { hasPermission } = useAuth();
-  const [tab, setTab] = useState<TabKey>('overview');
+  const meta = PAGE_META[tab];
 
   return (
     <ErpLayout
-      active={AppView.PLATFORM}
-      title="Platform Console"
-      subtitle="Every company on the platform — tenants, users, analytics and the cross-company audit trail."
+      active={meta.view}
+      title={meta.title}
+      subtitle={meta.subtitle}
       onNavigate={onNavigate}
       onLogout={onLogout}
     >
@@ -849,27 +1217,11 @@ export default function PlatformConsole({ onNavigate, onLogout }: Props) {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10 mb-6 w-fit">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${
-                    tab === t.key ? 'bg-brand-surface-container-lowest shadow-sm text-brand-primary' : 'text-brand-on-surface-variant hover:text-brand-primary'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" /> {t.label}
-                </button>
-              );
-            })}
-          </div>
-
           {tab === 'overview' && <OverviewTab />}
           {tab === 'companies' && <CompaniesTab />}
           {tab === 'users' && <UsersTab />}
           {tab === 'audit' && <AuditTab />}
+          {tab === 'settings' && <SettingsTab />}
         </>
       )}
     </ErpLayout>

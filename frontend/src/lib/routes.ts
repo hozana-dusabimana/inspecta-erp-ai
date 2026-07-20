@@ -37,6 +37,10 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.DAILY_ENTRY]: '/daily-entry',
   [AppView.ADMIN]: '/admin',
   [AppView.PLATFORM]: '/platform',
+  [AppView.PLATFORM_COMPANIES]: '/platform/companies',
+  [AppView.PLATFORM_USERS]: '/platform/users',
+  [AppView.PLATFORM_AUDIT]: '/platform/audit',
+  [AppView.PLATFORM_SETTINGS]: '/platform/settings',
 };
 
 export const PATH_TO_VIEW: Record<string, AppView> = Object.fromEntries(

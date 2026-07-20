@@ -6,6 +6,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { NotFound, Conflict, BadRequest, Forbidden } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { isPlatformRole } from '../../auth/permissions';
+import { assertSeatAvailable } from '../platform/plans';
 import { hashPassword } from '../../lib/password';
 import { auditFromRequest } from '../../auth/audit';
 
@@ -64,6 +65,7 @@ router.post(
       where: { organizationId: req.user!.orgId, email },
     });
     if (dup) throw Conflict('A user with this email already exists in your organization');
+    await assertSeatAvailable(req.user!.orgId);
 
     const user = await prisma.user.create({
       data: {

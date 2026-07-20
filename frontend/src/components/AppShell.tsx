@@ -2,13 +2,14 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight } from 'lucide-react';
+import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight, Layers, Eye } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { useViewNavigate, viewForPath } from '../lib/routes';
+import { useViewNavigate, viewForPath, pathForView } from '../lib/routes';
 import { getOpenGroups, revealNav, subscribeOpenGroups, toggleGroup } from '../lib/navUi';
-import { NAV_TREE, NavItem, isGroup } from './ErpLayout';
+import { getInspectedOrg, subscribeInspect, exitInspect } from '../lib/inspectStore';
+import { NAV_TREE, PLATFORM_NAV, NavItem, isGroup } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
 import OnboardingTour from './OnboardingTour';
 
@@ -50,12 +51,36 @@ function NavLink({ item, active, nested, onSelect }: {
   );
 }
 
+/**
+ * The superadmin's sidebar. Intentionally a different, much shorter tree than
+ * the tenant ERP: a platform admin manages companies, not one company's BOQ.
+ * "Open a company" from the Companies page switches them to the tenant sidebar
+ * for as long as they are inspecting.
+ */
+function PlatformSidebar({ active, onSelect }: { active?: AppView; onSelect: (v: AppView) => void }) {
+  return (
+    <nav className="px-3 space-y-1">
+      <p className="px-4 pb-2 text-[9px] font-bold uppercase tracking-widest text-brand-on-primary-container/50">
+        Platform
+      </p>
+      {PLATFORM_NAV.map((item) => (
+        <NavLink key={item.id} item={item} active={item.view === active} onSelect={onSelect} />
+      ))}
+    </nav>
+  );
+}
+
 function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => void; onLogout: () => void }) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const navigateView = useViewNavigate();
   const location = useLocation();
+  const inspected = useSyncExternalStore(subscribeInspect, getInspectedOrg);
   const active = viewForPath(location.pathname);
   const openGroups = useSyncExternalStore(subscribeOpenGroups, getOpenGroups);
+
+  // A platform admin sees the platform nav — unless they have opened a tenant,
+  // in which case they need that tenant's ERP nav to actually look around it.
+  const platformMode = Boolean(user?.isPlatformAdmin) && !inspected;
 
   const visible = (item: NavItem) => !item.perm || hasPermission(item.perm);
 
@@ -87,14 +112,22 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
           <X className="w-5 h-5" />
         </button>
         <div className="flex flex-col gap-6">
-          <div className="px-6 py-2 flex items-center gap-3 cursor-pointer" onClick={() => go(AppView.DASHBOARD)}>
+          <div
+            className="px-6 py-2 flex items-center gap-3 cursor-pointer"
+            onClick={() => go(platformMode ? AppView.PLATFORM : AppView.DASHBOARD)}
+          >
             <img src="/inspecta-icon.svg" alt="Inspecta" className="w-10 h-10 rounded-xl shadow-lg" />
             <div>
               <h1 className="font-display text-lg font-extrabold tracking-tight text-white leading-none">INSPECTA</h1>
-              <p className="text-brand-on-primary-container text-[10px] uppercase font-bold tracking-widest mt-1">Construction ERP</p>
+              <p className="text-brand-on-primary-container text-[10px] uppercase font-bold tracking-widest mt-1">
+                {platformMode ? 'Platform Console' : 'Construction ERP'}
+              </p>
             </div>
           </div>
 
+          {platformMode ? (
+            <PlatformSidebar active={active} onSelect={go} />
+          ) : (
           <nav className="px-3 space-y-1 overflow-y-auto custom-scrollbar max-h-[calc(100vh-180px)]">
             {NAV_TREE.map((entry) => {
               if (!isGroup(entry)) {
@@ -138,9 +171,23 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
               );
             })}
           </nav>
+          )}
         </div>
 
         <div className="px-4 py-2 space-y-3">
+          {/* Lets the superadmin drop into their own company's ERP without
+              leaving the console for good. */}
+          {platformMode && (
+            <button
+              id="nav-my-company"
+              onClick={() => go(AppView.DASHBOARD)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs text-left text-brand-on-primary-container/85 hover:text-white hover:bg-white/5 transition-all"
+            >
+              <Layers className="w-4 h-4 shrink-0" />
+              <span className="flex-1">My Company</span>
+              <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+            </button>
+          )}
           <div className="h-[1px] bg-brand-on-primary-container/20 my-2" />
           <div className="flex items-center justify-between text-brand-on-primary-container/70 text-xs px-2">
             <button className="flex items-center gap-2 hover:text-white transition-all text-[11px] font-bold" onClick={onLogout}>
@@ -239,6 +286,29 @@ function TopHeader({ onOpenSidebar, onStartTour }: { onOpenSidebar: () => void; 
 }
 
 /**
+ * Unmissable reminder that the screen below belongs to someone else's company.
+ * Sticky and full-bleed on purpose — a platform admin must never mistake a
+ * customer's data for their own.
+ */
+function InspectBanner({ org, onExit }: { org: { name: string; slug: string }; onExit: () => void }) {
+  return (
+    <div className="sticky top-0 z-50 bg-brand-secondary-container text-white px-4 md:px-8 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 shadow-md">
+      <Eye className="w-4 h-4 shrink-0" />
+      <p className="text-xs font-bold">
+        Viewing <span className="underline underline-offset-2">{org.name}</span>
+      </p>
+      <span className="text-[11px] font-semibold opacity-80">read-only · platform console</span>
+      <button
+        onClick={onExit}
+        className="ml-auto text-[11px] font-bold bg-white/20 hover:bg-white/30 rounded-md px-3 py-1 transition-colors"
+      >
+        Exit
+      </button>
+    </div>
+  );
+}
+
+/**
  * Persistent application chrome. The sidebar and header mount exactly once and
  * stay put; only the routed page content (the <Outlet/>) animates on navigation,
  * so the sidebar no longer flashes/re-animates when switching pages.
@@ -250,6 +320,7 @@ export default function AppShell() {
   const navigate = useNavigate();
   const navigateView = useViewNavigate();
   const { logout, user } = useAuth();
+  const inspected = useSyncExternalStore(subscribeInspect, getInspectedOrg);
 
   // First-run walkthrough: auto-start once per user (until they finish/skip it).
   const tourKey = user ? `inspecta.tour.v1.${user.id}` : null;
@@ -276,11 +347,17 @@ export default function AppShell() {
 
   const chrome: ShellChrome = { onNavigate: navigateView, onLogout: handleLogout };
 
+  const leaveInspect = () => {
+    exitInspect();
+    navigate(pathForView(AppView.PLATFORM_COMPANIES));
+  };
+
   return (
     <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex" id="erp-root">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onLogout={handleLogout} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+        {inspected && <InspectBanner org={inspected} onExit={leaveInspect} />}
         <TopHeader onOpenSidebar={() => setSidebarOpen(true)} onStartTour={startTour} />
 
         {/* Only the page content animates — the chrome above is untouched. */}

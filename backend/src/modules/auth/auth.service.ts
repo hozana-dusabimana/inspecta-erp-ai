@@ -12,6 +12,8 @@ import { Unauthorized, Conflict, NotFound, Forbidden, BadRequest } from '../../l
 import { permissionsFor, isPlatformRole } from '../../auth/permissions';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
+import { getPlatformSettings } from '../platform/settings';
+import { PLAN_DEFAULTS } from '../platform/plans';
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
 
@@ -124,6 +126,13 @@ export async function registerOrganization(input: {
 }) {
   const email = input.email.toLowerCase().trim();
 
+  // A platform admin can close self-service signup, after which tenants exist
+  // only when provisioned from the console.
+  const settings = await getPlatformSettings();
+  if (!settings.allowSelfSignup) {
+    throw Forbidden('Self-service signup is currently closed. Please contact us to request an account.');
+  }
+
   const existing = await prisma.user.findFirst({ where: { email } });
   if (existing) throw Conflict('A user with this email already exists');
 
@@ -136,7 +145,15 @@ export async function registerOrganization(input: {
 
   const { user } = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
-      data: { name: input.organizationName, slug },
+      data: {
+        name: input.organizationName,
+        slug,
+        currency: settings.defaultCurrency,
+        timezone: settings.defaultTimezone,
+        // Self-service tenants start on TRIAL with its default quotas.
+        maxUsers: PLAN_DEFAULTS.TRIAL.maxUsers,
+        maxProjects: PLAN_DEFAULTS.TRIAL.maxProjects,
+      },
     });
     const user = await tx.user.create({
       data: {

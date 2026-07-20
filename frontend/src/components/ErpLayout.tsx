@@ -4,7 +4,7 @@ import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
   GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
-  Wallet, Store, Package, HardHat, Archive, Wrench, Globe,
+  Wallet, Store, Package, HardHat, Archive, Wrench, Globe, ScrollText,
 } from 'lucide-react';
 import { AppView } from '../types';
 
@@ -88,8 +88,21 @@ export const NAV_TREE: NavEntry[] = [
   { id: 'nav-copilot', label: 'AI Copilot', icon: Bot, view: AppView.COPILOT, perm: 'ai:use' },
   // Admin-only: only SYSTEM_ADMIN holds 'user:write'.
   { id: 'nav-admin', label: 'Administration', icon: ShieldCheck, view: AppView.ADMIN, perm: 'user:write' },
-  // Cross-tenant console: only PLATFORM_ADMIN holds 'platform:manage'.
-  { id: 'nav-platform', label: 'Platform Console', icon: Globe, view: AppView.PLATFORM, perm: 'platform:manage' },
+];
+
+/**
+ * The superadmin's own navigation. A platform admin runs the platform, not one
+ * company, so they get this instead of NAV_TREE — the tenant ERP modules above
+ * are scoped to a single organization and are the wrong tool for the job. They
+ * reach company data by opening a company (inspect mode), which swaps them onto
+ * NAV_TREE for as long as they are inside that tenant.
+ */
+export const PLATFORM_NAV: NavItem[] = [
+  { id: 'nav-platform', label: 'Overview', icon: Globe, view: AppView.PLATFORM },
+  { id: 'nav-platform-companies', label: 'Companies', icon: Building2, view: AppView.PLATFORM_COMPANIES },
+  { id: 'nav-platform-users', label: 'Users', icon: Users, view: AppView.PLATFORM_USERS },
+  { id: 'nav-platform-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.PLATFORM_AUDIT },
+  { id: 'nav-platform-settings', label: 'Settings', icon: Settings, view: AppView.PLATFORM_SETTINGS },
 ];
 
 // Flat list of every navigable item, in sidebar order.

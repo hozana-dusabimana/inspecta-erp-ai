@@ -5,6 +5,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
+import { publicPlatformSettings } from '../platform/settings';
 
 const router = Router();
 
@@ -83,6 +84,14 @@ router.get(
     });
     return ok(res, members);
   }),
+);
+
+// GET /api/public/settings — the handful of platform settings an unauthenticated
+// client legitimately needs: whether signup is open, and the maintenance banner
+// (which has to reach people who cannot sign in).
+router.get(
+  '/settings',
+  asyncHandler(async (_req, res) => ok(res, await publicPlatformSettings())),
 );
 
 export default router;

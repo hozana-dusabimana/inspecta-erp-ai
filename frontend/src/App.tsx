@@ -56,9 +56,17 @@ function RequireAuth() {
   return <Outlet />;
 }
 
+/**
+ * Where a signed-in user belongs. A platform admin runs the platform, so their
+ * home is the console — not one company's dashboard.
+ */
+function homePath(user: { isPlatformAdmin?: boolean } | null): string {
+  return user?.isPlatformAdmin ? '/platform' : '/dashboard';
+}
+
 function LandingRoute() {
   const { user, loading } = useAuth();
-  if (!loading && user) return <Navigate to="/dashboard" replace />;
+  if (!loading && user) return <Navigate to={homePath(user)} replace />;
   return <LandingPage />;
 }
 
@@ -66,14 +74,14 @@ function LoginRoute() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const navigateView = useViewNavigate();
-  if (!loading && user) return <Navigate to="/dashboard" replace />;
-  return <LoginPage onLoginSuccess={() => navigate('/dashboard')} onNavigate={navigateView} />;
+  if (!loading && user) return <Navigate to={homePath(user)} replace />;
+  return <LoginPage onLoginSuccess={() => navigate('/')} onNavigate={navigateView} />;
 }
 
 function SignupRoute() {
   const { user, loading } = useAuth();
   const navigateView = useViewNavigate();
-  if (!loading && user) return <Navigate to="/dashboard" replace />;
+  if (!loading && user) return <Navigate to={homePath(user)} replace />;
   return <SignupPage onNavigate={navigateView} />;
 }
 
@@ -149,7 +157,11 @@ export default function App() {
             <Route path="/approvals" element={<Chromed render={(c) => <ApprovalsPage {...c} />} />} />
             <Route path="/notifications" element={<Chromed render={(c) => <NotificationsPage {...c} />} />} />
             <Route path="/admin" element={<Chromed render={(c) => <AdminPage {...c} />} />} />
-            <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole {...c} />} />} />
+            <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole tab="overview" {...c} />} />} />
+            <Route path="/platform/companies" element={<Chromed render={(c) => <PlatformConsole tab="companies" {...c} />} />} />
+            <Route path="/platform/users" element={<Chromed render={(c) => <PlatformConsole tab="users" {...c} />} />} />
+            <Route path="/platform/audit" element={<Chromed render={(c) => <PlatformConsole tab="audit" {...c} />} />} />
+            <Route path="/platform/settings" element={<Chromed render={(c) => <PlatformConsole tab="settings" {...c} />} />} />
             {Object.values(MODULES).map((def) => (
               <Route
                 key={def.view}

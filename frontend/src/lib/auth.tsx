@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { api, tokenStore } from './api';
+import { getInspectedOrg, subscribeInspect, exitInspect } from './inspectStore';
 
 export interface AuthUser {
   id: string;
@@ -7,6 +8,7 @@ export interface AuthUser {
   fullName: string;
   role: string;
   organizationId: string;
+  isPlatformAdmin?: boolean;
   permissions: string[];
 }
 
@@ -43,6 +45,7 @@ interface AuthResponse {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const inspectedOrg = useSyncExternalStore(subscribeInspect, getInspectedOrg);
 
   // Restore session on mount if a token exists.
   useEffect(() => {
@@ -95,12 +98,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* best effort */
     }
     tokenStore.clear();
+    exitInspect(); // never leave a stale inspected tenant for the next sign-in
     setUser(null);
   }, []);
 
+  // Inspect mode is read-only, so every write permission is withheld while a
+  // platform admin is viewing another tenant. The server enforces this too —
+  // this only stops the UI offering buttons that would 403.
   const hasPermission = useCallback(
-    (permission: string) => Boolean(user?.permissions.includes(permission)),
-    [user],
+    (permission: string) => {
+      if (!user?.permissions.includes(permission)) return false;
+      if (inspectedOrg && permission.endsWith(':write')) return false;
+      return true;
+    },
+    [user, inspectedOrg],
   );
 
   return (

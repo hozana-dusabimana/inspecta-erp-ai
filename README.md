@@ -92,15 +92,36 @@ INSPECTA is multi-tenant, so "admin" means two different things:
 | Screen | Administration (`/admin`) | Platform Console (`/platform`) |
 | API | the normal `/api/*` modules, org-scoped | `/api/platform/*`, cross-tenant |
 | Permission | every `resource:action` except `platform:manage` | all of them, plus `platform:manage` |
-| Can | invite/edit users, set roles, edit company settings | list & suspend companies, block/unblock any user anywhere, change any role, reset any password, see platform analytics and the cross-company audit trail |
+| Can | invite/edit users, set roles, edit company settings | provision & suspend companies, set plans/quotas, open any tenant read-only, block/unblock any user anywhere, change any role, reset any password, platform analytics, cross-company audit, global settings & announcements |
 
-**Platform Console tabs**
+A platform admin gets their **own sidebar** — the tenant ERP modules are hidden,
+because those are scoped to a single company and are the wrong tool for running a
+platform. "My Company" drops them into their own org's ERP; opening a customer
+company puts them in inspect mode (below) with that tenant's nav.
+
+**Platform Console pages** (`/platform/*`, real routes)
 - **Overview** — companies/users/projects totals, 12-month signup growth, users by role, busiest and newest tenants.
-- **Companies** — search & filter every tenant, drill into one (users, projects, recent activity), suspend or reinstate.
+- **Companies** — provision a new tenant + its first admin, search/filter, drill in, set plan & quotas, open read-only, suspend or reinstate.
 - **Users** — every user across every company; block/unblock, change role, reset password.
 - **Audit Trail** — the audit log of all tenants at once, filterable by action/entity/date.
+- **Settings** — global defaults, the self-signup switch, a maintenance banner, and announcements.
 
-All four lists export to CSV/XLSX.
+All list pages export to CSV/XLSX.
+
+**Inspect mode** — "open" a company to point the whole org-scoped API at that
+tenant (`X-Platform-Org` header) and browse its real workspace. It is **strictly
+read-only**: the server rejects every non-GET while the header is set, and the UI
+withholds every `:write` permission, so no button is offered that would fail. A
+red banner names the company you are looking at for as long as you are in it.
+
+**Plans & quotas** — each tenant sits on a tier (Trial / Starter / Professional /
+Enterprise) whose seat and project limits are enforced **on the create path**, so
+neither the API nor the AI copilot can slip past them. Limits are overridable per
+company, and cannot be set below what the tenant already uses. Tenants see their
+own usage on `GET /api/organization`.
+
+**Announcements** — push a notification (and email, at MEDIUM+) into one tenant or
+every active tenant at once.
 
 **Blocking is enforced immediately.** `authenticate` re-reads the account on every
 request, so blocking a user or suspending a company takes effect on their very next

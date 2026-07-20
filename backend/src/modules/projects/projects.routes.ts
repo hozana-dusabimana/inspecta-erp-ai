@@ -6,6 +6,7 @@ import { asyncHandler, ok, paginated } from '../../lib/http';
 import { NotFound, BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
+import { assertProjectQuotaAvailable } from '../platform/plans';
 
 const router = Router();
 router.use(authenticate);
@@ -154,6 +155,7 @@ router.post(
   requirePermission('project:write'),
   asyncHandler(async (req, res) => {
     const body = createSchema.parse(req.body);
+    await assertProjectQuotaAvailable(req.user!.orgId);
     await assertOrgRefs(req.user!.orgId, body.clientId, body.managerId);
     const code = body.code?.trim() || (await generateProjectCode(req.user!.orgId));
 

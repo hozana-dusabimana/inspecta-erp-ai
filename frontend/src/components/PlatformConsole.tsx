@@ -997,6 +997,519 @@ function AuditTab() {
   );
 }
 
+// ────────────────── Cross-tenant projects register ──────────────────
+
+interface PlatformProject {
+  id: string;
+  code: string;
+  name: string;
+  location: string | null;
+  status: string;
+  health: 'OPTIMAL' | 'WARNING' | 'CRITICAL';
+  budget: string;
+  currency: string;
+  progressPct: number;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  organization: { id: string; name: string; slug: string; status: OrgStatus };
+  client: { id: string; name: string } | null;
+  manager: { id: string; fullName: string } | null;
+}
+
+interface ProjectTotals {
+  count: number;
+  totalBudget: number;
+  avgProgress: number;
+  byStatus: { status: string; count: number }[];
+  byHealth: { health: string; count: number }[];
+}
+
+const HEALTH_TONE: Record<string, string> = {
+  OPTIMAL: 'bg-emerald-100 text-emerald-700',
+  WARNING: 'bg-amber-100 text-amber-700',
+  CRITICAL: 'bg-red-100 text-red-700',
+};
+
+const PROJECT_STATUSES = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'AT_RISK', 'COMPLETED', 'CANCELLED'];
+
+const money = (v: number | string, currency = 'RWF') =>
+  `${currency} ${Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const compact = (v: number) =>
+  v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : String(Math.round(v));
+
+/** Enters read-only inspect mode on a tenant and deep-links to a record. */
+function useOpenInTenant() {
+  const navigate = useNavigate();
+  return (org: { id: string; name: string; slug: string }, path: string) => {
+    enterInspect({ id: org.id, name: org.name, slug: org.slug });
+    navigate(path);
+  };
+}
+
+/** Companies dropdown shared by the cross-tenant filters. */
+function useCompanyOptions() {
+  const { data } = useQuery({
+    queryKey: ['platform-company-options'],
+    queryFn: () => api.get<Company[]>('/platform/companies?pageSize=200'),
+  });
+  return data?.data ?? [];
+}
+
+function ProjectsTab() {
+  const [search, setSearch] = useState('');
+  const [org, setOrg] = useState('');
+  const [status, setStatus] = useState('');
+  const [health, setHealth] = useState('');
+  const [page, setPage] = useState(1);
+  const q = useDebounced(search);
+  const pageSize = 25;
+  const companies = useCompanyOptions();
+  const openInTenant = useOpenInTenant();
+
+  const filters = `search=${encodeURIComponent(q)}&organizationId=${org}&status=${status}&health=${health}`;
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-projects', q, org, status, health, page],
+    queryFn: () => api.get<PlatformProject[]>(`/platform/projects?page=${page}&pageSize=${pageSize}&${filters}`),
+  });
+  const rows = data?.data ?? [];
+  const total = data?.meta?.total ?? 0;
+  const totals = (data?.meta as { totals?: ProjectTotals } | undefined)?.totals;
+
+  return (
+    <div>
+      {totals && (
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-5">
+          <Kpi label="Projects" value={totals.count} hint="matching these filters" />
+          <Kpi label="Contract Value" value={compact(totals.totalBudget)} hint="across all tenants" />
+          <Kpi label="Avg Progress" value={`${totals.avgProgress}%`} />
+          <Kpi
+            label="Critical"
+            value={totals.byHealth.find((h) => h.health === 'CRITICAL')?.count ?? 0}
+            tone={(totals.byHealth.find((h) => h.health === 'CRITICAL')?.count ?? 0) > 0 ? 'critical' : undefined}
+            hint="health = critical"
+          />
+        </div>
+      )}
+
+      <Toolbar search={search} onSearch={(v) => { setSearch(v); setPage(1); }} exportPath={`/platform/projects/export?${filters}`}>
+        <select value={org} onChange={(e) => { setOrg(e.target.value); setPage(1); }} className={`${controlCls} w-48`}>
+          <option value="">All companies</option>
+          {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className={`${controlCls} w-36`}>
+          <option value="">All statuses</option>
+          {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+        </select>
+        <select value={health} onChange={(e) => { setHealth(e.target.value); setPage(1); }} className={`${controlCls} w-36`}>
+          <option value="">All health</option>
+          {['OPTIMAL', 'WARNING', 'CRITICAL'].map((h) => <option key={h} value={h}>{h}</option>)}
+        </select>
+      </Toolbar>
+
+      <div className={`${cardCls} overflow-x-auto`}>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="px-4 py-3 font-bold">Company</th>
+              <th className="px-4 py-3 font-bold">Project</th>
+              <th className="px-4 py-3 font-bold">Status</th>
+              <th className="px-4 py-3 font-bold">Health</th>
+              <th className="px-4 py-3 font-bold text-right">Contract Value</th>
+              <th className="px-4 py-3 font-bold text-right">Progress</th>
+              <th className="px-4 py-3 font-bold">Finish</th>
+              <th className="px-4 py-3 font-bold text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-on-surface-variant">Loading projects…</td></tr>}
+            {rows.map((p) => (
+              <tr key={p.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
+                <td className="px-4 py-3 text-brand-on-surface-variant">{p.organization.name}</td>
+                <td className="px-4 py-3">
+                  <p className="font-bold text-brand-primary">{p.name}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant font-mono">{p.code}{p.location ? ` · ${p.location}` : ''}</p>
+                </td>
+                <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-[10px] font-bold bg-brand-surface text-brand-on-surface-variant">{p.status.replace('_', ' ')}</span></td>
+                <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-[10px] font-bold ${HEALTH_TONE[p.health] ?? ''}`}>{p.health}</span></td>
+                <td className="px-4 py-3 text-right font-mono">{money(p.budget, p.currency)}</td>
+                <td className="px-4 py-3 text-right font-mono">{Number(p.progressPct).toFixed(1)}%</td>
+                <td className="px-4 py-3 text-brand-on-surface-variant">{fmtDate(p.endDate)}</td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    title="Open in its company (read-only)"
+                    onClick={() => openInTenant(p.organization, `/planning?projectId=${p.id}`)}
+                    className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-brand-on-surface-variant">No projects match these filters.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <Pager page={page} pageSize={pageSize} total={total} onPage={setPage} />
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────── Delivery watchlist ─────────────────────────
+
+interface Watchlist {
+  counts: Record<string, number>;
+  criticalProjects: { id: string; code: string; name: string; status: string; health: string; progressPct: number; endDate: string | null; organization: WlOrg }[];
+  overdueProjects: { id: string; code: string; name: string; endDate: string | null; progressPct: number; organization: WlOrg }[];
+  overBudgetProjects: { id: string; code: string; name: string; budget: number; spent: number; utilisationPct: number; organization: WlOrg }[];
+  criticalRisks: { id: string; title: string; score: number; status: string; category: string; project: WlProject }[];
+  openNcrs: { id: string; number: string; description: string; severity: string; status: string; dueDate: string | null; project: WlProject }[];
+  seriousIncidents: { id: string; type: string; severity: string; description: string; date: string; project: WlProject }[];
+}
+interface WlOrg { id: string; name: string; slug: string }
+interface WlProject { id: string; code: string; name: string; organization: WlOrg }
+
+function WatchCard({ title, count, tone, children }: { title: string; count: number; tone?: string; children: React.ReactNode }) {
+  return (
+    <div className={cardCls}>
+      <div className="flex items-center justify-between p-4 pb-2">
+        <h3 className="font-display text-sm font-extrabold text-brand-primary">{title}</h3>
+        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${count > 0 ? tone ?? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+          {count}
+        </span>
+      </div>
+      <div className="max-h-72 overflow-y-auto custom-scrollbar">
+        {count === 0
+          ? <p className="px-4 py-6 text-center text-brand-on-surface-variant text-xs">Nothing to action. </p>
+          : children}
+      </div>
+    </div>
+  );
+}
+
+function WatchRow({ org, primary, secondary, right, onOpen }: {
+  org: WlOrg; primary: string; secondary: string; right?: string; onOpen: () => void;
+}) {
+  return (
+    <button onClick={onOpen} className="w-full text-left px-4 py-2.5 border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40 flex items-center gap-3">
+      <span className="flex-1 min-w-0">
+        <span className="block text-xs font-bold text-brand-primary truncate">{primary}</span>
+        <span className="block text-[10px] text-brand-on-surface-variant truncate">{org.name} · {secondary}</span>
+      </span>
+      {right && <span className="font-mono text-[11px] font-bold text-brand-status-critical shrink-0">{right}</span>}
+      <LogIn className="w-3.5 h-3.5 text-brand-on-surface-variant shrink-0" />
+    </button>
+  );
+}
+
+function WatchlistTab() {
+  const openInTenant = useOpenInTenant();
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-watchlist'],
+    queryFn: () => api.get<Watchlist>('/platform/watchlist'),
+    refetchInterval: 60_000,
+  });
+  const w = data?.data;
+  if (isLoading || !w) return <p className="text-brand-on-surface-variant text-xs">Loading watchlist…</p>;
+
+  const proj = (p: { id: string; organization: WlOrg }) => () => openInTenant(p.organization, `/planning?projectId=${p.id}`);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-6">
+        <Kpi label="Critical" value={w.counts.criticalProjects} tone={w.counts.criticalProjects ? 'critical' : undefined} hint="projects" />
+        <Kpi label="Overdue" value={w.counts.overdueProjects} tone={w.counts.overdueProjects ? 'warning' : undefined} hint="past finish date" />
+        <Kpi label="Over Budget" value={w.counts.overBudgetProjects} tone={w.counts.overBudgetProjects ? 'critical' : undefined} hint="cost > budget" />
+        <Kpi label="Critical Risks" value={w.counts.criticalRisks} tone={w.counts.criticalRisks ? 'critical' : undefined} hint="score ≥ 15" />
+        <Kpi label="Open NCRs" value={w.counts.openNcrs} tone={w.counts.openNcrs ? 'warning' : undefined} hint="quality" />
+        <Kpi label="Incidents" value={w.counts.seriousIncidents30d} tone={w.counts.seriousIncidents30d ? 'critical' : undefined} hint="high+ · 30d" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <WatchCard title="Critical & at-risk projects" count={w.criticalProjects.length}>
+          {w.criticalProjects.map((p) => (
+            <WatchRow key={p.id} org={p.organization} primary={`${p.code} — ${p.name}`}
+              secondary={`${p.status.replace('_', ' ')} · ${Number(p.progressPct).toFixed(0)}% done`}
+              right={p.health} onOpen={proj(p)} />
+          ))}
+        </WatchCard>
+
+        <WatchCard title="Overdue projects" count={w.overdueProjects.length} tone="bg-amber-100 text-amber-700">
+          {w.overdueProjects.map((p) => (
+            <WatchRow key={p.id} org={p.organization} primary={`${p.code} — ${p.name}`}
+              secondary={`due ${fmtDate(p.endDate)} · ${Number(p.progressPct).toFixed(0)}% done`} onOpen={proj(p)} />
+          ))}
+        </WatchCard>
+
+        <WatchCard title="Over budget" count={w.overBudgetProjects.length}>
+          {w.overBudgetProjects.map((p) => (
+            <WatchRow key={p.id} org={p.organization} primary={`${p.code} — ${p.name}`}
+              secondary={`spent ${compact(p.spent)} of ${compact(p.budget)}`}
+              right={`${p.utilisationPct}%`} onOpen={proj(p)} />
+          ))}
+        </WatchCard>
+
+        <WatchCard title="Critical risks" count={w.criticalRisks.length}>
+          {w.criticalRisks.map((r) => (
+            <WatchRow key={r.id} org={r.project.organization} primary={r.title}
+              secondary={`${r.project.code} · ${r.category} · ${r.status}`}
+              right={`score ${r.score}`}
+              onOpen={() => openInTenant(r.project.organization, `/risk?projectId=${r.project.id}`)} />
+          ))}
+        </WatchCard>
+
+        <WatchCard title="Open NCRs" count={w.openNcrs.length} tone="bg-amber-100 text-amber-700">
+          {w.openNcrs.map((n) => (
+            <WatchRow key={n.id} org={n.project.organization} primary={`${n.number} — ${n.description.slice(0, 60)}`}
+              secondary={`${n.project.code} · ${n.status.replace('_', ' ')}`} right={n.severity}
+              onOpen={() => openInTenant(n.project.organization, `/qaqc?projectId=${n.project.id}`)} />
+          ))}
+        </WatchCard>
+
+        <WatchCard title="Serious incidents (30 days)" count={w.seriousIncidents.length}>
+          {w.seriousIncidents.map((i) => (
+            <WatchRow key={i.id} org={i.project.organization} primary={i.description.slice(0, 70)}
+              secondary={`${i.project.code} · ${i.type.replace('_', ' ')} · ${fmtDate(i.date)}`} right={i.severity}
+              onOpen={() => openInTenant(i.project.organization, `/hse?projectId=${i.project.id}`)} />
+          ))}
+        </WatchCard>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────── Finance overview ─────────────────────────
+
+interface FinanceRow {
+  id: string; name: string; slug: string; currency: string; status: OrgStatus;
+  contracts: number; invoices: number;
+  contracted: number; invoiced: number; collected: number; outstanding: number; collectionRate: number;
+}
+interface FinanceData {
+  totals: { contracted: number; invoiced: number; collected: number; outstanding: number;
+    ageing: { current: number; d30: number; d60: number; d90: number; over90: number } };
+  companies: FinanceRow[];
+}
+
+const AGEING_LABELS: [keyof FinanceData['totals']['ageing'], string][] = [
+  ['current', 'Not yet due'], ['d30', '1–30 days'], ['d60', '31–60 days'], ['d90', '61–90 days'], ['over90', '90+ days'],
+];
+
+function FinanceTab() {
+  const openInTenant = useOpenInTenant();
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-finance'],
+    queryFn: () => api.get<FinanceData>('/platform/finance'),
+  });
+  const f = data?.data;
+  if (isLoading || !f) return <p className="text-brand-on-surface-variant text-xs">Loading finance overview…</p>;
+
+  const chart = f.companies.slice(0, 8).map((c) => ({
+    name: c.name.length > 16 ? `${c.name.slice(0, 15)}…` : c.name,
+    Invoiced: c.invoiced, Collected: c.collected,
+  }));
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Kpi label="Contracted" value={compact(f.totals.contracted)} hint="signed contract value" />
+        <Kpi label="Invoiced" value={compact(f.totals.invoiced)} />
+        <Kpi label="Collected" value={compact(f.totals.collected)} />
+        <Kpi label="Outstanding" value={compact(f.totals.outstanding)} tone={f.totals.outstanding > 0 ? 'warning' : undefined} hint="invoiced − collected" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className={`${cardCls} p-5 lg:col-span-2`}>
+          <h3 className="font-display text-sm font-extrabold text-brand-primary mb-4">Invoiced vs collected — top tenants</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chart} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} tickFormatter={(v: number) => compact(v)} />
+                <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} formatter={(v: number) => compact(v)} />
+                <Legend wrapperStyle={{ fontSize: '11px' }} />
+                <Bar dataKey="Invoiced" fill="#471519" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Collected" fill="#fc6061" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className={`${cardCls} p-5`}>
+          <h3 className="font-display text-sm font-extrabold text-brand-primary mb-1">Receivables ageing</h3>
+          <p className="text-brand-on-surface-variant text-[10px] mb-4">Unpaid invoices across every tenant, by age past due.</p>
+          <div className="space-y-3">
+            {AGEING_LABELS.map(([key, label]) => {
+              const value = f.totals.ageing[key];
+              const max = Math.max(...AGEING_LABELS.map(([k]) => f.totals.ageing[k]), 1);
+              const overdue = key !== 'current';
+              return (
+                <div key={key}>
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="text-brand-on-surface-variant font-semibold">{label}</span>
+                    <span className="font-mono font-bold text-brand-primary">{compact(value)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-brand-surface overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${overdue ? 'bg-brand-secondary-container' : 'bg-brand-primary'}`}
+                      style={{ width: `${(value / max) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className={`${cardCls} overflow-x-auto`}>
+        <div className="flex items-center justify-between p-4">
+          <h3 className="font-display text-sm font-extrabold text-brand-primary">By company</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={() => api.download('/platform/finance/export?format=csv', 'platform-finance.csv')} className="flex items-center gap-1.5 text-xs font-bold text-brand-on-surface-variant hover:text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-surface">
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button onClick={() => api.download('/platform/finance/export?format=xlsx', 'platform-finance.xlsx')} className="flex items-center gap-1.5 text-xs font-bold text-brand-on-surface-variant hover:text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-surface">
+              <Download className="w-3.5 h-3.5" /> Excel
+            </button>
+          </div>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="px-4 py-3 font-bold">Company</th>
+              <th className="px-4 py-3 font-bold text-right">Contracted</th>
+              <th className="px-4 py-3 font-bold text-right">Invoiced</th>
+              <th className="px-4 py-3 font-bold text-right">Collected</th>
+              <th className="px-4 py-3 font-bold text-right">Outstanding</th>
+              <th className="px-4 py-3 font-bold text-right">Collected %</th>
+              <th className="px-4 py-3 font-bold text-right">Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            {f.companies.map((c) => (
+              <tr key={c.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
+                <td className="px-4 py-3 font-bold text-brand-primary">{c.name}</td>
+                <td className="px-4 py-3 text-right font-mono">{compact(c.contracted)}</td>
+                <td className="px-4 py-3 text-right font-mono">{compact(c.invoiced)}</td>
+                <td className="px-4 py-3 text-right font-mono">{compact(c.collected)}</td>
+                <td className={`px-4 py-3 text-right font-mono ${c.outstanding > 0 ? 'text-brand-status-critical font-bold' : ''}`}>{compact(c.outstanding)}</td>
+                <td className="px-4 py-3 text-right font-mono">{c.collectionRate}%</td>
+                <td className="px-4 py-3 text-right">
+                  <button title="Open finance in this company" onClick={() => openInTenant(c, '/finance')} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                    <LogIn className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────── Adoption & engagement ─────────────────────────
+
+interface AdoptionCompany {
+  id: string; name: string; slug: string; status: OrgStatus; plan: PlanTier;
+  users: number; createdAt: string; lastActiveAt: string | null; dormant: boolean;
+  modulesUsed: number; totalModules: number; records: number;
+  modules: Record<string, number>;
+}
+interface AdoptionData {
+  moduleLabels: { key: string; label: string }[];
+  dormantAfterDays: number;
+  companies: AdoptionCompany[];
+}
+
+function AdoptionTab() {
+  const openInTenant = useOpenInTenant();
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-adoption'],
+    queryFn: () => api.get<AdoptionData>('/platform/adoption'),
+  });
+  const a = data?.data;
+  if (isLoading || !a) return <p className="text-brand-on-surface-variant text-xs">Loading adoption report…</p>;
+
+  const dormant = a.companies.filter((c) => c.dormant).length;
+  const avgModules = a.companies.length
+    ? (a.companies.reduce((s, c) => s + c.modulesUsed, 0) / a.companies.length).toFixed(1)
+    : '0';
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Kpi label="Companies" value={a.companies.length} />
+        <Kpi label="Dormant" value={dormant} tone={dormant ? 'warning' : undefined} hint={`no activity in ${a.dormantAfterDays} days`} />
+        <Kpi label="Avg Modules Used" value={`${avgModules} / ${a.companies[0]?.totalModules ?? 0}`} />
+        <Kpi label="Total Records" value={compact(a.companies.reduce((s, c) => s + c.records, 0))} hint="across all modules" />
+      </div>
+
+      <div className={`${cardCls} overflow-x-auto`}>
+        <div className="flex items-center justify-between p-4">
+          <div>
+            <h3 className="font-display text-sm font-extrabold text-brand-primary">Module adoption</h3>
+            <p className="text-brand-on-surface-variant text-[10px]">Records created per module. Dormant tenants are listed first.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => api.download('/platform/adoption/export?format=csv', 'platform-adoption.csv')} className="flex items-center gap-1.5 text-xs font-bold text-brand-on-surface-variant hover:text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-surface">
+              <Download className="w-3.5 h-3.5" /> CSV
+            </button>
+            <button onClick={() => api.download('/platform/adoption/export?format=xlsx', 'platform-adoption.xlsx')} className="flex items-center gap-1.5 text-xs font-bold text-brand-on-surface-variant hover:text-brand-primary px-3 py-2 rounded-lg hover:bg-brand-surface">
+              <Download className="w-3.5 h-3.5" /> Excel
+            </button>
+          </div>
+        </div>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="px-4 py-3 font-bold sticky left-0 bg-brand-surface-container-lowest">Company</th>
+              <th className="px-3 py-3 font-bold">Last active</th>
+              <th className="px-3 py-3 font-bold text-right">Modules</th>
+              {a.moduleLabels.map((m) => (
+                <th key={m.key} className="px-2 py-3 font-bold text-right whitespace-nowrap">{m.label}</th>
+              ))}
+              <th className="px-3 py-3 font-bold text-right">Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            {a.companies.map((c) => (
+              <tr key={c.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
+                <td className="px-4 py-3 sticky left-0 bg-brand-surface-container-lowest">
+                  <p className="font-bold text-brand-primary flex items-center gap-2">
+                    {c.name}
+                    {c.dormant && <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700">Dormant</span>}
+                  </p>
+                  <p className="text-[10px] text-brand-on-surface-variant">{planLabel(c.plan)} · {c.users} user{c.users === 1 ? '' : 's'}</p>
+                </td>
+                <td className="px-3 py-3 text-brand-on-surface-variant whitespace-nowrap">{fmtDate(c.lastActiveAt)}</td>
+                <td className="px-3 py-3 text-right font-mono font-bold">{c.modulesUsed}/{c.totalModules}</td>
+                {a.moduleLabels.map((m) => {
+                  const n = c.modules[m.key] ?? 0;
+                  return (
+                    <td key={m.key} className={`px-2 py-3 text-right font-mono ${n === 0 ? 'text-brand-outline-variant' : 'text-brand-on-surface'}`}>
+                      {n === 0 ? '—' : n}
+                    </td>
+                  );
+                })}
+                <td className="px-3 py-3 text-right">
+                  <button title="Open this company (read-only)" onClick={() => openInTenant(c, '/dashboard')} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                    <LogIn className="w-3.5 h-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ───────────────────── Settings & announcements ─────────────────────
 
 interface PlatformSettings {
@@ -1169,7 +1682,9 @@ function AnnouncementCard() {
 
 // ─────────────────────────────── Page shell ───────────────────────────────
 
-export type PlatformTab = 'overview' | 'companies' | 'users' | 'audit' | 'settings';
+export type PlatformTab =
+  | 'overview' | 'companies' | 'users' | 'projects'
+  | 'watchlist' | 'finance' | 'adoption' | 'audit' | 'settings';
 
 const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: string }> = {
   overview: {
@@ -1186,6 +1701,26 @@ const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: s
     view: AppView.PLATFORM_USERS,
     title: 'Users',
     subtitle: 'Every user across every company — block, promote or reset any account.',
+  },
+  projects: {
+    view: AppView.PLATFORM_PROJECTS,
+    title: 'Projects',
+    subtitle: 'Every project on the platform — filter, export, or open one inside its company.',
+  },
+  watchlist: {
+    view: AppView.PLATFORM_WATCHLIST,
+    title: 'Delivery Watchlist',
+    subtitle: 'Exceptions across every tenant: at-risk and overdue projects, overspend, critical risks, NCRs and incidents.',
+  },
+  finance: {
+    view: AppView.PLATFORM_FINANCE,
+    title: 'Finance Overview',
+    subtitle: 'Contracted, invoiced, collected and outstanding across every company.',
+  },
+  adoption: {
+    view: AppView.PLATFORM_ADOPTION,
+    title: 'Adoption & Engagement',
+    subtitle: 'Which modules each tenant actually uses, and who has gone quiet.',
   },
   audit: {
     view: AppView.PLATFORM_AUDIT,
@@ -1220,6 +1755,10 @@ export default function PlatformConsole({ tab, onNavigate, onLogout }: Props & {
           {tab === 'overview' && <OverviewTab />}
           {tab === 'companies' && <CompaniesTab />}
           {tab === 'users' && <UsersTab />}
+          {tab === 'projects' && <ProjectsTab />}
+          {tab === 'watchlist' && <WatchlistTab />}
+          {tab === 'finance' && <FinanceTab />}
+          {tab === 'adoption' && <AdoptionTab />}
           {tab === 'audit' && <AuditTab />}
           {tab === 'settings' && <SettingsTab />}
         </>

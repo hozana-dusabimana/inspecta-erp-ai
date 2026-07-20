@@ -103,6 +103,10 @@ company puts them in inspect mode (below) with that tenant's nav.
 - **Overview** — companies/users/projects totals, 12-month signup growth, users by role, busiest and newest tenants.
 - **Companies** — provision a new tenant + its first admin, search/filter, drill in, set plan & quotas, open read-only, suspend or reinstate.
 - **Users** — every user across every company; block/unblock, change role, reset password.
+- **Projects** — every project on the platform: company, status, health, contract value, progress. Filter by company/status/health, sort, export, or open one inside its tenant.
+- **Watchlist** — the exceptions across all tenants in one screen: critical & at-risk projects, overdue, over budget, critical risks (score ≥ 15), open NCRs and serious incidents. Every row opens the record in its company.
+- **Finance** — contracted / invoiced / collected / outstanding per company, platform totals, and receivables ageing.
+- **Adoption** — records per module per tenant, last-active date and dormant flags, so a churning customer is visible early.
 - **Audit Trail** — the audit log of all tenants at once, filterable by action/entity/date.
 - **Settings** — global defaults, the self-signup switch, a maintenance banner, and announcements.
 

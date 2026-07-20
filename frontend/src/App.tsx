@@ -160,6 +160,10 @@ export default function App() {
             <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole tab="overview" {...c} />} />} />
             <Route path="/platform/companies" element={<Chromed render={(c) => <PlatformConsole tab="companies" {...c} />} />} />
             <Route path="/platform/users" element={<Chromed render={(c) => <PlatformConsole tab="users" {...c} />} />} />
+            <Route path="/platform/projects" element={<Chromed render={(c) => <PlatformConsole tab="projects" {...c} />} />} />
+            <Route path="/platform/watchlist" element={<Chromed render={(c) => <PlatformConsole tab="watchlist" {...c} />} />} />
+            <Route path="/platform/finance" element={<Chromed render={(c) => <PlatformConsole tab="finance" {...c} />} />} />
+            <Route path="/platform/adoption" element={<Chromed render={(c) => <PlatformConsole tab="adoption" {...c} />} />} />
             <Route path="/platform/audit" element={<Chromed render={(c) => <PlatformConsole tab="audit" {...c} />} />} />
             <Route path="/platform/settings" element={<Chromed render={(c) => <PlatformConsole tab="settings" {...c} />} />} />
             {Object.values(MODULES).map((def) => (

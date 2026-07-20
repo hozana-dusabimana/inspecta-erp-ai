@@ -101,6 +101,10 @@ export const PLATFORM_NAV: NavItem[] = [
   { id: 'nav-platform', label: 'Overview', icon: Globe, view: AppView.PLATFORM },
   { id: 'nav-platform-companies', label: 'Companies', icon: Building2, view: AppView.PLATFORM_COMPANIES },
   { id: 'nav-platform-users', label: 'Users', icon: Users, view: AppView.PLATFORM_USERS },
+  { id: 'nav-platform-projects', label: 'Projects', icon: Layers, view: AppView.PLATFORM_PROJECTS },
+  { id: 'nav-platform-watchlist', label: 'Watchlist', icon: ShieldAlert, view: AppView.PLATFORM_WATCHLIST },
+  { id: 'nav-platform-finance', label: 'Finance', icon: DollarSign, view: AppView.PLATFORM_FINANCE },
+  { id: 'nav-platform-adoption', label: 'Adoption', icon: TrendingUp, view: AppView.PLATFORM_ADOPTION },
   { id: 'nav-platform-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.PLATFORM_AUDIT },
   { id: 'nav-platform-settings', label: 'Settings', icon: Settings, view: AppView.PLATFORM_SETTINGS },
 ];

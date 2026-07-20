@@ -12,6 +12,7 @@ import { platformOverview } from './platform.service';
 import { PLAN_DEFAULTS, PLAN_LABELS, usageFor } from './plans';
 import { getPlatformSettings, updatePlatformSettings } from './settings';
 import { notify } from '../notifications/notify';
+import { projectWhere, projectSelect, projectTotals, deliveryWatchlist, financeOverview, adoptionReport } from './insights';
 
 /**
  * The cross-tenant superadmin console. Every route here deliberately escapes the
@@ -558,6 +559,73 @@ router.get(
       prisma.auditLog.count({ where }),
     ]);
     return paginated(res, rows, { page, pageSize, total });
+  }),
+);
+
+// ──────────────── Cross-tenant ERP: projects register ────────────────
+
+router.get(
+  '/projects/export',
+  asyncHandler(async (req, res) => {
+    const rows = await prisma.project.findMany({
+      where: projectWhere(req.query as Record<string, unknown>),
+      orderBy: { createdAt: 'desc' },
+      take: EXPORT_CAP,
+      select: projectSelect,
+    });
+    // Flatten the relations so the sheet gets plain columns.
+    const flat = rows.map(({ organization, client, manager, ...p }) => ({
+      company: organization.name,
+      ...p,
+      client: client?.name ?? '',
+      manager: manager?.fullName ?? '',
+    }));
+    return sendTabularExport(res, flat, 'platform-projects', exportFormat(req.query.format));
+  }),
+);
+
+router.get(
+  '/projects',
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip } = pageParams(req.query as Record<string, unknown>);
+    const where = projectWhere(req.query as Record<string, unknown>);
+    const sortBy = (req.query.sortBy as string) ?? 'createdAt';
+    const sortDir = (req.query.sortDir as string) === 'asc' ? 'asc' : 'desc';
+    // Whitelisted so a caller cannot sort by an arbitrary column.
+    const sortable = new Set(['createdAt', 'name', 'code', 'budget', 'progressPct', 'startDate', 'endDate']);
+    const orderBy = { [sortable.has(sortBy) ? sortBy : 'createdAt']: sortDir };
+
+    const [rows, total, totals] = await Promise.all([
+      prisma.project.findMany({ where, select: projectSelect, orderBy, skip, take: pageSize }),
+      prisma.project.count({ where }),
+      projectTotals(where),
+    ]);
+    return res.json({ success: true, data: rows, meta: { page, pageSize, total, totals } });
+  }),
+);
+
+// ──────────────── Cross-tenant ERP: watchlist / finance / adoption ────────────────
+
+router.get('/watchlist', asyncHandler(async (_req, res) => ok(res, await deliveryWatchlist())));
+
+router.get('/finance', asyncHandler(async (_req, res) => ok(res, await financeOverview())));
+
+router.get(
+  '/finance/export',
+  asyncHandler(async (req, res) => {
+    const { companies } = await financeOverview();
+    return sendTabularExport(res, companies, 'platform-finance', exportFormat(req.query.format));
+  }),
+);
+
+router.get('/adoption', asyncHandler(async (_req, res) => ok(res, await adoptionReport())));
+
+router.get(
+  '/adoption/export',
+  asyncHandler(async (req, res) => {
+    const { companies } = await adoptionReport();
+    const flat = companies.map(({ modules, ...c }) => ({ ...c, ...modules }));
+    return sendTabularExport(res, flat, 'platform-adoption', exportFormat(req.query.format));
   }),
 );
 

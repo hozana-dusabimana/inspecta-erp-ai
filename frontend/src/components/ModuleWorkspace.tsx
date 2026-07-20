@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AppView } from '../types';
 import { api } from '../lib/api';
@@ -45,8 +46,14 @@ interface Props {
 export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   const { hasPermission } = useAuth();
   const visibleTabs = def.tabs.filter((t) => hasPermission(t.readPerm));
-  const [activeTab, setActiveTab] = useState(visibleTabs[0]?.key ?? def.tabs[0]?.key);
-  const [projectId, setProjectId] = useState<string>('');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(
+    () => searchParams.get('tab') ?? visibleTabs[0]?.key ?? def.tabs[0]?.key,
+  );
+  // Deep-linkable: ?projectId= preselects a project (and ?tab= a tab), so the
+  // platform console can land straight on one record inside a tenant, and any
+  // module view is shareable as a URL.
+  const [projectId, setProjectId] = useState<string>(() => searchParams.get('projectId') ?? '');
 
   const needsProject = def.tabs.some((t) => t.projectScoped);
   const { data: projects } = useQuery({

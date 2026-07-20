@@ -39,6 +39,10 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.PLATFORM]: '/platform',
   [AppView.PLATFORM_COMPANIES]: '/platform/companies',
   [AppView.PLATFORM_USERS]: '/platform/users',
+  [AppView.PLATFORM_PROJECTS]: '/platform/projects',
+  [AppView.PLATFORM_WATCHLIST]: '/platform/watchlist',
+  [AppView.PLATFORM_FINANCE]: '/platform/finance',
+  [AppView.PLATFORM_ADOPTION]: '/platform/adoption',
   [AppView.PLATFORM_AUDIT]: '/platform/audit',
   [AppView.PLATFORM_SETTINGS]: '/platform/settings',
 };

@@ -14,6 +14,7 @@ import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
 import { getPlatformSettings } from '../platform/settings';
 import { PLAN_DEFAULTS } from '../platform/plans';
+import { trialEndFrom } from '../billing/billing.service';
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
 
@@ -150,9 +151,11 @@ export async function registerOrganization(input: {
         slug,
         currency: settings.defaultCurrency,
         timezone: settings.defaultTimezone,
-        // Self-service tenants start on TRIAL with its default quotas.
+        // Self-service tenants start on TRIAL with its default quotas and a
+        // 14-day clock; after that they must pay to keep full access.
         maxUsers: PLAN_DEFAULTS.TRIAL.maxUsers,
         maxProjects: PLAN_DEFAULTS.TRIAL.maxProjects,
+        trialEndsAt: trialEndFrom(),
       },
     });
     const user = await tx.user.create({

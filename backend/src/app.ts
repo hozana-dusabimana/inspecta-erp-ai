@@ -42,6 +42,7 @@ import portfolioRoutes from './modules/portfolio/portfolio.routes';
 import geoRoutes from './modules/geo/geo.routes';
 import publicRoutes from './modules/public/public.routes';
 import platformRoutes from './modules/platform/platform.routes';
+import billingRoutes from './modules/billing/billing.routes';
 
 export function createApp() {
   const app = express();
@@ -116,6 +117,7 @@ export function createApp() {
   app.use('/api/projects', projectsRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/platform', platformRoutes); // cross-tenant superadmin console
+  app.use('/api/billing', billingRoutes); // tenant subscription & payment claims
   app.use('/api/ai', aiRoutes);
 
   // ERP modules

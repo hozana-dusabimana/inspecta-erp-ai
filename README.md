@@ -108,7 +108,8 @@ company puts them in inspect mode (below) with that tenant's nav.
 - **Finance** — contracted / invoiced / collected / outstanding per company, platform totals, and receivables ageing.
 - **Adoption** — records per module per tenant, last-active date and dormant flags, so a churning customer is visible early.
 - **Audit Trail** — the audit log of all tenants at once, filterable by action/entity/date.
-- **Settings** — global defaults, the self-signup switch, a maintenance banner, and announcements.
+- **Subscriptions** — payments companies have declared, awaiting your approval. Approving one activates their plan.
+- **Settings** — global defaults, the self-signup switch, a maintenance banner, announcements, **plan pricing** and **payment accounts**.
 
 All list pages export to CSV/XLSX.
 
@@ -126,6 +127,38 @@ own usage on `GET /api/organization`.
 
 **Announcements** — push a notification (and email, at MEDIUM+) into one tenant or
 every active tenant at once.
+
+---
+
+## Billing & subscriptions (RWF, manual approval)
+
+There is no payment gateway yet, so money moves out-of-band and the platform
+admin confirms it. The flow:
+
+1. **Platform admin publishes** prices (flat monthly + annual per plan, in RWF)
+   and one or more **payment accounts** — MoMo number or bank account — under
+   Platform Console → Settings.
+2. **A company signs up** and gets a **14-day free trial** on the Trial plan
+   (3 users, 2 projects). Provisioned tenants get the same clock.
+3. **The company admin** opens *Billing & Plan*, picks a plan and billing period,
+   pays to one of the published accounts, and submits the transaction reference,
+   payer name and phone. The amount is taken from the published price — a tenant
+   cannot declare its own.
+4. **The platform admin** sees it under *Subscriptions*, verifies the transfer
+   arrived, and approves or rejects with a reason. Approval sets the plan, applies
+   that plan's quotas, and extends the paid-through date. Either outcome notifies
+   the company.
+
+**When a subscription lapses** the workspace is not cut off. There is a **7-day
+grace period** with an escalating banner, and only then does it go **read-only**:
+the team can still sign in, view and export everything, but cannot create or edit
+until payment is approved (`402 Payment Required` on writes). Billing itself stays
+writable — otherwise a locked-out tenant could never pay. Paying early extends
+from the existing end date rather than truncating it.
+
+Every organization that existed before billing was introduced is
+`billingExempt`, and so is the seeded demo tenant: switching billing on must
+never retroactively lock an existing customer out of their own data.
 
 **Blocking is enforced immediately.** `authenticate` re-reads the account on every
 request, so blocking a user or suspending a company takes effect on their very next

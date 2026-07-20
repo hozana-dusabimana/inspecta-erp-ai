@@ -6,6 +6,7 @@ import {
 import {
   X, Ban, Check, KeyRound, ShieldCheck, Plus, CreditCard, LogIn, Megaphone,
   Download, Search, ChevronLeft, ChevronRight, AlertTriangle, Eye,
+  Smartphone, Landmark, Pencil, Trash2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AppView } from '../types';
@@ -1510,6 +1511,462 @@ function AdoptionTab() {
   );
 }
 
+// ───────────────────── Subscriptions & approvals ─────────────────────
+
+type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+interface SubRequest {
+  id: string;
+  plan: PlanTier;
+  period: 'MONTHLY' | 'ANNUAL';
+  amount: string;
+  currency: string;
+  payerName: string;
+  payerPhone: string;
+  reference: string;
+  paidAt: string | null;
+  note: string | null;
+  status: RequestStatus;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  activatedUntil: string | null;
+  createdAt: string;
+  organization: { id: string; name: string; slug: string; plan: PlanTier; trialEndsAt: string | null; subscriptionEndsAt: string | null; billingExempt: boolean };
+  paymentAccount: { id: string; label: string; accountNumber: string } | null;
+}
+
+const REQ_TONE: Record<RequestStatus, string> = {
+  PENDING: 'bg-amber-100 text-amber-700',
+  APPROVED: 'bg-emerald-100 text-emerald-700',
+  REJECTED: 'bg-red-100 text-red-700',
+};
+
+function SubscriptionsTab() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<RequestStatus | ''>('PENDING');
+  const [page, setPage] = useState(1);
+  const [reviewing, setReviewing] = useState<{ req: SubRequest; approve: boolean } | null>(null);
+  const pageSize = 25;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-subscriptions', status, page],
+    queryFn: () => api.get<SubRequest[]>(`/platform/subscription-requests?page=${page}&pageSize=${pageSize}&status=${status}`),
+    refetchInterval: 60_000,
+  });
+  const rows = data?.data ?? [];
+  const total = data?.meta?.total ?? 0;
+  const pending = (data?.meta as { pending?: number } | undefined)?.pending ?? 0;
+
+  return (
+    <div>
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-5">
+        <Kpi label="Awaiting Approval" value={pending} tone={pending > 0 ? 'warning' : undefined} hint="companies waiting on you" />
+        <Kpi label="Shown" value={total} hint="matching this filter" />
+        <Kpi
+          label="Value Pending"
+          value={money(rows.filter((r) => r.status === 'PENDING').reduce((s, r) => s + Number(r.amount), 0))}
+          hint="unapproved payments"
+        />
+        <Kpi label="Approved (page)" value={rows.filter((r) => r.status === 'APPROVED').length} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(['PENDING', 'APPROVED', 'REJECTED', ''] as const).map((s) => (
+          <button
+            key={s || 'all'}
+            onClick={() => { setStatus(s); setPage(1); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              status === s ? 'bg-brand-primary text-white' : 'bg-brand-surface-container text-brand-on-surface-variant hover:text-brand-primary'
+            }`}
+          >
+            {s || 'All'}
+          </button>
+        ))}
+      </div>
+
+      <div className={`${cardCls} overflow-x-auto`}>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="px-4 py-3 font-bold">Company</th>
+              <th className="px-4 py-3 font-bold">Plan</th>
+              <th className="px-4 py-3 font-bold text-right">Amount</th>
+              <th className="px-4 py-3 font-bold">Payer</th>
+              <th className="px-4 py-3 font-bold">Reference</th>
+              <th className="px-4 py-3 font-bold">Status</th>
+              <th className="px-4 py-3 font-bold text-right">Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-on-surface-variant">Loading payments…</td></tr>}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
+                <td className="px-4 py-3">
+                  <p className="font-bold text-brand-primary">{r.organization.name}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant">
+                    currently {planLabel(r.organization.plan)} · ends {fmtDate(r.organization.subscriptionEndsAt ?? r.organization.trialEndsAt)}
+                  </p>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${PLAN_TONE[r.plan]}`}>{planLabel(r.plan)}</span>
+                  <p className="text-[10px] text-brand-on-surface-variant mt-1">{r.period === 'ANNUAL' ? 'Annual' : 'Monthly'}</p>
+                </td>
+                <td className="px-4 py-3 text-right font-mono font-bold">{money(r.amount, r.currency)}</td>
+                <td className="px-4 py-3">
+                  <p className="text-brand-on-surface">{r.payerName}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant font-mono">{r.payerPhone}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="font-mono text-[11px] text-brand-primary font-bold">{r.reference}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant">{r.paymentAccount?.label ?? '—'} · {fmtDate(r.paidAt)}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${REQ_TONE[r.status]}`}>{r.status}</span>
+                  {r.reviewNote && <p className="text-[10px] text-brand-on-surface-variant mt-1 max-w-[12rem]">{r.reviewNote}</p>}
+                  {r.activatedUntil && <p className="text-[10px] text-emerald-700 mt-1">until {fmtDate(r.activatedUntil)}</p>}
+                </td>
+                <td className="px-4 py-3">
+                  {r.status === 'PENDING' ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <button title="Approve & activate" onClick={() => setReviewing({ req: r, approve: true })} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-emerald-600">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button title="Reject" onClick={() => setReviewing({ req: r, approve: false })} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-status-critical">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-right text-[10px] text-brand-on-surface-variant">{fmtDate(r.reviewedAt)}</p>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-on-surface-variant">No payment requests here.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <Pager page={page} pageSize={pageSize} total={total} onPage={setPage} />
+      </div>
+
+      {reviewing && (
+        <ReviewModal
+          request={reviewing.req}
+          approve={reviewing.approve}
+          onClose={() => setReviewing(null)}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ['platform-subscriptions'] });
+            qc.invalidateQueries({ queryKey: ['platform-companies'] });
+            setReviewing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReviewModal({ request, approve, onClose, onDone }: {
+  request: SubRequest; approve: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const [note, setNote] = useState('');
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.post(`/platform/subscription-requests/${request.id}/${approve ? 'approve' : 'reject'}`, { note }),
+    onSuccess: onDone,
+  });
+  const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Could not complete the review' : null;
+
+  return (
+    <Modal title={`${approve ? 'Approve' : 'Reject'} payment — ${request.organization.name}`} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="space-y-3">
+        <div className={`${cardCls} p-3 space-y-1 text-[11px]`}>
+          {([
+            ['Plan', `${planLabel(request.plan)} · ${request.period === 'ANNUAL' ? 'Annual' : 'Monthly'}`],
+            ['Amount', money(request.amount, request.currency)],
+            ['Payer', `${request.payerName} · ${request.payerPhone}`],
+            ['Reference', request.reference],
+            ['Paid to', request.paymentAccount ? `${request.paymentAccount.label} (${request.paymentAccount.accountNumber})` : '—'],
+            ['Declared paid', fmtDate(request.paidAt)],
+          ] as const).map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-4">
+              <span className="text-brand-on-surface-variant">{k}</span>
+              <span className="font-semibold text-brand-primary text-right">{v}</span>
+            </div>
+          ))}
+          {request.note && <p className="pt-2 text-brand-on-surface-variant italic">“{request.note}”</p>}
+        </div>
+
+        <div className={`flex gap-2 p-3 rounded-lg ${approve ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+          <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${approve ? 'text-emerald-600' : 'text-red-600'}`} />
+          <p className={`text-[11px] leading-relaxed ${approve ? 'text-emerald-800' : 'text-red-700'}`}>
+            {approve
+              ? <>Confirm the transfer actually arrived before approving. This moves {request.organization.name} onto {planLabel(request.plan)} and extends their subscription by one {request.period === 'ANNUAL' ? 'year' : 'month'}.</>
+              : <>The company will be told the payment could not be verified, and will stay on their current plan.</>}
+          </p>
+        </div>
+
+        <div>
+          <label className={labelCls}>{approve ? 'NOTE (OPTIONAL)' : 'REASON (SENT TO THE COMPANY)'}</label>
+          <textarea
+            className={`${inputCls} h-20 py-2 resize-none`}
+            required={!approve}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={approve ? 'e.g. Confirmed on MoMo statement' : 'e.g. No transfer found with this reference'}
+          />
+        </div>
+
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <button
+          type="submit"
+          disabled={mutation.isPending}
+          className={`w-full h-11 text-white font-bold text-xs rounded-lg transition-all disabled:opacity-60 ${approve ? 'bg-emerald-600 hover:opacity-90' : 'bg-brand-status-critical hover:opacity-90'}`}
+        >
+          {mutation.isPending ? 'Working…' : approve ? 'Approve & Activate' : 'Reject Payment'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+// ───────────────────── Pricing & payment accounts ─────────────────────
+
+interface PriceRow {
+  plan: PlanTier;
+  monthlyPrice: string;
+  annualPrice: string;
+  currency: string;
+  description: string | null;
+  isPublic: boolean;
+}
+
+function PricingCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['platform-pricing'], queryFn: () => api.get<PriceRow[]>('/platform/pricing') });
+  const [rows, setRows] = useState<PriceRow[] | null>(null);
+  const [saved, setSaved] = useState(false);
+  React.useEffect(() => { if (data?.data) setRows(data.data); }, [data]);
+
+  const save = useMutation({
+    mutationFn: () => api.put('/platform/pricing', {
+      prices: (rows ?? []).map((r) => ({
+        plan: r.plan,
+        monthlyPrice: Number(r.monthlyPrice) || 0,
+        annualPrice: Number(r.annualPrice) || 0,
+        currency: r.currency || 'RWF',
+        description: r.description || null,
+        isPublic: r.isPublic,
+      })),
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['platform-pricing'] }); setSaved(true); setTimeout(() => setSaved(false), 2500); },
+  });
+  const err = save.error instanceof ApiError ? save.error.message : save.isError ? 'Failed to save pricing' : null;
+
+  if (!rows) return <div className={`${cardCls} p-5`}><p className="text-brand-on-surface-variant text-xs">Loading pricing…</p></div>;
+
+  const set = (plan: PlanTier, patch: Partial<PriceRow>) =>
+    setRows(rows.map((r) => (r.plan === plan ? { ...r, ...patch } : r)));
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className={`${cardCls} p-5 space-y-4`}>
+      <div>
+        <h3 className="font-display text-sm font-extrabold text-brand-primary">Plan pricing</h3>
+        <p className="text-brand-on-surface-variant text-[10px]">
+          What each plan costs, in RWF. A plan priced at 0 or hidden is not offered for purchase.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="py-2 font-bold">Plan</th>
+              <th className="py-2 font-bold">Monthly</th>
+              <th className="py-2 font-bold">Annual</th>
+              <th className="py-2 font-bold text-center">Sell</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.plan} className="border-b border-brand-outline-variant/10 last:border-0">
+                <td className="py-2 pr-3">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${PLAN_TONE[r.plan]}`}>{planLabel(r.plan)}</span>
+                </td>
+                <td className="py-2 pr-2">
+                  <input type="number" min={0} className={`${controlCls} w-32`} value={r.monthlyPrice}
+                    onChange={(e) => set(r.plan, { monthlyPrice: e.target.value })} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input type="number" min={0} className={`${controlCls} w-32`} value={r.annualPrice}
+                    onChange={(e) => set(r.plan, { annualPrice: e.target.value })} />
+                </td>
+                <td className="py-2 text-center">
+                  <input type="checkbox" className="w-4 h-4 accent-brand-secondary-container" checked={r.isPublic}
+                    onChange={(e) => set(r.plan, { isPublic: e.target.checked })} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={save.isPending} className={btnCls}>{save.isPending ? 'Saving…' : 'Save Pricing'}</button>
+        {saved && <span className="text-emerald-600 text-[11px] font-bold flex items-center gap-1"><Check className="w-4 h-4" /> Saved</span>}
+      </div>
+    </form>
+  );
+}
+
+interface AccountRow {
+  id: string;
+  type: 'MOBILE_MONEY' | 'BANK';
+  label: string;
+  accountName: string;
+  accountNumber: string;
+  bankName: string | null;
+  instructions: string | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+const BLANK_ACCOUNT = {
+  type: 'MOBILE_MONEY' as const, label: '', accountName: '', accountNumber: '',
+  bankName: '', instructions: '', isActive: true, sortOrder: 0,
+};
+
+function PaymentAccountsCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['platform-accounts'], queryFn: () => api.get<AccountRow[]>('/platform/payment-accounts') });
+  const accounts = data?.data ?? [];
+  const [editing, setEditing] = useState<AccountRow | typeof BLANK_ACCOUNT | null>(null);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.del(`/platform/payment-accounts/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['platform-accounts'] }),
+  });
+
+  return (
+    <div className={`${cardCls} p-5 space-y-4`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-display text-sm font-extrabold text-brand-primary">Payment accounts</h3>
+          <p className="text-brand-on-surface-variant text-[10px]">
+            Where companies send subscription payments. Shown on every tenant's billing page.
+          </p>
+        </div>
+        <button onClick={() => setEditing({ ...BLANK_ACCOUNT })} className={`flex items-center gap-2 shrink-0 ${btnCls}`}>
+          <Plus className="w-4 h-4" /> Add
+        </button>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="flex gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-700">
+            No accounts published — companies have nowhere to pay, so no subscription can be started.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {accounts.map((a) => (
+            <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg border border-brand-outline-variant/30">
+              {a.type === 'MOBILE_MONEY' ? <Smartphone className="w-4 h-4 text-brand-secondary-container mt-0.5 shrink-0" /> : <Landmark className="w-4 h-4 text-brand-secondary-container mt-0.5 shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-brand-primary">
+                  {a.label} {!a.isActive && <span className="text-[9px] font-bold text-brand-on-surface-variant">(hidden)</span>}
+                </p>
+                <p className="text-[11px] text-brand-on-surface-variant">{a.accountName}{a.bankName ? ` · ${a.bankName}` : ''}</p>
+                <p className="font-mono text-[11px] text-brand-primary font-bold">{a.accountNumber}</p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button title="Edit" onClick={() => setEditing(a)} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-primary">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button title="Delete" onClick={() => { if (confirm(`Remove ${a.label}?`)) remove.mutate(a.id); }} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-status-critical">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && <AccountModal account={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function AccountModal({ account, onClose }: { account: AccountRow | typeof BLANK_ACCOUNT; onClose: () => void }) {
+  const qc = useQueryClient();
+  const isEdit = 'id' in account;
+  const [form, setForm] = useState({
+    type: account.type,
+    label: account.label,
+    accountName: account.accountName,
+    accountNumber: account.accountNumber,
+    bankName: account.bankName ?? '',
+    instructions: account.instructions ?? '',
+    isActive: account.isActive,
+    sortOrder: account.sortOrder,
+  });
+  const mutation = useMutation({
+    mutationFn: () => {
+      const payload = { ...form, bankName: form.bankName || null, instructions: form.instructions || null };
+      return isEdit
+        ? api.put(`/platform/payment-accounts/${(account as AccountRow).id}`, payload)
+        : api.post('/platform/payment-accounts', payload);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['platform-accounts'] }); onClose(); },
+  });
+  const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Failed to save the account' : null;
+
+  return (
+    <Modal title={isEdit ? `Edit ${account.label}` : 'New payment account'} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>TYPE</label>
+            <select className={inputCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as 'MOBILE_MONEY' | 'BANK' })}>
+              <option value="MOBILE_MONEY">Mobile Money</option>
+              <option value="BANK">Bank</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>LABEL</label>
+            <input className={inputCls} required value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="MTN MoMo" />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>ACCOUNT NAME</label>
+          <input className={inputCls} required value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} placeholder="INSPECTA Ltd" />
+        </div>
+        <div>
+          <label className={labelCls}>{form.type === 'BANK' ? 'ACCOUNT NUMBER' : 'PHONE NUMBER'}</label>
+          <input className={inputCls} required value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} placeholder={form.type === 'BANK' ? '0001234567890' : '+250 7XX XXX XXX'} />
+        </div>
+        {form.type === 'BANK' && (
+          <div>
+            <label className={labelCls}>BANK NAME</label>
+            <input className={inputCls} value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+          </div>
+        )}
+        <div>
+          <label className={labelCls}>INSTRUCTIONS (OPTIONAL)</label>
+          <textarea className={`${inputCls} h-16 py-2 resize-none`} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="Use your company name as the reference" />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-brand-secondary-container" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+          <span className="text-xs font-bold text-brand-primary">Show to companies</span>
+        </label>
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <button type="submit" disabled={mutation.isPending} className={`w-full h-11 ${btnCls}`}>
+          {mutation.isPending ? 'Saving…' : isEdit ? 'Save Account' : 'Add Account'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 // ───────────────────── Settings & announcements ─────────────────────
 
 interface PlatformSettings {
@@ -1608,6 +2065,8 @@ function SettingsTab() {
       </form>
 
       <AnnouncementCard />
+      <PricingCard />
+      <PaymentAccountsCard />
     </div>
   );
 }
@@ -1684,7 +2143,7 @@ function AnnouncementCard() {
 
 export type PlatformTab =
   | 'overview' | 'companies' | 'users' | 'projects'
-  | 'watchlist' | 'finance' | 'adoption' | 'audit' | 'settings';
+  | 'watchlist' | 'finance' | 'adoption' | 'subscriptions' | 'audit' | 'settings';
 
 const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: string }> = {
   overview: {
@@ -1721,6 +2180,11 @@ const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: s
     view: AppView.PLATFORM_ADOPTION,
     title: 'Adoption & Engagement',
     subtitle: 'Which modules each tenant actually uses, and who has gone quiet.',
+  },
+  subscriptions: {
+    view: AppView.PLATFORM_SUBSCRIPTIONS,
+    title: 'Subscriptions',
+    subtitle: 'Payments companies have declared. Approving one activates their plan.',
   },
   audit: {
     view: AppView.PLATFORM_AUDIT,
@@ -1759,6 +2223,7 @@ export default function PlatformConsole({ tab, onNavigate, onLogout }: Props & {
           {tab === 'watchlist' && <WatchlistTab />}
           {tab === 'finance' && <FinanceTab />}
           {tab === 'adoption' && <AdoptionTab />}
+          {tab === 'subscriptions' && <SubscriptionsTab />}
           {tab === 'audit' && <AuditTab />}
           {tab === 'settings' && <SettingsTab />}
         </>

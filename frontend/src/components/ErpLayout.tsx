@@ -4,7 +4,7 @@ import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
   GanttChartSquare, TrendingUp, ClipboardList, CheckCircle2, Building2, ShieldCheck, Users, Truck, LayoutDashboard,
-  Wallet, Store, Package, HardHat, Archive, Wrench, Globe, ScrollText,
+  Wallet, Store, Package, HardHat, Archive, Wrench, Globe, ScrollText, CreditCard,
 } from 'lucide-react';
 import { AppView } from '../types';
 
@@ -88,6 +88,9 @@ export const NAV_TREE: NavEntry[] = [
   { id: 'nav-copilot', label: 'AI Copilot', icon: Bot, view: AppView.COPILOT, perm: 'ai:use' },
   // Admin-only: only SYSTEM_ADMIN holds 'user:write'.
   { id: 'nav-admin', label: 'Administration', icon: ShieldCheck, view: AppView.ADMIN, perm: 'user:write' },
+  // Gated on a READ permission on purpose: a lapsed workspace withholds every
+  // ':write', and that is exactly when the company needs to reach billing.
+  { id: 'nav-billing', label: 'Billing & Plan', icon: CreditCard, view: AppView.BILLING, perm: 'dashboard:read' },
 ];
 
 /**
@@ -106,6 +109,7 @@ export const PLATFORM_NAV: NavItem[] = [
   { id: 'nav-platform-finance', label: 'Finance', icon: DollarSign, view: AppView.PLATFORM_FINANCE },
   { id: 'nav-platform-adoption', label: 'Adoption', icon: TrendingUp, view: AppView.PLATFORM_ADOPTION },
   { id: 'nav-platform-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.PLATFORM_AUDIT },
+  { id: 'nav-platform-subscriptions', label: 'Subscriptions', icon: CreditCard, view: AppView.PLATFORM_SUBSCRIPTIONS },
   { id: 'nav-platform-settings', label: 'Settings', icon: Settings, view: AppView.PLATFORM_SETTINGS },
 ];
 

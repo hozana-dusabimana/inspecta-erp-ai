@@ -44,6 +44,25 @@ enum OrgPlan {
   ENTERPRISE
 }
 
+// Billing period a company pays for.
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+// Where a company sends its subscription payment. No payment gateway yet, so a
+// platform admin publishes these and approves the transfers by hand.
+enum PaymentAccountType {
+  MOBILE_MONEY
+  BANK
+}
+
+enum SubscriptionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ProjectStatus {
   PLANNING
   ACTIVE
@@ -211,6 +230,14 @@ model Organization {
   plan             OrgPlan   @default(TRIAL)
   maxUsers         Int?
   maxProjects      Int?
+  // Subscription clock. `trialEndsAt` covers the free trial; `subscriptionEndsAt`
+  // is the paid-through date set when a payment is approved. When both are past,
+  // the tenant enters grace and then read-only — data is never hidden or deleted.
+  trialEndsAt        DateTime?
+  subscriptionEndsAt DateTime?
+  // Never bill this tenant (internal/demo orgs, and every org that predates
+  // billing — a migration must not lock an existing customer out).
+  billingExempt      Boolean   @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -224,9 +251,79 @@ model Organization {
   documents     Document[]
   projectDocuments ProjectDocument[]
   notifications Notification[]
+  subscriptionRequests SubscriptionRequest[]
 
   @@index([status])
   @@map("organizations")
+}
+
+// Published price of each plan, in RWF by default. One row per plan; a platform
+// admin edits the numbers — prices are never hard-coded.
+model PlanPrice {
+  plan         OrgPlan  @id
+  monthlyPrice Decimal  @default(0) @db.Decimal(18, 2)
+  annualPrice  Decimal  @default(0) @db.Decimal(18, 2)
+  currency     String   @default("RWF")
+  description  String?
+  // Hidden plans still work for existing tenants but are not offered for purchase.
+  isPublic     Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+
+  @@map("plan_prices")
+}
+
+// A payment destination shown to companies on their billing page (MoMo number,
+// bank account…). Managed by the platform admin.
+model PaymentAccount {
+  id            String             @id @default(cuid())
+  type          PaymentAccountType @default(MOBILE_MONEY)
+  label         String
+  accountName   String
+  accountNumber String
+  bankName      String?
+  instructions  String?
+  isActive      Boolean            @default(true)
+  sortOrder     Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  requests SubscriptionRequest[]
+
+  @@map("payment_accounts")
+}
+
+// A company's claim that it has paid, awaiting platform approval. Approving one
+// is what actually moves the subscription date forward.
+model SubscriptionRequest {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  requestedById    String?
+  plan             OrgPlan
+  period           BillingPeriod             @default(MONTHLY)
+  amount           Decimal                   @default(0) @db.Decimal(18, 2)
+  currency         String                    @default("RWF")
+  paymentAccountId String?
+  payerName        String
+  payerPhone       String
+  reference        String
+  paidAt           DateTime?
+  note             String?
+  status           SubscriptionRequestStatus @default(PENDING)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  // What the approval granted, kept for the receipt/history.
+  activatedFrom    DateTime?
+  activatedUntil   DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentAccount PaymentAccount? @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+  @@map("subscription_requests")
 }
 
 // Platform-wide configuration. Deliberately a single row (id = "global") rather

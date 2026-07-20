@@ -2,13 +2,14 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight, Layers, Eye } from 'lucide-react';
+import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight, Layers, Eye, AlertTriangle } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useViewNavigate, viewForPath, pathForView } from '../lib/routes';
 import { getOpenGroups, revealNav, subscribeOpenGroups, toggleGroup } from '../lib/navUi';
 import { getInspectedOrg, subscribeInspect, exitInspect } from '../lib/inspectStore';
+import { getBillingState, subscribeBilling, setBillingState, BillingState } from '../lib/billingStore';
 import { NAV_TREE, PLATFORM_NAV, NavItem, isGroup } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
 import OnboardingTour from './OnboardingTour';
@@ -286,6 +287,31 @@ function TopHeader({ onOpenSidebar, onStartTour }: { onOpenSidebar: () => void; 
 }
 
 /**
+ * Subscription warning: trial running out, payment overdue, or the workspace
+ * already read-only. Sits above everything because a read-only workspace with
+ * no explanation reads as a broken app.
+ */
+function BillingBanner({ state, onGoToBilling }: { state: BillingState; onGoToBilling: () => void }) {
+  const critical = state.readOnly || state.status === 'GRACE';
+  return (
+    <div className={`sticky top-0 z-40 px-4 md:px-8 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 shadow-sm ${
+      critical ? 'bg-brand-status-critical text-white' : 'bg-amber-100 text-amber-900'
+    }`}>
+      <AlertTriangle className="w-4 h-4 shrink-0" />
+      <p className="text-xs font-semibold">{state.message}</p>
+      <button
+        onClick={onGoToBilling}
+        className={`ml-auto text-[11px] font-bold rounded-md px-3 py-1 transition-colors ${
+          critical ? 'bg-white/20 hover:bg-white/30' : 'bg-amber-900/10 hover:bg-amber-900/20'
+        }`}
+      >
+        View plans
+      </button>
+    </div>
+  );
+}
+
+/**
  * Unmissable reminder that the screen below belongs to someone else's company.
  * Sticky and full-bleed on purpose — a platform admin must never mistake a
  * customer's data for their own.
@@ -321,6 +347,20 @@ export default function AppShell() {
   const navigateView = useViewNavigate();
   const { logout, user } = useAuth();
   const inspected = useSyncExternalStore(subscribeInspect, getInspectedOrg);
+  const billing = useSyncExternalStore(subscribeBilling, getBillingState);
+
+  // Poll the subscription clock so a lapse takes effect without a reload. The
+  // store (not just this component) is updated because the auth context reads it
+  // to withhold write permissions.
+  const { data: billingData } = useQuery({
+    queryKey: ['billing-state'],
+    queryFn: () => api.get<BillingState>('/billing/state'),
+    refetchInterval: 5 * 60_000,
+    enabled: Boolean(user) && !inspected,
+  });
+  useEffect(() => {
+    if (billingData?.data) setBillingState(billingData.data);
+  }, [billingData]);
 
   // First-run walkthrough: auto-start once per user (until they finish/skip it).
   const tourKey = user ? `inspecta.tour.v1.${user.id}` : null;
@@ -358,6 +398,9 @@ export default function AppShell() {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {inspected && <InspectBanner org={inspected} onExit={leaveInspect} />}
+        {!inspected && billing?.warn && (
+          <BillingBanner state={billing} onGoToBilling={() => navigate(pathForView(AppView.BILLING))} />
+        )}
         <TopHeader onOpenSidebar={() => setSidebarOpen(true)} onStartTour={startTour} />
 
         {/* Only the page content animates — the chrome above is untouched. */}

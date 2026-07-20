@@ -3,8 +3,9 @@ import { Role } from '@prisma/client';
 import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
-import { Unauthorized, Forbidden, BadRequest } from '../lib/errors';
+import { Unauthorized, Forbidden, BadRequest, PaymentRequired } from '../lib/errors';
 import { can, isPlatformRole, Permission } from '../auth/permissions';
+import { billingStateOf } from '../modules/billing/billing.service';
 
 export interface AuthUser {
   id: string;
@@ -19,6 +20,8 @@ export interface AuthUser {
   isPlatformAdmin: boolean;
   /** True when a platform admin is viewing another tenant's workspace. */
   inspecting: boolean;
+  /** True when the tenant's subscription has lapsed past its grace period. */
+  billingLocked: boolean;
 }
 
 /** Header a platform admin sets to view another tenant's workspace read-only. */
@@ -65,7 +68,15 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
       role: true,
       isActive: true,
       organizationId: true,
-      organization: { select: { status: true } },
+      organization: {
+        select: {
+          status: true,
+          plan: true,
+          trialEndsAt: true,
+          subscriptionEndsAt: true,
+          billingExempt: true,
+        },
+      },
     },
   });
 
@@ -99,6 +110,16 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
     throw Forbidden('Inspect mode is read-only. Exit it to make changes.');
   }
 
+  // Lapsed subscription → the workspace still opens and everything is readable
+  // and exportable, but nothing can be changed. Billing itself stays writable,
+  // otherwise a locked-out tenant could never submit the payment that unlocks
+  // them. Platform admins are never billed.
+  const billing = billingStateOf(account.organization);
+  const billingLocked = !platform && !inspecting && billing.readOnly;
+  if (billingLocked && !SAFE_METHODS.has(req.method) && !req.originalUrl.startsWith('/api/billing')) {
+    throw PaymentRequired(billing.message ?? 'Subscription expired. Submit a payment to restore full access.');
+  }
+
   req.user = {
     id: account.id,
     orgId,
@@ -107,6 +128,7 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
     email: account.email,
     isPlatformAdmin: platform,
     inspecting,
+    billingLocked,
   };
   next();
 });

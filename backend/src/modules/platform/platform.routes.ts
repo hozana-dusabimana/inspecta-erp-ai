@@ -1,6 +1,6 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
-import { Prisma, Role, AuditAction, OrgStatus, OrgPlan } from '@prisma/client';
+import { Prisma, Role, AuditAction, OrgStatus, OrgPlan, PaymentAccountType, SubscriptionRequestStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
 import { sendTabularExport, exportFormat } from '../../lib/export';
@@ -13,6 +13,7 @@ import { PLAN_DEFAULTS, PLAN_LABELS, usageFor } from './plans';
 import { getPlatformSettings, updatePlatformSettings } from './settings';
 import { notify } from '../notifications/notify';
 import { projectWhere, projectSelect, projectTotals, deliveryWatchlist, financeOverview, adoptionReport } from './insights';
+import { planPrices, addPeriod, trialEndFrom } from '../billing/billing.service';
 
 /**
  * The cross-tenant superadmin console. Every route here deliberately escapes the
@@ -112,6 +113,9 @@ const companySelect = {
   plan: true,
   maxUsers: true,
   maxProjects: true,
+  trialEndsAt: true,
+  subscriptionEndsAt: true,
+  billingExempt: true,
   createdAt: true,
   _count: { select: { users: true, projects: true, clients: true, contracts: true } },
 } satisfies Prisma.OrganizationSelect;
@@ -226,6 +230,8 @@ router.post(
           plan,
           maxUsers: limits.maxUsers,
           maxProjects: limits.maxProjects,
+          // Provisioned tenants get the same trial clock as self-signup.
+          trialEndsAt: trialEndFrom(),
         },
       });
       const admin = await tx.user.create({
@@ -650,6 +656,263 @@ router.get(
     const org = await prisma.organization.findUnique({ where: { id: req.params.id }, select: { id: true } });
     if (!org) throw NotFound('Company not found');
     return ok(res, await usageFor(org.id));
+  }),
+);
+
+// ─────────────────── Billing: pricing & payment accounts ───────────────────
+
+router.get(
+  '/pricing',
+  asyncHandler(async (_req, res) => ok(res, await planPrices())),
+);
+
+const pricingSchema = z.object({
+  prices: z.array(
+    z.object({
+      plan: z.nativeEnum(OrgPlan),
+      monthlyPrice: z.number().min(0),
+      annualPrice: z.number().min(0),
+      currency: z.string().trim().length(3).optional(),
+      description: z.string().trim().max(300).nullable().optional(),
+      isPublic: z.boolean().optional(),
+    }),
+  ).min(1),
+});
+
+router.put(
+  '/pricing',
+  asyncHandler(async (req, res) => {
+    const { prices } = pricingSchema.parse(req.body);
+    await prisma.$transaction(
+      prices.map((p) =>
+        prisma.planPrice.upsert({
+          where: { plan: p.plan },
+          update: {
+            monthlyPrice: p.monthlyPrice,
+            annualPrice: p.annualPrice,
+            currency: p.currency?.toUpperCase() ?? 'RWF',
+            description: p.description ?? null,
+            isPublic: p.isPublic ?? true,
+          },
+          create: {
+            plan: p.plan,
+            monthlyPrice: p.monthlyPrice,
+            annualPrice: p.annualPrice,
+            currency: p.currency?.toUpperCase() ?? 'RWF',
+            description: p.description ?? null,
+            isPublic: p.isPublic ?? true,
+          },
+        }),
+      ),
+    );
+    await auditPlatform(req, req.user!.homeOrgId, AuditAction.UPDATE, 'plan-pricing', null, { newValues: { prices } });
+    return ok(res, await planPrices());
+  }),
+);
+
+const accountSchema = z.object({
+  type: z.nativeEnum(PaymentAccountType),
+  label: z.string().trim().min(2).max(60),
+  accountName: z.string().trim().min(2).max(120),
+  accountNumber: z.string().trim().min(3).max(60),
+  bankName: z.string().trim().max(120).nullable().optional(),
+  instructions: z.string().trim().max(500).nullable().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+router.get(
+  '/payment-accounts',
+  asyncHandler(async (_req, res) =>
+    ok(res, await prisma.paymentAccount.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })),
+  ),
+);
+
+router.post(
+  '/payment-accounts',
+  asyncHandler(async (req, res) => {
+    const body = accountSchema.parse(req.body);
+    const created = await prisma.paymentAccount.create({ data: body });
+    await auditPlatform(req, req.user!.homeOrgId, AuditAction.CREATE, 'payment-account', created.id, { newValues: body });
+    return ok(res, created, 201);
+  }),
+);
+
+router.put(
+  '/payment-accounts/:id',
+  asyncHandler(async (req, res) => {
+    const body = accountSchema.partial().parse(req.body);
+    const existing = await prisma.paymentAccount.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw NotFound('Payment account not found');
+    const updated = await prisma.paymentAccount.update({ where: { id: existing.id }, data: body });
+    await auditPlatform(req, req.user!.homeOrgId, AuditAction.UPDATE, 'payment-account', existing.id, { newValues: body });
+    return ok(res, updated);
+  }),
+);
+
+router.delete(
+  '/payment-accounts/:id',
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.paymentAccount.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw NotFound('Payment account not found');
+    await prisma.paymentAccount.delete({ where: { id: existing.id } });
+    await auditPlatform(req, req.user!.homeOrgId, AuditAction.DELETE, 'payment-account', existing.id, {
+      oldValues: { label: existing.label, accountNumber: existing.accountNumber },
+    });
+    return ok(res, { id: existing.id, deleted: true });
+  }),
+);
+
+// ─────────────────── Billing: subscription requests ───────────────────
+
+const subRequestInclude = {
+  organization: { select: { id: true, name: true, slug: true, plan: true, trialEndsAt: true, subscriptionEndsAt: true, billingExempt: true } },
+  paymentAccount: { select: { id: true, label: true, accountNumber: true } },
+} as const;
+
+router.get(
+  '/subscription-requests',
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip } = pageParams(req.query as Record<string, unknown>);
+    const where: Prisma.SubscriptionRequestWhereInput = {};
+    const status = (req.query.status as string)?.trim();
+    if (status && status in SubscriptionRequestStatus) where.status = status as SubscriptionRequestStatus;
+    const orgId = (req.query.organizationId as string)?.trim();
+    if (orgId) where.organizationId = orgId;
+
+    const [rows, total, pending] = await Promise.all([
+      prisma.subscriptionRequest.findMany({ where, include: subRequestInclude, orderBy: { createdAt: 'desc' }, skip, take: pageSize }),
+      prisma.subscriptionRequest.count({ where }),
+      prisma.subscriptionRequest.count({ where: { status: 'PENDING' } }),
+    ]);
+    return res.json({ success: true, data: rows, meta: { page, pageSize, total, pending } });
+  }),
+);
+
+const approveSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+  /** Override the granted end date; otherwise the period is added automatically. */
+  activateUntil: z.string().datetime().optional(),
+});
+
+router.post(
+  '/subscription-requests/:id/approve',
+  asyncHandler(async (req, res) => {
+    const body = approveSchema.parse(req.body);
+    const request = await prisma.subscriptionRequest.findUnique({
+      where: { id: req.params.id },
+      include: { organization: true },
+    });
+    if (!request) throw NotFound('Payment request not found');
+    if (request.status !== 'PENDING') throw BadRequest(`This request was already ${request.status.toLowerCase()}`);
+
+    // Extend from whichever is later: now, or their existing paid-through date —
+    // so paying early adds time rather than throwing the remainder away.
+    const now = new Date();
+    const current = request.organization.subscriptionEndsAt;
+    const from = current && current > now ? current : now;
+    const until = body.activateUntil ? new Date(body.activateUntil) : addPeriod(from, request.period);
+    const limits = PLAN_DEFAULTS[request.plan];
+
+    const [updatedRequest, org] = await prisma.$transaction([
+      prisma.subscriptionRequest.update({
+        where: { id: request.id },
+        data: {
+          status: 'APPROVED',
+          reviewedById: req.user!.id,
+          reviewedAt: now,
+          reviewNote: body.note ?? null,
+          activatedFrom: from,
+          activatedUntil: until,
+        },
+        include: subRequestInclude,
+      }),
+      prisma.organization.update({
+        where: { id: request.organizationId },
+        data: {
+          plan: request.plan,
+          maxUsers: limits.maxUsers,
+          maxProjects: limits.maxProjects,
+          subscriptionEndsAt: until,
+        },
+      }),
+    ]);
+
+    await auditPlatform(req, org.id, AuditAction.APPROVE, 'subscription-request', request.id, {
+      oldValues: { plan: request.organization.plan, subscriptionEndsAt: current },
+      newValues: { plan: request.plan, subscriptionEndsAt: until, amount: request.amount, reference: request.reference },
+    });
+    await notify({
+      organizationId: org.id,
+      type: 'GENERAL',
+      severity: 'MEDIUM',
+      title: 'Payment approved — subscription active',
+      message: `Your ${PLAN_LABELS[request.plan]} plan is active until ${until.toDateString()}. Thank you.`,
+      link: '/billing',
+    });
+    return ok(res, updatedRequest);
+  }),
+);
+
+const rejectSchema = z.object({ note: z.string().trim().min(3).max(500) });
+
+router.post(
+  '/subscription-requests/:id/reject',
+  asyncHandler(async (req, res) => {
+    const { note } = rejectSchema.parse(req.body);
+    const request = await prisma.subscriptionRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) throw NotFound('Payment request not found');
+    if (request.status !== 'PENDING') throw BadRequest(`This request was already ${request.status.toLowerCase()}`);
+
+    const updated = await prisma.subscriptionRequest.update({
+      where: { id: request.id },
+      data: { status: 'REJECTED', reviewedById: req.user!.id, reviewedAt: new Date(), reviewNote: note },
+      include: subRequestInclude,
+    });
+
+    await auditPlatform(req, request.organizationId, AuditAction.REJECT, 'subscription-request', request.id, {
+      newValues: { reason: note, reference: request.reference },
+    });
+    await notify({
+      organizationId: request.organizationId,
+      type: 'GENERAL',
+      severity: 'HIGH',
+      title: 'Payment could not be verified',
+      message: `We could not verify payment reference ${request.reference}. ${note}`,
+      link: '/billing',
+    });
+    return ok(res, updated);
+  }),
+);
+
+// Manual override — grant time, put a tenant on trial, or exempt them entirely.
+const subscriptionSchema = z.object({
+  trialEndsAt: z.string().datetime().nullable().optional(),
+  subscriptionEndsAt: z.string().datetime().nullable().optional(),
+  billingExempt: z.boolean().optional(),
+});
+
+router.patch(
+  '/companies/:id/subscription',
+  asyncHandler(async (req, res) => {
+    const body = subscriptionSchema.parse(req.body);
+    const org = await prisma.organization.findUnique({ where: { id: req.params.id } });
+    if (!org) throw NotFound('Company not found');
+
+    const updated = await prisma.organization.update({
+      where: { id: org.id },
+      data: {
+        ...(body.trialEndsAt !== undefined ? { trialEndsAt: body.trialEndsAt ? new Date(body.trialEndsAt) : null } : {}),
+        ...(body.subscriptionEndsAt !== undefined ? { subscriptionEndsAt: body.subscriptionEndsAt ? new Date(body.subscriptionEndsAt) : null } : {}),
+        ...(body.billingExempt !== undefined ? { billingExempt: body.billingExempt } : {}),
+      },
+      select: companySelect,
+    });
+    await auditPlatform(req, org.id, AuditAction.UPDATE, 'organization', org.id, {
+      oldValues: { trialEndsAt: org.trialEndsAt, subscriptionEndsAt: org.subscriptionEndsAt, billingExempt: org.billingExempt },
+      newValues: body,
+    });
+    return ok(res, updated);
   }),
 );
 

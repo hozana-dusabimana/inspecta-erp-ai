@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { api, tokenStore } from './api';
 import { getInspectedOrg, subscribeInspect, exitInspect } from './inspectStore';
+import { getBillingState, subscribeBilling, setBillingState } from './billingStore';
 
 export interface AuthUser {
   id: string;
@@ -46,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const inspectedOrg = useSyncExternalStore(subscribeInspect, getInspectedOrg);
+  const billing = useSyncExternalStore(subscribeBilling, getBillingState);
 
   // Restore session on mount if a token exists.
   useEffect(() => {
@@ -99,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     tokenStore.clear();
     exitInspect(); // never leave a stale inspected tenant for the next sign-in
+    setBillingState(null);
     setUser(null);
   }, []);
 
@@ -109,9 +112,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (permission: string) => {
       if (!user?.permissions.includes(permission)) return false;
       if (inspectedOrg && permission.endsWith(':write')) return false;
+      // A lapsed subscription makes the whole workspace read-only. Billing pages
+      // read `user.permissions` directly so paying is still possible.
+      if (billing?.readOnly && permission.endsWith(':write')) return false;
       return true;
     },
-    [user, inspectedOrg],
+    [user, inspectedOrg, billing],
   );
 
   return (

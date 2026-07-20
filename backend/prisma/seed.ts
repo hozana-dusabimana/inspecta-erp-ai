@@ -20,6 +20,8 @@ async function main() {
     create: {
       name: 'Inspecta GC Corp', slug: 'inspecta-gc-corp',
       currency: 'RWF', country: 'Rwanda', tinNumber: '100000000', workingDaysPerWeek: 6,
+      // The demo tenant is never billed — a lapsed clock must not break demos.
+      billingExempt: true,
     },
   });
 

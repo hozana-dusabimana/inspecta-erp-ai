@@ -26,6 +26,7 @@ import PortfolioPage from './components/PortfolioPage';
 import ApprovalsPage from './components/ApprovalsPage';
 import AdminPage from './components/AdminPage';
 import PlatformConsole from './components/PlatformConsole';
+import BillingPage from './components/BillingPage';
 import PlanningDashboards from './components/PlanningDashboards';
 import ExecutiveDashboard from './components/ExecutiveDashboard';
 import AppShell, { ShellChrome } from './components/AppShell';
@@ -157,6 +158,8 @@ export default function App() {
             <Route path="/approvals" element={<Chromed render={(c) => <ApprovalsPage {...c} />} />} />
             <Route path="/notifications" element={<Chromed render={(c) => <NotificationsPage {...c} />} />} />
             <Route path="/admin" element={<Chromed render={(c) => <AdminPage {...c} />} />} />
+            <Route path="/billing" element={<Chromed render={(c) => <BillingPage {...c} />} />} />
+            <Route path="/platform/subscriptions" element={<Chromed render={(c) => <PlatformConsole tab="subscriptions" {...c} />} />} />
             <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole tab="overview" {...c} />} />} />
             <Route path="/platform/companies" element={<Chromed render={(c) => <PlatformConsole tab="companies" {...c} />} />} />
             <Route path="/platform/users" element={<Chromed render={(c) => <PlatformConsole tab="users" {...c} />} />} />

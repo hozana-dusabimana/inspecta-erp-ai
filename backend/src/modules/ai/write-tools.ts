@@ -193,7 +193,8 @@ const DEFS: Record<string, WriteToolDef> = {
       properties: {
         projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
         title: { type: 'string' },
-        category: { type: 'string' },
+        // Mirrors RISK_CATEGORY_OPTIONS in frontend/src/formConfigs.tsx (creatable — see CREATABLE_ENUM_FIELDS).
+        category: { type: 'string', enum: ['Safety', 'Financial', 'Schedule', 'Technical', 'Environmental', 'Contractual', 'Quality', 'Resource', 'Regulatory', 'Weather'] },
         probability: { type: 'integer', minimum: 1, maximum: 5 },
         impact: { type: 'integer', minimum: 1, maximum: 5 },
         status: { type: 'string', enum: ['OPEN', 'MITIGATING', 'CLOSED'] },
@@ -256,7 +257,8 @@ const DEFS: Record<string, WriteToolDef> = {
       required: ['name'],
       properties: {
         name: { type: 'string' },
-        category: { type: 'string' },
+        // Mirrors MATERIAL_CATEGORY_OPTIONS in frontend/src/formConfigs.tsx (creatable — see CREATABLE_ENUM_FIELDS).
+        category: { type: 'string', enum: ['Cement & Concrete', 'Aggregates', 'Steel & Rebar', 'Timber', 'Blocks & Bricks', 'Roofing', 'Electrical', 'Plumbing', 'Paints & Finishes', 'Hardware', 'Sanitary', 'Tiles', 'Glass & Aluminium', 'Fuel & Lubricants', 'Safety / PPE'] },
         unit: { type: 'string', description: 'e.g. bag, kg, m3, litre' },
         reorderLevel: { type: 'number' },
         unitCost: { type: 'number' },
@@ -320,7 +322,8 @@ const DEFS: Record<string, WriteToolDef> = {
       required: ['name'],
       properties: {
         name: { type: 'string' },
-        category: { type: 'string' },
+        // Mirrors SUPPLIER_CATEGORY_OPTIONS in frontend/src/formConfigs.tsx (creatable — see CREATABLE_ENUM_FIELDS).
+        category: { type: 'string', enum: ['Cement & Concrete', 'Aggregates', 'Steel & Rebar', 'Timber', 'Electrical', 'Plumbing', 'Finishes', 'Hardware', 'Equipment Rental', 'Transport', 'Fuel', 'Professional Services', 'Subcontractor'] },
         contactName: { type: 'string' },
         email: { type: 'string' },
         phone: { type: 'string' },
@@ -593,6 +596,11 @@ const REFERENCES: Record<string, { model: RefModel; allowAdd: boolean; addLabel?
 };
 
 const DATE_FIELDS_G = new Set(['startDate', 'endDate', 'dueDate', 'date', 'requiredByDate']);
+
+// `entity.field` enum selects that also accept a typed-in custom value, mirroring the
+// forms' creatable category selects (frontend/src/formConfigs.tsx → pick()/creatable).
+const CREATABLE_ENUM_FIELDS = new Set(['material.category', 'supplier.category', 'risk.category']);
+
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 async function referenceOptions(model: RefModel, orgId: string): Promise<FieldOption[]> {
@@ -626,7 +634,14 @@ async function buildFieldSpec(entity: string, field: string, actor: Actor): Prom
   if (ref) {
     return { entity, name: field, label, type: 'select', required, options: await referenceOptions(ref.model, actor.orgId), allowAdd: ref.allowAdd, addLabel: ref.addLabel };
   }
-  if (prop.enum) return { entity, name: field, label, type: 'select', required, options: prop.enum.map((v) => ({ value: v, label: v })) };
+  if (prop.enum) {
+    const creatable = CREATABLE_ENUM_FIELDS.has(`${entity}.${field}`);
+    return {
+      entity, name: field, label, type: 'select', required,
+      options: prop.enum.map((v) => ({ value: v, label: v })),
+      ...(creatable ? { allowAdd: true, addLabel: 'Other / custom…' } : {}),
+    };
+  }
   if (prop.type === 'number' || prop.type === 'integer') return { entity, name: field, label, type: 'number', required };
   if (DATE_FIELDS_G.has(field)) return { entity, name: field, label, type: 'date', required };
   return { entity, name: field, label, type: 'text', required };
@@ -737,10 +752,18 @@ export async function answerCreateField(
     if (!skipped.includes(fieldName)) skipped.push(fieldName);
   } else if (action === 'addNew') {
     const ref = REFERENCES[fieldName];
-    if (!ref) return { field: await buildFieldSpec(entity, fieldName, actor), error: `You can't add a new value for this field.`, sessionActive: true };
-    const created = await createReference(ref.model, String(value ?? ''), actor);
-    if (created.error) return { field: await buildFieldSpec(entity, fieldName, actor), error: created.error, sessionActive: true };
-    values[fieldName] = created.id;
+    if (ref) {
+      const created = await createReference(ref.model, String(value ?? ''), actor);
+      if (created.error) return { field: await buildFieldSpec(entity, fieldName, actor), error: created.error, sessionActive: true };
+      values[fieldName] = created.id;
+    } else if (CREATABLE_ENUM_FIELDS.has(`${entity}.${fieldName}`)) {
+      // Creatable select: keep the free-typed value as-is (mirrors the form's creatable category).
+      const custom = String(value ?? '').trim();
+      if (!custom) return { field: await buildFieldSpec(entity, fieldName, actor), error: `Please enter a ${(FIELD_LABELS[fieldName] ?? fieldName).toLowerCase()}.`, sessionActive: true };
+      values[fieldName] = coerceArgTypes(normalizeDates({ [fieldName]: custom }), def.parameters)[fieldName];
+    } else {
+      return { field: await buildFieldSpec(entity, fieldName, actor), error: `You can't add a new value for this field.`, sessionActive: true };
+    }
   } else {
     values[fieldName] = coerceArgTypes(normalizeDates({ [fieldName]: value }), def.parameters)[fieldName];
   }

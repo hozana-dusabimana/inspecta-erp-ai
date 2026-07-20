@@ -343,6 +343,17 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
 
+          {/* Evidence sits with the fields, above the actions — Cancel/Save must
+              stay the last thing in the modal. On the last wizard step only, so
+              it isn't repeated on every step of a multi-step form. */}
+          {attachModule && (!isWizard || step === sections.length - 1) && (isEdit && editing ? (
+            <DocumentAttachments module={attachModule} recordId={editing.id} projectId={projectScoped ? projectId : undefined} />
+          ) : !isEdit && (
+            // Create form: no record id yet, so choices are queued and uploaded
+            // on save. Showing the panel here is what makes the feature findable.
+            <DocumentAttachments module={attachModule} pending={pending} onPendingChange={setPending} />
+          ))}
+
           <div className="flex justify-between gap-3 pt-2">
             <div>
               {isWizard && step > 0 && (
@@ -369,13 +380,6 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
           </div>
         </form>
 
-        {attachModule && (isEdit && editing ? (
-          <DocumentAttachments module={attachModule} recordId={editing.id} projectId={projectScoped ? projectId : undefined} />
-        ) : !isEdit && (
-          // Create form: no record id yet, so choices are queued and uploaded
-          // on save. Showing the panel here is what makes the feature findable.
-          <DocumentAttachments module={attachModule} pending={pending} onPendingChange={setPending} />
-        ))}
         </>
         )}
 

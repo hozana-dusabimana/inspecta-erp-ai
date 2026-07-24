@@ -104,7 +104,7 @@ export default function LandingPage() {
         <p className="mt-3 text-[var(--mk-muted)]">Talk to our engineers today.</p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <a href="tel:+250788500266" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[var(--mk-surface)] border border-[var(--mk-border)] hover:shadow-md transition-all" style={{ color: INK }}><Phone className="w-4 h-4" style={{ color: CORAL }} /> +250 788 500 266</a>
-          <a href="mailto:inspectafrica@gmail.com" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[var(--mk-surface)] border border-[var(--mk-border)] hover:shadow-md transition-all" style={{ color: INK }}><Mail className="w-4 h-4" style={{ color: CORAL }} /> inspectafrica@gmail.com</a>
+          <a href="mailto:info@inspecta.africa" className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-[var(--mk-surface)] border border-[var(--mk-border)] hover:shadow-md transition-all" style={{ color: INK }}><Mail className="w-4 h-4" style={{ color: CORAL }} /> info@inspecta.africa</a>
           <a href={WHATSAPP} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-white transition-all hover:opacity-90" style={{ background: CORAL }}><MessageCircle className="w-4 h-4" /> Get in Touch</a>
         </div>
         <p className="mt-6 inline-flex items-center gap-1.5 text-xs text-[var(--mk-muted)]"><MapPin className="w-3.5 h-3.5" /> Kigali, Rwanda</p>

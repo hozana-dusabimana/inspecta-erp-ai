@@ -3,8 +3,8 @@
 Production-readiness test plan. A tester should be able to run this top-to-bottom and
 sign off that every feature works. Mark each row **PASS / FAIL** in the Result column.
 
-- **Frontend (prod):** https://inspecta.isiri.rw
-- **Backend API (prod):** https://api-inspecta.isiri.rw/api
+- **Frontend (prod):** https://www.inspecta.africa
+- **Backend API (prod):** https://api.inspecta.africa/api
 - **Local:** frontend http://localhost:3000 · backend http://localhost:4000/api
 
 > Legend: `✅` expected pass · `🔒` security/authorization check · `📴` offline/PWA · `⚙️` automated.
@@ -32,7 +32,7 @@ Most API tests use a bearer token. Get one (PowerShell or bash):
 
 ```bash
 # bash — set API to local or prod
-API=https://api-inspecta.isiri.rw/api
+API=https://api.inspecta.africa/api
 TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' \
   | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
@@ -67,7 +67,7 @@ Response envelope is always `{ success, data, error?, meta? }`.
 | E2 | Local via Docker | `cd backend && docker compose up` | Postgres + backend healthy | |
 | E3 | One-command launcher | `./run.ps1` (local) / `./run.ps1 -Docker` | backend + frontend start, prints URLs | |
 | E4 | API health (prod) | `curl $API/health` | `{"success":true,"data":{"status":"ok",...,"build":"<sha>"}}` | |
-| E5 | Frontend served (prod) | open https://inspecta.isiri.rw | landing page renders, HTTP 200 | |
+| E5 | Frontend served (prod) | open https://www.inspecta.africa | landing page renders, HTTP 200 | |
 | E6 | HTTPS valid | check both domains | valid Let's Encrypt cert, no warning | |
 | E7 | Build stamp matches | compare `health.build` and `<meta x-build>` to deployed commit SHA | both equal the live commit | |
 
@@ -342,7 +342,7 @@ Quick live verification (after a push), poll until the SHA appears:
 ```bash
 SHA=$(git rev-parse HEAD)
 curl -s $API/health | grep -q "\"build\":\"$SHA\"" && echo "backend deployed $SHA"
-curl -s "https://inspecta.isiri.rw/?cb=$RANDOM" | grep -q "content=\"$SHA\"" && echo "frontend deployed $SHA"
+curl -s "https://www.inspecta.africa/?cb=$RANDOM" | grep -q "content=\"$SHA\"" && echo "frontend deployed $SHA"
 ```
 
 ---
@@ -374,7 +374,7 @@ node uitest.mjs   # expect "8/8 checks passed", 0 console errors
 ## 13. Full live smoke (copy-paste)
 
 ```bash
-API=https://api-inspecta.isiri.rw/api
+API=https://api.inspecta.africa/api
 TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
 PID=$(curl -s "$API/projects?search=Skyline" -H "Authorization: Bearer $TOKEN" | python -c "import sys,json;print(json.load(sys.stdin)['data'][0]['id'])")
 for ep in projects projects/summary clients users dashboards/executive finance/summary \

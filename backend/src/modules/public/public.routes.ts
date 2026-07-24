@@ -36,8 +36,8 @@ router.post(
       await sendMail({
         to,
         subject: `New Inspecta demo request — ${body.company}`,
-        text: `Name: ${body.name}\nEmail: ${body.email}\nCompany: ${body.company}\n\nReceived via inspecta.isiri.rw`,
-        html: `<h3>New demo request</h3><ul><li><b>Name:</b> ${body.name}</li><li><b>Email:</b> ${body.email}</li><li><b>Company:</b> ${body.company}</li></ul><p style="color:#99a;font-size:11px">via inspecta.isiri.rw</p>`,
+        text: `Name: ${body.name}\nEmail: ${body.email}\nCompany: ${body.company}\n\nReceived via inspecta.africa`,
+        html: `<h3>New demo request</h3><ul><li><b>Name:</b> ${body.name}</li><li><b>Email:</b> ${body.email}</li><li><b>Company:</b> ${body.company}</li></ul><p style="color:#99a;font-size:11px">via inspecta.africa</p>`,
       });
     }
     // Always acknowledge (the request is recorded/emailed when possible).
@@ -65,8 +65,8 @@ router.post(
       await sendMail({
         to,
         subject: `Website enquiry — ${b.service || 'General'} — ${b.name}`,
-        text: `Name: ${b.name}\nEmail: ${b.email}\nPhone: ${b.phone ?? '—'}\nCompany: ${b.company ?? '—'}\nService: ${b.service ?? '—'}\n\n${b.message}\n\nReceived via inspecta.isiri.rw`,
-        html: `<h3>New website enquiry</h3><ul><li><b>Name:</b> ${b.name}</li><li><b>Email:</b> ${b.email}</li><li><b>Phone:</b> ${b.phone ?? '—'}</li><li><b>Company:</b> ${b.company ?? '—'}</li><li><b>Service:</b> ${b.service ?? '—'}</li></ul><p>${b.message}</p><p style="color:#99a;font-size:11px">via inspecta.isiri.rw</p>`,
+        text: `Name: ${b.name}\nEmail: ${b.email}\nPhone: ${b.phone ?? '—'}\nCompany: ${b.company ?? '—'}\nService: ${b.service ?? '—'}\n\n${b.message}\n\nReceived via inspecta.africa`,
+        html: `<h3>New website enquiry</h3><ul><li><b>Name:</b> ${b.name}</li><li><b>Email:</b> ${b.email}</li><li><b>Phone:</b> ${b.phone ?? '—'}</li><li><b>Company:</b> ${b.company ?? '—'}</li><li><b>Service:</b> ${b.service ?? '—'}</li></ul><p>${b.message}</p><p style="color:#99a;font-size:11px">via inspecta.africa</p>`,
       });
     }
     return ok(res, { received: true, emailed: isEmailConfigured() && Boolean(to) }, 201);

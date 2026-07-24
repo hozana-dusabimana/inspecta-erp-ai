@@ -9,8 +9,8 @@ React/Vite frontend. This is the operational runbook for go-live and ongoing ops
 
 | Component | Tech | Production URL |
 |-----------|------|----------------|
-| Frontend  | React + Vite (static build) | https://inspecta.isiri.rw |
-| Backend   | Node 20 + Express + Prisma  | https://api-inspecta.isiri.rw |
+| Frontend  | React + Vite (static build) | https://www.inspecta.africa |
+| Backend   | Node 20 + Express + Prisma  | https://api.inspecta.africa |
 | Database  | PostgreSQL 15+              | (managed / container) |
 | Realtime  | WebSocket (per-org channels) | same host as backend |
 
@@ -37,7 +37,7 @@ defaults (see `src/config/env.ts → validateProductionEnv`).
 | `JWT_ACCESS_SECRET` | ≥ 32 random chars. Must NOT be the dev default. |
 | `JWT_REFRESH_SECRET` | ≥ 32 random chars. Must NOT be the dev default. |
 | `NODE_ENV` | `production` |
-| `CORS_ORIGIN` | Exact frontend origin, e.g. `https://inspecta.isiri.rw` |
+| `CORS_ORIGIN` | Frontend origin(s), comma-separated, e.g. `https://www.inspecta.africa,https://inspecta.africa` |
 
 Generate secrets: `openssl rand -base64 48`
 

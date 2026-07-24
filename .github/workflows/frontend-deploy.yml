@@ -34,7 +34,7 @@ jobs:
       - name: Build (production API URL + commit stamp)
         working-directory: frontend
         env:
-          VITE_API_URL: https://api-inspecta.isiri.rw/api
+          VITE_API_URL: https://api.inspecta.africa/api
           VITE_BUILD: ${{ github.sha }}
         run: npx vite build
 
@@ -54,17 +54,17 @@ jobs:
           sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/frontend.tgz" < /tmp/frontend.tgz
           sshpass -e ssh $OPTS "$USER@$HOST" '
             set -e
-            D=/home/inspecta/htdocs/inspecta.isiri.rw
+            D=/home/inspectafrica/htdocs/www.inspecta.africa
             rm -rf "$D"/*
             tar xzf /tmp/frontend.tgz -C "$D"
-            chown -R inspecta:inspecta "$D"
+            chown -R inspectafrica:inspectafrica "$D"
           '
 
       - name: Smoke check (retry)
         run: |
           for i in $(seq 1 6); do
-            code=$(curl -s -m 15 -o /dev/null -w "%{http_code}" "https://inspecta.isiri.rw/?cb=$RANDOM")
-            if [ "$code" = "200" ]; then echo "✅ inspecta.isiri.rw HTTP 200"; exit 0; fi
+            code=$(curl -s -m 15 -o /dev/null -w "%{http_code}" "https://www.inspecta.africa/?cb=$RANDOM")
+            if [ "$code" = "200" ]; then echo "✅ www.inspecta.africa HTTP 200"; exit 0; fi
             echo "got HTTP $code, retrying... ($i)"; sleep 5
           done
           echo "❌ frontend smoke check failed"; exit 1

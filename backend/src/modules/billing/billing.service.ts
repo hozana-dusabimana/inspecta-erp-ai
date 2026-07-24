@@ -107,10 +107,23 @@ export function billingStateOf(org: OrgBillingFields, now: Date = new Date()): B
   const ends = [org.subscriptionEndsAt, org.trialEndsAt].filter(Boolean) as Date[];
   const expiresAt = ends.length ? new Date(Math.max(...ends.map((d) => d.getTime()))) : null;
 
-  // A tenant with no clock at all has never been put on billing — treat as
-  // active rather than locking them out on a missing value.
+  // A tenant with no clock at all has no active entitlement. Fail closed —
+  // read-only until a platform admin puts them on a trial or approves a payment
+  // — rather than handing out free, unlimited access on a missing value. Every
+  // org created through signup or the console gets a trial, and every tenant
+  // that predates billing was set billingExempt by the migration, so reaching
+  // here means the subscription was never activated and access must be gated.
   if (!expiresAt) {
-    return { ...base, status: 'ACTIVE', expiresAt: null, daysRemaining: null, graceDaysRemaining: null, readOnly: false, warn: false, message: null };
+    return {
+      ...base,
+      status: 'LAPSED',
+      expiresAt: null,
+      daysRemaining: null,
+      graceDaysRemaining: 0,
+      readOnly: true,
+      warn: true,
+      message: 'This workspace has no active subscription. Submit a payment or contact support to activate your plan.',
+    };
   }
 
   const graceEndsAt = new Date(expiresAt.getTime() + GRACE_DAYS * DAY_MS);

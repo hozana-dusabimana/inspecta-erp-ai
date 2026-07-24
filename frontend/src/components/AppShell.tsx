@@ -29,10 +29,12 @@ export interface ShellChrome {
   onLogout: () => void;
 }
 
-function NavLink({ item, active, nested, onSelect }: {
+function NavLink({ item, active, nested, badge, onSelect }: {
   item: NavItem;
   active: boolean;
   nested?: boolean;
+  /** A count to surface on the item (e.g. subscriptions awaiting approval). */
+  badge?: number;
   onSelect: (view: AppView) => void;
 }) {
   const Icon = item.icon;
@@ -47,7 +49,12 @@ function NavLink({ item, active, nested, onSelect }: {
       }`}
     >
       <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-brand-secondary-container' : ''}`} />
-      <span>{item.label}</span>
+      <span className="flex-1">{item.label}</span>
+      {typeof badge === 'number' && badge > 0 && (
+        <span className="min-w-4 h-4 px-1 bg-brand-status-critical text-white text-[9px] font-bold rounded-full flex items-center justify-center shrink-0">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -59,13 +66,28 @@ function NavLink({ item, active, nested, onSelect }: {
  * for as long as they are inspecting.
  */
 function PlatformSidebar({ active, onSelect }: { active?: AppView; onSelect: (v: AppView) => void }) {
+  // Surface how many payments are waiting on the admin, right on the nav item,
+  // so an unreviewed subscription is visible without opening the tab.
+  const { data } = useQuery({
+    queryKey: ['platform-pending-subscriptions'],
+    queryFn: () => api.get<unknown[]>('/platform/subscription-requests?status=PENDING&pageSize=1'),
+    refetchInterval: 60_000,
+  });
+  const pending = (data?.meta as { pending?: number } | undefined)?.pending ?? 0;
+
   return (
     <nav className="px-3 space-y-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
       <p className="px-4 pb-2 text-[9px] font-bold uppercase tracking-widest text-brand-on-primary-container/50">
         Platform
       </p>
       {PLATFORM_NAV.map((item) => (
-        <NavLink key={item.id} item={item} active={item.view === active} onSelect={onSelect} />
+        <NavLink
+          key={item.id}
+          item={item}
+          active={item.view === active}
+          badge={item.view === AppView.PLATFORM_SUBSCRIPTIONS ? pending : undefined}
+          onSelect={onSelect}
+        />
       ))}
     </nav>
   );

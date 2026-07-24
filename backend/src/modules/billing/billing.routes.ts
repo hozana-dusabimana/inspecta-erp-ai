@@ -8,6 +8,7 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { usageFor, PLAN_DEFAULTS, PLAN_LABELS } from '../platform/plans';
 import { billingStateFor, planPrices, priceFor } from './billing.service';
+import { notifyPlatformAdmins } from '../notifications/notify';
 
 /**
  * The company-facing side of billing: what plan am I on, when does it end,
@@ -161,6 +162,19 @@ router.post(
     await auditFromRequest(req, 'CREATE', 'subscription-request', created.id, {
       newValues: { plan: body.plan, period: body.period, amount, reference: body.reference },
     });
+
+    // A subscription is never activated automatically — a platform admin must
+    // review and approve this payment. Alert them so the claim doesn't sit
+    // unseen (the tenant keeps their trial/current access until it's approved).
+    const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+    await notifyPlatformAdmins({
+      type: 'APPROVAL',
+      severity: 'MEDIUM',
+      title: 'Subscription payment awaiting approval',
+      message: `${org?.name ?? 'A company'} submitted a ${PLAN_LABELS[body.plan]} (${body.period.toLowerCase()}) payment of ${created.amount} ${created.currency} — reference ${body.reference}. Review and approve it to activate their subscription.`,
+      link: '/platform/subscriptions',
+    });
+
     return ok(res, created, 201);
   }),
 );

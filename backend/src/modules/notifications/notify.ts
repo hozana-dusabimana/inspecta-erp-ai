@@ -69,3 +69,20 @@ export async function notify(input: NotifyInput) {
 
   return notification;
 }
+
+/**
+ * Alert every platform administrator about a cross-tenant event (e.g. a tenant
+ * submitting a subscription payment for approval). Platform admins live in their
+ * own organization, so the org-scoped `notify()` above can never reach them from
+ * a tenant action — we fan out one user-targeted notification each, stamped with
+ * the admin's own org so the in-app feed and email both land correctly.
+ */
+export async function notifyPlatformAdmins(input: Omit<NotifyInput, 'organizationId' | 'userId'>) {
+  const admins = await prisma.user.findMany({
+    where: { role: 'PLATFORM_ADMIN', isActive: true },
+    select: { id: true, organizationId: true },
+  });
+  await Promise.all(
+    admins.map((admin) => notify({ ...input, organizationId: admin.organizationId, userId: admin.id })),
+  );
+}

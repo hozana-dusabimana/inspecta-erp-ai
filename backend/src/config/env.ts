@@ -68,8 +68,8 @@ export const env = {
   },
 
   seed: {
-    adminEmail: process.env.SEED_ADMIN_EMAIL ?? 'admin@inspecta.ai',
-    adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345',
+    adminEmail: process.env.SEED_ADMIN_EMAIL ?? 'admin@inspecta.africa',
+    adminPassword: process.env.SEED_ADMIN_PASSWORD ?? 'Admin@123',
   },
 };
 
@@ -88,7 +88,7 @@ export function validateProductionEnv(): void {
   if (env.jwt.refreshSecret === 'dev-refresh-secret') fatal.push('JWT_REFRESH_SECRET is the insecure dev default');
   if (env.jwt.accessSecret.length < 24) fatal.push('JWT_ACCESS_SECRET is too short (use ≥ 32 random chars)');
   if (env.jwt.refreshSecret.length < 24) fatal.push('JWT_REFRESH_SECRET is too short (use ≥ 32 random chars)');
-  if (env.seed.adminPassword === 'Admin@12345') warn.push('SEED_ADMIN_PASSWORD is the public default — change it after first login');
+  if (env.seed.adminPassword === 'Admin@123') warn.push('SEED_ADMIN_PASSWORD is the public default — change it after first login');
 
   const providerKey = { openrouter: env.ai.openrouter.apiKey, claude: env.ai.claude.apiKey, gemini: env.ai.gemini.apiKey }[env.ai.provider];
   if (!providerKey) warn.push(`AI provider "${env.ai.provider}" has no API key — Copilot runs in offline/deterministic mode`);

@@ -70,16 +70,12 @@ In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you 
 ### Sign in
 | Role | Email | Password |
 |---|---|---|
-| Platform Superadmin | `superadmin@inspecta.ai` | `Super@12345` |
-| System Administrator | `admin@inspecta.ai` | `Admin@12345` |
-| Project Manager | `pm@inspecta.ai` | `Demo@12345` |
-| Site Engineer | `engineer@inspecta.ai` | `Demo@12345` |
-| Quantity Surveyor | `qs@inspecta.ai` | `Demo@12345` |
-| Storekeeper | `store@inspecta.ai` | `Demo@12345` |
-| Foreman | `foreman@inspecta.ai` | `Demo@12345` |
+| Super Admin | `admin@inspecta.africa` | `Admin@123` |
 
-The superadmin is the only account that sees the **Platform Console** (`/platform`).
-Override the seeded credentials with `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD`.
+The seed creates a single account: a **Platform Superadmin** that also holds the
+**System Administrator** role in its host org — so it sees the **Platform Console**
+(`/platform`) and can use every ERP module. Override the seeded credentials with
+`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, and change the password after first login.
 
 ---
 

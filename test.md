@@ -17,17 +17,12 @@ Seeded on first boot (`npm run seed`). Passwords below.
 
 | Role | Email | Password |
 |---|---|---|
-| System Administrator | `admin@inspecta.ai` | `Admin@12345` |
-| Project Manager | `pm@inspecta.ai` | `Demo@12345` |
-| Site Engineer | `engineer@inspecta.ai` | `Demo@12345` |
-| Quantity Surveyor | `qs@inspecta.ai` | `Demo@12345` |
-| Storekeeper | `store@inspecta.ai` | `Demo@12345` |
+| Super Admin | `admin@inspecta.africa` | `Admin@123` |
 
-Seeded fixtures (org **Inspecta GC Corp**): projects **SKY-A** (Skyline Tower A),
-**NEX-LH** (Nexus Logistics Hub), **RVR-PL** (Riverfront Plaza); 2 clients; production
-entries, budget/cost/invoice/payment, materials + stock, supplier + PO, inspection, NCR,
-incident, toolbox talk, risk, 5 CPM activities, site diary, field tasks, attendance, an
-approval request — all on **SKY-A**.
+The seed now creates **only** this account — a Platform Superadmin that also holds
+the System Administrator role in its host org (**Inspecta GC Corp**). No demo users,
+clients, projects, or module fixtures are seeded, so project-scoped tests below
+require you to create the referenced records (project, client, etc.) first.
 
 ---
 
@@ -39,7 +34,7 @@ Most API tests use a bearer token. Get one (PowerShell or bash):
 # bash — set API to local or prod
 API=https://api-inspecta.isiri.rw/api
 TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@inspecta.ai","password":"Admin@12345"}' \
+  -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' \
   | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
 # get the Skyline project id for project-scoped calls
 PID=$(curl -s "$API/projects?search=Skyline" -H "Authorization: Bearer $TOKEN" \
@@ -380,7 +375,7 @@ node uitest.mjs   # expect "8/8 checks passed", 0 console errors
 
 ```bash
 API=https://api-inspecta.isiri.rw/api
-TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@inspecta.ai","password":"Admin@12345"}' | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
+TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
 PID=$(curl -s "$API/projects?search=Skyline" -H "Authorization: Bearer $TOKEN" | python -c "import sys,json;print(json.load(sys.stdin)['data'][0]['id'])")
 for ep in projects projects/summary clients users dashboards/executive finance/summary \
   production/summary/metrics inventory/stock procurement/suppliers \

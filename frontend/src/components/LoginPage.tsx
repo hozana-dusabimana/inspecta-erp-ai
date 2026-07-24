@@ -16,7 +16,7 @@ const pillars = ['Materials Testing Laboratory', 'Structural Design', 'ERP-Drive
 export default function LoginPage({ onLoginSuccess, onNavigate }: LoginPageProps) {
   const { login } = useAuth();
   const { theme, toggle } = useTheme();
-  const [email, setEmail] = useState('admin@inspecta.ai');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

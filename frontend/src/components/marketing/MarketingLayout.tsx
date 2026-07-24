@@ -98,7 +98,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <h5 className="font-bold mb-3">Contact</h5>
             <ul className="space-y-1.5 text-[var(--mk-muted)]">
               <li>+250 788 500 266</li>
-              <li>inspectafrica@gmail.com</li>
+              <li>info@inspecta.africa</li>
               <li>Kigali, Rwanda</li>
             </ul>
           </div>

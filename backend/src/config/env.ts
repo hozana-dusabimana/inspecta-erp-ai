@@ -61,9 +61,10 @@ export const env = {
     port: Number(process.env.SMTP_PORT ?? 587),
     user: process.env.SMTP_USER ?? '',
     pass: process.env.SMTP_PASS ?? '',
-    from: process.env.EMAIL_FROM ?? 'INSPECTA BUILDOS <no-reply@inspecta.ai>',
-    // Where org-wide alerts are also sent (e.g. a monitored inbox).
-    fallbackTo: process.env.NOTIFY_FALLBACK_EMAIL ?? '',
+    from: process.env.EMAIL_FROM ?? 'Inspecta <info@inspecta.africa>',
+    // Where org-wide alerts are also sent (e.g. a monitored inbox). Defaults to
+    // the company inbox so website enquiries land somewhere even if unset.
+    fallbackTo: process.env.NOTIFY_FALLBACK_EMAIL ?? 'info@inspecta.africa',
   },
 
   seed: {

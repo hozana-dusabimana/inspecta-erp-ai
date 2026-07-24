@@ -39,8 +39,8 @@ export default function Contact() {
           <a href="tel:+250788500266" className="flex items-center gap-3 rounded-xl border border-[var(--mk-border)] p-4 hover:shadow-md transition-all">
             <Phone className="w-5 h-5" style={{ color: CORAL }} /><div><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mk-muted)]">Phone / WhatsApp</p><p className="font-semibold" style={{ color: INK }}>+250 788 500 266</p></div>
           </a>
-          <a href="mailto:inspectafrica@gmail.com" className="flex items-center gap-3 rounded-xl border border-[var(--mk-border)] p-4 hover:shadow-md transition-all">
-            <Mail className="w-5 h-5" style={{ color: CORAL }} /><div><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mk-muted)]">Email</p><p className="font-semibold" style={{ color: INK }}>inspectafrica@gmail.com</p></div>
+          <a href="mailto:info@inspecta.africa" className="flex items-center gap-3 rounded-xl border border-[var(--mk-border)] p-4 hover:shadow-md transition-all">
+            <Mail className="w-5 h-5" style={{ color: CORAL }} /><div><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mk-muted)]">Email</p><p className="font-semibold" style={{ color: INK }}>info@inspecta.africa</p></div>
           </a>
           <div className="flex items-center gap-3 rounded-xl border border-[var(--mk-border)] p-4">
             <MapPin className="w-5 h-5" style={{ color: CORAL }} /><div><p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mk-muted)]">Location</p><p className="font-semibold" style={{ color: INK }}>Kigali, Rwanda</p></div>

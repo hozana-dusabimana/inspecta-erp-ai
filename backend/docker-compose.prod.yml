@@ -56,8 +56,8 @@ services:
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      EMAIL_FROM: ${EMAIL_FROM:-INSPECTA BUILDOS <no-reply@inspecta.ai>}
-      NOTIFY_FALLBACK_EMAIL: ${NOTIFY_FALLBACK_EMAIL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Inspecta <info@inspecta.africa>}
+      NOTIFY_FALLBACK_EMAIL: ${NOTIFY_FALLBACK_EMAIL:-info@inspecta.africa}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.ai}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
     ports:

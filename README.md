@@ -361,7 +361,7 @@ Pushing to `main` triggers CI/CD (`.github/workflows/{backend,frontend}-deploy.y
 backend builds + tests, then ships over SSH and runs `docker compose up --build`
 (the container applies the schema via `prisma db push` + seed on start); frontend
 builds with the prod API URL and ships the static bundle. Required repo secret:
-`SSH_PASSWORD`. Live at `inspecta.isiri.rw` / `api-inspecta.isiri.rw`. Schema changes
+`SSH_PASSWORD`. Live at `www.inspecta.africa` / `api.inspecta.africa`. Schema changes
 ship as delta files under `backend/prisma/migrations/` (apply to an existing DB with
 `prisma db execute`, or rely on `db push` for fresh ones).
 

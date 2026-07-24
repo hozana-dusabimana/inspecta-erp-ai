@@ -1,6 +1,6 @@
 # INSPECTA BUILDOS — production stack (server deployment).
 # Postgres stays internal to the compose network; the API is published only on
-# 127.0.0.1:5010 so the CloudPanel/nginx reverse proxy (api-inspecta.isiri.rw)
+# 127.0.0.1:5010 so the CloudPanel/nginx reverse proxy (api.inspecta.africa)
 # can reach it. Secrets come from a local .env file (never committed).
 #
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -35,9 +35,9 @@ services:
       NODE_ENV: production
       PORT: 4000
       BUILD_VERSION: ${BUILD_VERSION:-dev}
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://inspecta.isiri.rw}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://www.inspecta.africa,https://inspecta.africa}
       # Public web app base URL — used to build links in emails (verify-email).
-      APP_URL: ${APP_URL:-https://inspecta.isiri.rw}
+      APP_URL: ${APP_URL:-https://www.inspecta.africa}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-inspecta_buildos}?schema=public
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set in .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env}
@@ -58,8 +58,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-Inspecta <info@inspecta.africa>}
       NOTIFY_FALLBACK_EMAIL: ${NOTIFY_FALLBACK_EMAIL:-info@inspecta.africa}
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.ai}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.africa}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@123}
     ports:
       - '127.0.0.1:5010:4000'
 

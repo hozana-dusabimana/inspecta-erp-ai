@@ -13,13 +13,18 @@ sign off that every feature works. Mark each row **PASS / FAIL** in the Result c
 
 ## 0. Test accounts & seeded data
 
-Seeded on first boot (`npm run seed`). Passwords below.
+Ensured on **every API boot** (and by `npm run seed`). Passwords below.
 
 | Role | Email | Password |
 |---|---|---|
 | Super Admin | `admin@inspecta.africa` | `Admin@123` |
 
-The seed now creates **only** this account — a Platform Superadmin that also holds
+If `SEED_ADMIN_PASSWORD` was overridden in the environment, that value wins — but
+only until someone signs in, after which the password belongs to the account.
+Locked out? Either use **Forgot Password?** on the login page (§1b), or redeploy
+once with `SEED_ADMIN_RESET_PASSWORD=true`.
+
+The seed creates **only** this account — a Platform Superadmin that also holds
 the System Administrator role in its host org (**Inspecta GC Corp**). No demo users,
 clients, projects, or module fixtures are seeded, so project-scoped tests below
 require you to create the referenced records (project, client, etc.) first.
@@ -43,6 +48,27 @@ auth(){ curl -s -H "Authorization: Bearer $TOKEN" "$@"; }   # helper
 ```
 
 Response envelope is always `{ success, data, error?, meta? }`.
+
+### 1b. Forgot password
+
+```bash
+# 1. Request a link. Always 200 — identical for registered and unknown emails.
+curl -s -X POST $API/auth/forgot-password -H 'Content-Type: application/json' \
+  -d '{"email":"admin@inspecta.africa"}'
+# → {"success":true,"data":{"sent":true}}
+
+# 2. Get the token: from the email, or (no SMTP configured) from the backend log:
+#    [auth] SMTP not configured — password reset link for …: …/reset-password?token=<TOKEN>
+
+# 3. Consume it. Single-use, expires in 1 hour, and returns a live session.
+curl -s -X POST $API/auth/reset-password -H 'Content-Type: application/json' \
+  -d '{"token":"<TOKEN>","password":"NewPass@2026"}'
+# → {"success":true,"data":{"user":{…},"accessToken":"…","refreshToken":"…"}}
+```
+
+Expect: replaying the same token returns `400 This reset link is invalid or has
+expired`; every refresh token issued before the reset is revoked; and more than
+5 forgot-password calls in an hour from one IP are rate-limited with a 429.
 
 ---
 

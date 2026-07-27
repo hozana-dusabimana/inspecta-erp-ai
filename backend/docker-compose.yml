@@ -49,8 +49,13 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-inspecta}
-      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.ai}
-      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
+      # Must match backend/.env.example and docker-compose.prod.yml — a second
+      # set of "defaults" here is how you end up unable to sign in locally.
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.africa}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@123}
+      # Break-glass: set true for one boot to force the seeded password back
+      # onto an existing superadmin that has already signed in.
+      SEED_ADMIN_RESET_PASSWORD: ${SEED_ADMIN_RESET_PASSWORD:-}
     ports:
       - '4000:4000'
 

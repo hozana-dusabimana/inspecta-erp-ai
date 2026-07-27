@@ -64,4 +64,4 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$frontend`";
 Write-Host ""
 Write-Host "Backend : http://localhost:4000  (health: /api/health)" -ForegroundColor Green
 Write-Host "Frontend: http://localhost:3000" -ForegroundColor Green
-Write-Host "Login   : admin@inspecta.ai / Admin@12345" -ForegroundColor Green
+Write-Host "Login   : admin@inspecta.africa / Admin@123  (override with SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD)" -ForegroundColor Green

@@ -369,6 +369,11 @@ model User {
   emailVerified         Boolean   @default(true)
   verificationTokenHash String?   @unique
   verificationExpiresAt DateTime?
+  // Forgot-password flow. Only the SHA-256 hash of the emailed token is stored,
+  // so a database leak cannot be replayed into account takeovers. Single-use:
+  // both columns are cleared the moment the password is changed.
+  resetTokenHash        String?   @unique
+  resetExpiresAt        DateTime?
   lastLoginAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

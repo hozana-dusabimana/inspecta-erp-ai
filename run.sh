@@ -75,7 +75,7 @@ echo "Starting frontend dev server..."
 echo
 echo "Backend : http://localhost:4000  (health: /api/health)"
 echo "Frontend: http://localhost:3000"
-echo "Login   : admin@inspecta.ai / Admin@12345"
+echo "Login   : admin@inspecta.africa / Admin@123  (override with SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD)"
 echo
 echo "Press Ctrl+C to stop both servers."
 wait

@@ -60,6 +60,11 @@ services:
       NOTIFY_FALLBACK_EMAIL: ${NOTIFY_FALLBACK_EMAIL:-info@inspecta.africa}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@inspecta.africa}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@123}
+      # Break-glass for a locked-out superadmin: set true in .env for ONE deploy
+      # to force SEED_ADMIN_PASSWORD back onto the account, then remove it.
+      # (Without it the seed leaves a password alone once the admin has logged
+      # in at least once, so it never silently undoes a password change.)
+      SEED_ADMIN_RESET_PASSWORD: ${SEED_ADMIN_RESET_PASSWORD:-}
     ports:
       - '127.0.0.1:5010:4000'
 

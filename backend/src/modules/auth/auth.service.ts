@@ -18,6 +18,9 @@ import { trialEndFrom } from '../billing/billing.service';
 import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
+// Reset links are far more powerful than verification links, so they live for
+// one hour rather than a day.
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 /**
  * Issues a fresh verification token for a user, persists its hash, and emails
@@ -258,6 +261,97 @@ export async function login(email: string, password: string) {
 
   const tokens = await issueTokens(user);
   return { user: await publicUser(user), ...tokens };
+}
+
+/**
+ * Starts the forgot-password flow: issues a one-hour, single-use token, stores
+ * only its hash, and emails the reset link.
+ *
+ * Always resolves the same way whether or not the address is registered — an
+ * unauthenticated caller must not be able to use this endpoint to enumerate
+ * which company emails have accounts.
+ */
+export async function requestPasswordReset(rawEmail: string) {
+  const email = rawEmail.toLowerCase().trim();
+  const user = await prisma.user.findFirst({ where: { email } });
+
+  if (user && user.isActive) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetTokenHash: hashToken(rawToken),
+        resetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const link = `${env.webUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
+
+    if (!isEmailConfigured()) {
+      // Same escape hatch as verification: without SMTP the flow is still
+      // completable in development from the server log.
+      // eslint-disable-next-line no-console
+      console.warn(`[auth] SMTP not configured — password reset link for ${user.email}: ${link}`);
+    } else {
+      await sendMail({
+        to: user.email,
+        subject: 'Reset your Inspecta password',
+        text: `Hi ${user.fullName},\n\nWe received a request to reset your Inspecta password. Use the link below to choose a new one:\n\n${link}\n\nThis link expires in 1 hour and can only be used once. If you did not request a reset, you can ignore this email — your password will not change.`,
+        html: `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;color:#141821">
+          <h2 style="margin:0 0 12px">Reset your password</h2>
+          <p style="color:#4b5563">Hi ${user.fullName}, we received a request to reset your Inspecta password. Choose a new one below.</p>
+          <p style="margin:24px 0">
+            <a href="${link}" style="background:#FC6061;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:700;display:inline-block">Set a new password</a>
+          </p>
+          <p style="color:#6b7280;font-size:12px">Or paste this link into your browser:<br>${link}</p>
+          <p style="color:#9ca3af;font-size:11px;margin-top:24px">This link expires in 1 hour and can only be used once. If you did not request a reset, you can safely ignore this email — your password will not change.</p>
+        </div>`,
+      });
+    }
+  }
+
+  return { sent: true };
+}
+
+/**
+ * Completes the forgot-password flow. Consumes the token, sets the new
+ * password, and revokes every existing refresh token — if the reset was
+ * triggered because the account was compromised, the attacker's session must
+ * die with the old password. Returns fresh tokens so the user lands signed in.
+ */
+export async function resetPassword(rawToken: string, newPassword: string) {
+  const user = await prisma.user.findUnique({
+    where: { resetTokenHash: hashToken(rawToken) },
+  });
+  if (!user || !user.resetExpiresAt || user.resetExpiresAt < new Date()) {
+    throw BadRequest('This reset link is invalid or has expired. Request a new one.');
+  }
+  if (!user.isActive) throw Forbidden('This account is deactivated. Contact your administrator.');
+  await assertOrgUsable(user);
+
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await hashPassword(newPassword),
+      resetTokenHash: null,
+      resetExpiresAt: null,
+      // Completing a reset proves control of the mailbox, which is exactly what
+      // verification asks for — so an unverified account is activated here too
+      // rather than being bounced at the next login.
+      emailVerified: true,
+      verificationTokenHash: null,
+      verificationExpiresAt: null,
+      lastLoginAt: new Date(),
+    },
+  });
+
+  await prisma.refreshToken.updateMany({
+    where: { userId: user.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+
+  const tokens = await issueTokens(updated);
+  return { user: await publicUser(updated), ...tokens };
 }
 
 export async function refresh(refreshToken: string) {

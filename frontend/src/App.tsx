@@ -15,6 +15,8 @@ import ContactPage from './components/marketing/Contact';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
 import VerifyEmailPage from './components/VerifyEmailPage';
+import ForgotPasswordPage from './components/ForgotPasswordPage';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import Dashboard from './components/Dashboard';
 import DailyEntry from './components/DailyEntry';
 import CopilotWorkspace from './components/CopilotWorkspace';
@@ -134,6 +136,8 @@ export default function App() {
         <Route path="/login" element={<LoginRoute />} />
         <Route path="/signup" element={<SignupRoute />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Public marketing site */}
         <Route path="/about" element={<AboutPage />} />

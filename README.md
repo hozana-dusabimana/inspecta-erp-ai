@@ -72,10 +72,31 @@ In Docker mode `DATABASE_URL` is overridden to the bundled `db` service — you 
 |---|---|---|
 | Super Admin | `admin@inspecta.africa` | `Admin@123` |
 
-The seed creates a single account: a **Platform Superadmin** that also holds the
+There is a single seeded account: a **Platform Superadmin** that also holds the
 **System Administrator** role in its host org — so it sees the **Platform Console**
-(`/platform`) and can use every ERP module. Override the seeded credentials with
+(`/platform`) and can use every ERP module. Override the credentials with
 `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`, and change the password after first login.
+
+The account is ensured **on every API boot**, not only by `npm run seed` — so it
+exists however the backend was started (`npm start`, `npm run dev`, Docker, or a
+bare `node dist/index.js`). Boot also repairs an account that drifted:
+deactivated, unverified, missing its admin role, or renamed via a changed
+`SEED_ADMIN_EMAIL`.
+
+`SEED_ADMIN_PASSWORD` is written **while the account has never been signed into** —
+so correcting the value and redeploying actually takes effect. Once someone has
+logged in, the password is theirs and boot stops touching it (the mismatch is
+logged as a `[superadmin]` warning rather than silently ignored). Two exceptions
+apply it anyway: changing `SEED_ADMIN_EMAIL` re-provisions the identity from
+config, so the email and password move together; and `SEED_ADMIN_RESET_PASSWORD=true`
+forces it for one boot after a lockout. Or just use **Forgot Password?**, below.
+
+### Forgot password
+`/forgot-password` emails a one-hour, single-use reset link (`/reset-password?token=…`).
+Only the SHA-256 hash of the token is stored, completing a reset revokes every
+existing session, and the request endpoint answers identically for registered and
+unregistered addresses so it can't be used to enumerate accounts. Without SMTP
+configured the link is printed to the backend log so the flow still works locally.
 
 ---
 

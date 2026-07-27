@@ -97,7 +97,8 @@ export default function LoginPage({ onLoginSuccess, onNavigate }: LoginPageProps
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-[var(--mk-muted)] block" htmlFor="password-input">Password</label>
-                <a className="text-xs font-bold hover:underline" style={{ color: CORAL }} href="#forgot">Forgot Password?</a>
+                <button type="button" onClick={() => onNavigate(AppView.FORGOT_PASSWORD)}
+                  className="text-xs font-bold hover:underline" style={{ color: CORAL }}>Forgot Password?</button>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--mk-muted)]" />

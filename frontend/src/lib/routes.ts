@@ -10,6 +10,8 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.LOGIN]: '/login',
   [AppView.SIGNUP]: '/signup',
   [AppView.VERIFY_EMAIL]: '/verify-email',
+  [AppView.FORGOT_PASSWORD]: '/forgot-password',
+  [AppView.RESET_PASSWORD]: '/reset-password',
   [AppView.DASHBOARD]: '/dashboard',
   [AppView.EXEC_DASH]: '/executive',
   [AppView.PORTFOLIO]: '/portfolio',

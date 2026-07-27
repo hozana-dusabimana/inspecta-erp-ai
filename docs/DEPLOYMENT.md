@@ -44,7 +44,8 @@ Generate secrets: `openssl rand -base64 48`
 ### Recommended (warns in prod if missing; degrades gracefully)
 | Var | Effect if unset |
 |-----|-----------------|
-| `SEED_ADMIN_PASSWORD` | Defaults to public `Admin@123` — **change immediately** |
+| `SEED_ADMIN_PASSWORD` | Defaults to public `Admin@123` — **change immediately**. Applied while the superadmin has never signed in; afterwards the account owns its password (see `SEED_ADMIN_RESET_PASSWORD`) |
+| `SEED_ADMIN_RESET_PASSWORD` | Unset. Set `true` for **one** deploy to force `SEED_ADMIN_PASSWORD` back onto a locked-out superadmin, then remove it |
 | `AI_PROVIDER` + provider key (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) | Copilot runs in offline/deterministic mode (still answers from live data) |
 | `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | File uploads disabled (attaching links still works) |
 | `SMTP_HOST` + creds | Email notifications disabled (in-app still works) |
@@ -99,6 +100,7 @@ backup is not a backup.
 - [ ] AI provider key set (or accept offline Copilot mode — confirmed acceptable).
 - [ ] Supabase + SMTP configured if document upload / email are in scope.
 - [ ] `SEED_ADMIN_PASSWORD` set to a strong value (or plan to rotate on first login).
+- [ ] `SMTP_*` configured — without it, **Forgot Password** links can only be read from the backend log.
 - [ ] Backup cron installed and a first manual backup taken & verified.
 
 ### Deploy

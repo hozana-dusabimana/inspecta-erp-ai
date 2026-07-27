@@ -31,6 +31,8 @@ interface AuthState {
   }) => Promise<RegisterResult>;
   verifyEmail: (token: string) => Promise<void>;
   resendVerification: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
@@ -93,6 +95,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await api.post('/auth/resend-verification', { email });
   }, []);
 
+  // Deliberately returns nothing useful: the server answers identically for a
+  // registered and an unregistered address so the form cannot be used to probe
+  // which company emails exist.
+  const requestPasswordReset = useCallback(async (email: string) => {
+    await api.post('/auth/forgot-password', { email });
+  }, []);
+
+  // A completed reset also signs the user in, so the session is established
+  // here exactly as it is after login/verification.
+  const resetPassword = useCallback(async (token: string, password: string) => {
+    const res = await api.post<AuthResponse>('/auth/reset-password', { token, password });
+    tokenStore.set(res.data.accessToken, res.data.refreshToken);
+    setUser(res.data.user);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout', { refreshToken: tokenStore.refresh ?? undefined });
@@ -121,7 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, verifyEmail, resendVerification, logout, hasPermission }}>
+    <AuthContext.Provider
+      value={{
+        user, loading, login, register, verifyEmail, resendVerification,
+        requestPasswordReset, resetPassword, logout, hasPermission,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

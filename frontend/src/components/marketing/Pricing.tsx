@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, ArrowRight, Sparkles, ShieldCheck, Gauge, Wallet } from 'lucide-react';
-import MarketingLayout, { PageHero, CORAL, INK, MAROON } from './MarketingLayout';
+import MarketingLayout, { PageHero, CORAL, INK, DARK, MAROON } from './MarketingLayout';
 import { api } from '../../lib/api';
 
 interface PlanRow {
@@ -75,7 +75,7 @@ export default function Pricing() {
               <div key={p.plan}
                 className="rounded-2xl p-6 flex flex-col relative"
                 style={featured
-                  ? { background: INK, color: '#fff', border: `2px solid ${CORAL}` }
+                  ? { background: DARK, color: '#fff', border: `2px solid ${CORAL}` }
                   : { border: '1px solid var(--mk-border)', background: 'var(--mk-surface)' }}>
                 {featured && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full text-white" style={{ background: CORAL }}>

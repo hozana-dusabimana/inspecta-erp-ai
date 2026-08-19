@@ -161,20 +161,24 @@ export async function billingStateFor(organizationId: string): Promise<BillingSt
   return org ? billingStateOf(org) : null;
 }
 
-/** Published prices, newest values first created if the table is empty. */
+/** Published prices. Self-heals any plan tier missing a row — not just when
+ * the table is empty, so a plan added after the table was first seeded (e.g.
+ * BUSINESS) still gets a row on the next read rather than silently vanishing
+ * from every plan list. */
 export async function planPrices() {
-  const rows = await prisma.planPrice.findMany({ orderBy: { monthlyPrice: 'asc' } });
-  if (rows.length) return rows;
-  // Self-heal a database migrated before the seed rows existed.
-  await prisma.$transaction(
-    (Object.keys(PLAN_DEFAULTS) as OrgPlan[]).map((plan) =>
-      prisma.planPrice.upsert({
-        where: { plan },
-        update: {},
-        create: { plan, isPublic: plan !== 'TRIAL' },
-      }),
-    ),
-  );
+  const rows = await prisma.planPrice.findMany();
+  const missing = (Object.keys(PLAN_DEFAULTS) as OrgPlan[]).filter((plan) => !rows.some((r) => r.plan === plan));
+  if (missing.length) {
+    await prisma.$transaction(
+      missing.map((plan) =>
+        prisma.planPrice.upsert({
+          where: { plan },
+          update: {},
+          create: { plan, isPublic: plan !== 'TRIAL' },
+        }),
+      ),
+    );
+  }
   return prisma.planPrice.findMany({ orderBy: { monthlyPrice: 'asc' } });
 }
 

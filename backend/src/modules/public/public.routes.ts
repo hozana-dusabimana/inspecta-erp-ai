@@ -6,6 +6,8 @@ import { prisma } from '../../lib/prisma';
 import { sendMail, isEmailConfigured } from '../../lib/email';
 import { env } from '../../config/env';
 import { publicPlatformSettings } from '../platform/settings';
+import { planPrices } from '../billing/billing.service';
+import { PLAN_DEFAULTS, PLAN_LABELS } from '../platform/plans';
 
 const router = Router();
 
@@ -92,6 +94,31 @@ router.get(
 router.get(
   '/settings',
   asyncHandler(async (_req, res) => ok(res, await publicPlatformSettings())),
+);
+
+// GET /api/public/pricing — sellable plans for the marketing site's /pricing
+// page. Unauthenticated by design; only ever exposes what the admin marked
+// isPublic, never a hidden or zero-priced tier's real numbers.
+router.get(
+  '/pricing',
+  asyncHandler(async (_req, res) => {
+    const prices = await planPrices();
+    return ok(
+      res,
+      prices
+        .filter((p) => p.isPublic)
+        .map((p) => ({
+          plan: p.plan,
+          label: PLAN_LABELS[p.plan],
+          monthlyPrice: p.monthlyPrice,
+          annualPrice: p.annualPrice,
+          currency: p.currency,
+          description: p.description,
+          limits: PLAN_DEFAULTS[p.plan],
+          aiCreditsIncluded: p.aiCreditsIncluded,
+        })),
+    );
+  }),
 );
 
 export default router;

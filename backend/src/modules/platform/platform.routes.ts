@@ -14,6 +14,7 @@ import { getPlatformSettings, updatePlatformSettings } from './settings';
 import { notify } from '../notifications/notify';
 import { projectWhere, projectSelect, projectTotals, deliveryWatchlist, financeOverview, adoptionReport } from './insights';
 import { planPrices, addPeriod, trialEndFrom } from '../billing/billing.service';
+import { grantCredits, creditAllowanceFor } from '../billing/aiCredits.service';
 import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
 
 /**
@@ -117,6 +118,8 @@ const companySelect = {
   trialEndsAt: true,
   subscriptionEndsAt: true,
   billingExempt: true,
+  aiCreditBalance: true,
+  aiSpendLimitCredits: true,
   createdAt: true,
   _count: { select: { users: true, projects: true, clients: true, contracts: true } },
 } satisfies Prisma.OrganizationSelect;
@@ -218,6 +221,7 @@ router.post(
     const limits = PLAN_DEFAULTS[plan];
     const settings = await getPlatformSettings();
     const passwordHash = await hashPassword(body.adminPassword);
+    const initialCredits = await creditAllowanceFor(plan);
 
     const { org, admin } = await prisma.$transaction(async (tx) => {
       const org = await tx.organization.create({
@@ -233,8 +237,16 @@ router.post(
           maxProjects: limits.maxProjects,
           // Provisioned tenants get the same trial clock as self-signup.
           trialEndsAt: trialEndFrom(),
+          // Seed the first AI credit period now — periodStart defaults to this
+          // moment, so without this the monthly rollover wouldn't fire for 30 days.
+          aiCreditBalance: initialCredits,
         },
       });
+      if (initialCredits > 0) {
+        await tx.aiCreditLedger.create({
+          data: { organizationId: org.id, delta: initialCredits, balanceAfter: initialCredits, reason: `${PLAN_LABELS[plan]} allowance (provisioned)` },
+        });
+      }
       const admin = await tx.user.create({
         data: {
           organizationId: org.id,
@@ -696,6 +708,7 @@ const pricingSchema = z.object({
       currency: z.string().trim().length(3).optional(),
       description: z.string().trim().max(300).nullable().optional(),
       isPublic: z.boolean().optional(),
+      aiCreditsIncluded: z.number().int().min(0).optional(),
     }),
   ).min(1),
 });
@@ -714,6 +727,7 @@ router.put(
             currency: p.currency?.toUpperCase() ?? 'RWF',
             description: p.description ?? null,
             isPublic: p.isPublic ?? true,
+            aiCreditsIncluded: p.aiCreditsIncluded ?? 0,
           },
           create: {
             plan: p.plan,
@@ -722,6 +736,7 @@ router.put(
             currency: p.currency?.toUpperCase() ?? 'RWF',
             description: p.description ?? null,
             isPublic: p.isPublic ?? true,
+            aiCreditsIncluded: p.aiCreditsIncluded ?? 0,
           },
         }),
       ),
@@ -934,6 +949,111 @@ router.patch(
       newValues: body,
     });
     return ok(res, updated);
+  }),
+);
+
+// ─────────────────────── AI credits (platform) ───────────────────
+
+const aiCreditRequestInclude = {
+  organization: { select: { id: true, name: true, slug: true, aiCreditBalance: true, aiSpendLimitCredits: true } },
+  paymentAccount: { select: { id: true, label: true, accountNumber: true } },
+} as const;
+
+router.get(
+  '/ai-credit-requests',
+  asyncHandler(async (req, res) => {
+    const { page, pageSize, skip } = pageParams(req.query as Record<string, unknown>);
+    const where: Prisma.AiCreditPurchaseRequestWhereInput = {};
+    const status = (req.query.status as string)?.trim();
+    if (status && status in SubscriptionRequestStatus) where.status = status as SubscriptionRequestStatus;
+    const orgId = (req.query.organizationId as string)?.trim();
+    if (orgId) where.organizationId = orgId;
+
+    const [rows, total, pending] = await Promise.all([
+      prisma.aiCreditPurchaseRequest.findMany({ where, include: aiCreditRequestInclude, orderBy: { createdAt: 'desc' }, skip, take: pageSize }),
+      prisma.aiCreditPurchaseRequest.count({ where }),
+      prisma.aiCreditPurchaseRequest.count({ where: { status: 'PENDING' } }),
+    ]);
+    return res.json({ success: true, data: rows, meta: { page, pageSize, total, pending } });
+  }),
+);
+
+const approveCreditsSchema = z.object({ note: z.string().trim().max(500).optional() });
+
+router.post(
+  '/ai-credit-requests/:id/approve',
+  asyncHandler(async (req, res) => {
+    const body = approveCreditsSchema.parse(req.body);
+    const request = await prisma.aiCreditPurchaseRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) throw NotFound('Credit request not found');
+    if (request.status !== 'PENDING') throw BadRequest(`This request was already ${request.status.toLowerCase()}`);
+
+    const updated = await prisma.aiCreditPurchaseRequest.update({
+      where: { id: request.id },
+      data: { status: 'APPROVED', reviewedById: req.user!.id, reviewedAt: new Date(), reviewNote: body.note ?? null },
+      include: aiCreditRequestInclude,
+    });
+    await grantCredits(request.organizationId, request.credits, `Credit purchase approved (ref ${request.reference})`, req.user!.id);
+
+    await auditPlatform(req, request.organizationId, AuditAction.APPROVE, 'ai-credit-request', request.id, {
+      newValues: { credits: request.credits, amount: request.amount, reference: request.reference },
+    });
+    await notify({
+      organizationId: request.organizationId,
+      type: 'GENERAL',
+      severity: 'MEDIUM',
+      title: 'AI credit top-up approved',
+      message: `${request.credits} AI credits have been added to your balance. Thank you.`,
+      link: '/billing',
+    });
+    return ok(res, updated);
+  }),
+);
+
+const rejectCreditsSchema = z.object({ note: z.string().trim().min(3).max(500) });
+
+router.post(
+  '/ai-credit-requests/:id/reject',
+  asyncHandler(async (req, res) => {
+    const { note } = rejectCreditsSchema.parse(req.body);
+    const request = await prisma.aiCreditPurchaseRequest.findUnique({ where: { id: req.params.id } });
+    if (!request) throw NotFound('Credit request not found');
+    if (request.status !== 'PENDING') throw BadRequest(`This request was already ${request.status.toLowerCase()}`);
+
+    const updated = await prisma.aiCreditPurchaseRequest.update({
+      where: { id: request.id },
+      data: { status: 'REJECTED', reviewedById: req.user!.id, reviewedAt: new Date(), reviewNote: note },
+      include: aiCreditRequestInclude,
+    });
+    await auditPlatform(req, request.organizationId, AuditAction.REJECT, 'ai-credit-request', request.id, {
+      newValues: { reason: note, reference: request.reference },
+    });
+    await notify({
+      organizationId: request.organizationId,
+      type: 'GENERAL',
+      severity: 'HIGH',
+      title: 'AI credit top-up could not be verified',
+      message: `We could not verify payment reference ${request.reference}. ${note}`,
+      link: '/billing',
+    });
+    return ok(res, updated);
+  }),
+);
+
+// Goodwill/correction grants — bypasses the request flow entirely (positive
+// amounts add credits, negative amounts claw back a mistaken grant).
+const grantSchema = z.object({ amount: z.number().int().refine((n) => n !== 0, 'amount must not be zero'), reason: z.string().trim().min(3).max(300) });
+
+router.post(
+  '/companies/:id/ai-credits/grant',
+  asyncHandler(async (req, res) => {
+    const body = grantSchema.parse(req.body);
+    const org = await prisma.organization.findUnique({ where: { id: req.params.id }, select: { id: true, name: true } });
+    if (!org) throw NotFound('Company not found');
+
+    await grantCredits(org.id, body.amount, `Platform admin: ${body.reason}`, req.user!.id);
+    await auditPlatform(req, org.id, AuditAction.UPDATE, 'ai-credit-grant', org.id, { newValues: body });
+    return ok(res, { id: org.id, granted: body.amount });
   }),
 );
 

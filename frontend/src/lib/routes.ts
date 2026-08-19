@@ -50,6 +50,7 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.PLATFORM_AUDIT]: '/platform/audit',
   [AppView.PLATFORM_SETTINGS]: '/platform/settings',
   [AppView.PLATFORM_SUBSCRIPTIONS]: '/platform/subscriptions',
+  [AppView.PLATFORM_AI_CREDITS]: '/platform/ai-credits',
 };
 
 export const PATH_TO_VIEW: Record<string, AppView> = Object.fromEntries(

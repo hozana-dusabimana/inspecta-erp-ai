@@ -8,6 +8,7 @@ import { useViewNavigate, pathForView } from './lib/routes';
 import { ChatProvider, useChat } from './lib/chat';
 import LandingPage from './components/LandingPage';
 import AboutPage from './components/marketing/About';
+import PricingPage from './components/marketing/Pricing';
 import ServicePage from './components/marketing/ServicePage';
 import InspectaErpPage from './components/marketing/InspectaErp';
 import TeamPage from './components/marketing/Team';
@@ -141,6 +142,7 @@ export default function App() {
 
         {/* Public marketing site */}
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
         <Route path="/services/:slug" element={<ServicePage />} />
         <Route path="/inspecta-erp" element={<InspectaErpPage />} />
         <Route path="/team" element={<TeamPage />} />
@@ -164,6 +166,7 @@ export default function App() {
             <Route path="/admin" element={<Chromed render={(c) => <AdminPage {...c} />} />} />
             <Route path="/billing" element={<Chromed render={(c) => <BillingPage {...c} />} />} />
             <Route path="/platform/subscriptions" element={<Chromed render={(c) => <PlatformConsole tab="subscriptions" {...c} />} />} />
+            <Route path="/platform/ai-credits" element={<Chromed render={(c) => <PlatformConsole tab="ai-credits" {...c} />} />} />
             <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole tab="overview" {...c} />} />} />
             <Route path="/platform/companies" element={<Chromed render={(c) => <PlatformConsole tab="companies" {...c} />} />} />
             <Route path="/platform/users" element={<Chromed render={(c) => <PlatformConsole tab="users" {...c} />} />} />

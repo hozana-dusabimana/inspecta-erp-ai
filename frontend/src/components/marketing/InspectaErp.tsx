@@ -40,7 +40,7 @@ export default function InspectaErp() {
 
       {/* Showcase */}
       <section className="px-5 md:px-10 -mt-10 relative z-10">
-        <div className="max-w-4xl mx-auto"><img src={MEDIA.erpImage} alt="Team using Inspecta ERP" loading="lazy" className="w-full h-56 md:h-80 object-cover rounded-2xl shadow-2xl border-4 border-white" /></div>
+        <div className="max-w-4xl mx-auto"><img src={MEDIA.erpImage} alt="Inspecta ERP Executive Overview dashboard showing portfolio progress, budget, and AI Assistant insights" loading="lazy" className="w-full h-56 md:h-80 object-cover rounded-2xl shadow-2xl border-4 border-white" /></div>
       </section>
 
       {/* Problem / solution */}

@@ -111,6 +111,7 @@ export const PLATFORM_NAV: NavItem[] = [
   { id: 'nav-platform-adoption', label: 'Adoption', icon: TrendingUp, view: AppView.PLATFORM_ADOPTION },
   { id: 'nav-platform-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.PLATFORM_AUDIT },
   { id: 'nav-platform-subscriptions', label: 'Subscriptions', icon: CreditCard, view: AppView.PLATFORM_SUBSCRIPTIONS },
+  { id: 'nav-platform-ai-credits', label: 'AI Credits', icon: Bot, view: AppView.PLATFORM_AI_CREDITS },
   { id: 'nav-platform-settings', label: 'Settings', icon: Settings, view: AppView.PLATFORM_SETTINGS },
 ];
 

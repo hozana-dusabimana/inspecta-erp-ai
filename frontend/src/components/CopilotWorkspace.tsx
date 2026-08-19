@@ -136,7 +136,15 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   const [isListening, setIsListening] = useState(false);
   const [listeningTimer, setListeningTimer] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [credits, setCredits] = useState<{ balance: number; monthlyAllowance: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const loadCredits = () => {
+    api.get<{ balance: number; monthlyAllowance: number }>('/ai/credits')
+      .then((res) => setCredits(res.data))
+      .catch(() => { /* meter is a nice-to-have, not worth erroring the chat over */ });
+  };
+  useEffect(() => { loadCredits(); }, []);
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -172,6 +180,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
           setStreamingText('');
+          loadCredits();
         }
       });
     } catch (err) {
@@ -383,6 +392,19 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
         </div>
 
         <div className="flex items-center gap-2">
+          {credits && (
+            <button
+              onClick={() => onNavigate(AppView.BILLING)}
+              title={`${credits.balance.toLocaleString()} of ${credits.monthlyAllowance.toLocaleString()} monthly AI credits remaining`}
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                credits.balance <= 0
+                  ? 'border-brand-status-critical/30 text-brand-status-critical hover:bg-brand-status-critical/5'
+                  : 'border-brand-primary/10 text-brand-primary hover:bg-brand-primary/5'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" /> {credits.balance.toLocaleString()} credits
+            </button>
+          )}
           <button onClick={newChat} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white bg-brand-primary font-bold text-xs hover:bg-brand-primary-container transition-all">
             <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">New</span>
           </button>

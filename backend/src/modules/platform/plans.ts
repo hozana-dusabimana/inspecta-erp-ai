@@ -14,8 +14,9 @@ export interface PlanLimits {
  */
 export const PLAN_DEFAULTS: Record<OrgPlan, PlanLimits> = {
   TRIAL: { maxUsers: 3, maxProjects: 2 },
-  STARTER: { maxUsers: 10, maxProjects: 10 },
-  PROFESSIONAL: { maxUsers: 50, maxProjects: 100 },
+  STARTER: { maxUsers: 5, maxProjects: 2 },
+  PROFESSIONAL: { maxUsers: 15, maxProjects: 5 },
+  BUSINESS: { maxUsers: 40, maxProjects: 15 },
   ENTERPRISE: { maxUsers: null, maxProjects: null },
 };
 
@@ -23,6 +24,7 @@ export const PLAN_LABELS: Record<OrgPlan, string> = {
   TRIAL: 'Trial',
   STARTER: 'Starter',
   PROFESSIONAL: 'Professional',
+  BUSINESS: 'Business',
   ENTERPRISE: 'Enterprise',
 };
 

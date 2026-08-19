@@ -6,6 +6,7 @@ import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import * as service from './ai.service';
 import { TOOLS, runTools } from './tools';
+import { CREDIT_COSTS, chatCreditCost, assertCreditsAvailable, deductCredits, getCreditStatus } from '../billing/aiCredits.service';
 
 const router = Router();
 router.use(authenticate);
@@ -38,6 +39,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = chatSchema.parse(req.body);
     const orgId = req.user!.orgId;
+    await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
     const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, body.prompt);
 
     const answer = await service.ask(orgId, body.prompt, {
@@ -47,6 +49,8 @@ router.post(
       conversationId,
       actor: req.user!,
     });
+    const cost = chatCreditCost(answer);
+    await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
     // Persist the exchange (conversation memory).
     await prisma.aiMessage.createMany({ data: [
@@ -55,7 +59,7 @@ router.post(
     ] });
     await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
 
-    return ok(res, { ...answer, conversationId });
+    return ok(res, { ...answer, conversationId, creditsUsed: cost });
   }),
 );
 
@@ -63,6 +67,7 @@ router.post(
 router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   const body = chatSchema.parse(req.body);
   const orgId = req.user!.orgId;
+  await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -78,6 +83,8 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     provider: body.provider, projectId: body.projectId, pageContext: body.pageContext,
     conversationId, actor: req.user!,
   });
+  const cost = chatCreditCost(answer);
+  await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
   // Persist conversation memory.
   await prisma.aiMessage.createMany({ data: [
@@ -92,7 +99,7 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     send({ delta: tokens.slice(i, i + 3).join('') });
     await new Promise((r) => setTimeout(r, 12));
   }
-  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview });
+  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview, creditsUsed: cost });
   res.end();
 }));
 
@@ -160,19 +167,31 @@ router.get('/tools', requirePermission('ai:use'), asyncHandler(async (_req, res)
 // ── Invoke a single tool (org-scoped) ─────────────────────────
 router.get('/tools/:name', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   if (!TOOLS[req.params.name]) throw BadRequest('unknown tool');
-  const result = await runTools([req.params.name], req.user!.orgId, req.query.projectId as string | undefined);
+  const orgId = req.user!.orgId;
+  await assertCreditsAvailable(orgId, CREDIT_COSTS.TOOL_INVOKE);
+  const result = await runTools([req.params.name], orgId, req.query.projectId as string | undefined);
+  await deductCredits(orgId, CREDIT_COSTS.TOOL_INVOKE, `AI tool: ${req.params.name}`, req.user!.id);
   return ok(res, result[req.params.name]);
+}));
+
+// ── AI credit balance for the Copilot meter ───────────────────
+router.get('/credits', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  return ok(res, await getCreditStatus(req.user!.orgId));
 }));
 
 // ── Executive intelligence snapshot ───────────────────────────
 router.get('/executive', requirePermission('ai:use'), asyncHandler(async (req, res) => {
-  const result = await runTools(['get_dashboard_metrics'], req.user!.orgId);
+  const orgId = req.user!.orgId;
+  await assertCreditsAvailable(orgId, CREDIT_COSTS.REPORT);
+  const result = await runTools(['get_dashboard_metrics'], orgId);
+  await deductCredits(orgId, CREDIT_COSTS.REPORT, 'AI executive snapshot', req.user!.id);
   return ok(res, result.get_dashboard_metrics);
 }));
 
 // ── Alert engine: derive live alerts across modules ───────────
 router.get('/alerts', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   const orgId = req.user!.orgId;
+  await assertCreditsAvailable(orgId, CREDIT_COSTS.REPORT);
   const projectId = req.query.projectId as string | undefined;
   const r = await runTools(
     ['get_cost_analysis', 'get_productivity_analysis', 'get_schedule_forecast', 'get_inventory_analysis', 'get_compliance_analysis'],
@@ -193,6 +212,7 @@ router.get('/alerts', requirePermission('ai:use'), asyncHandler(async (req, res)
   if (comp?.criticalNcrs > 0) alerts.push({ type: 'QUALITY', severity: 'HIGH', message: `${comp.criticalNcrs} open critical NCR(s).` });
   if (comp?.lostTime > 0) alerts.push({ type: 'SAFETY', severity: 'CRITICAL', message: `${comp.lostTime} lost-time/serious incident(s).` });
 
+  await deductCredits(orgId, CREDIT_COSTS.REPORT, 'AI alert scan', req.user!.id);
   return ok(res, { count: alerts.length, alerts });
 }));
 

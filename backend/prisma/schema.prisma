@@ -41,6 +41,7 @@ enum OrgPlan {
   TRIAL
   STARTER
   PROFESSIONAL
+  BUSINESS
   ENTERPRISE
 }
 
@@ -238,6 +239,13 @@ model Organization {
   // Never bill this tenant (internal/demo orgs, and every org that predates
   // billing — a migration must not lock an existing customer out).
   billingExempt      Boolean   @default(false)
+  // AI Copilot credit meter. Balance carries unused credits forward; the
+  // plan's monthly allowance is added once per period by aiCredits.service.
+  aiCreditBalance     Int      @default(0)
+  aiCreditPeriodStart DateTime @default(now())
+  // Tenant admin's self-set ceiling on the size of a single credit top-up
+  // request, so nobody on the team can commit the company to a surprise spend.
+  aiSpendLimitCredits Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -253,6 +261,8 @@ model Organization {
   projectDocuments ProjectDocument[]
   notifications Notification[]
   subscriptionRequests SubscriptionRequest[]
+  aiCreditLedger           AiCreditLedger[]
+  aiCreditPurchaseRequests AiCreditPurchaseRequest[]
 
   @@index([status])
   @@map("organizations")
@@ -268,6 +278,8 @@ model PlanPrice {
   description  String?
   // Hidden plans still work for existing tenants but are not offered for purchase.
   isPublic     Boolean  @default(true)
+  // AI Copilot credits granted per month on this plan (see PLAN_AI_CREDITS).
+  aiCreditsIncluded Int @default(0)
   updatedAt    DateTime @updatedAt
 
   @@map("plan_prices")
@@ -288,9 +300,58 @@ model PaymentAccount {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 
-  requests SubscriptionRequest[]
+  requests         SubscriptionRequest[]
+  aiCreditRequests AiCreditPurchaseRequest[]
 
   @@map("payment_accounts")
+}
+
+// Append-only history of every AI-credit balance change (usage, monthly
+// top-up, purchase, manual grant) — powers the usage view and audit trail.
+model AiCreditLedger {
+  id             String   @id @default(cuid())
+  organizationId String
+  delta          Int
+  balanceAfter   Int
+  reason         String
+  userId         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("ai_credit_ledger")
+}
+
+// A tenant's request to top up AI credits beyond their monthly plan
+// allowance. No payment gateway, so — like SubscriptionRequest — this is a
+// manual bank/MoMo transfer a platform admin verifies and approves.
+model AiCreditPurchaseRequest {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  requestedById    String?
+  credits          Int
+  amount           Decimal                   @default(0) @db.Decimal(18, 2)
+  currency         String                    @default("RWF")
+  paymentAccountId String?
+  payerName        String
+  payerPhone       String
+  reference        String
+  paidAt           DateTime?
+  note             String?
+  status           SubscriptionRequestStatus @default(PENDING)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentAccount PaymentAccount? @relation(fields: [paymentAccountId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+  @@map("ai_credit_purchase_requests")
 }
 
 // A company's claim that it has paid, awaiting platform approval. Approving one

@@ -15,6 +15,7 @@ import { env } from '../../config/env';
 import { getPlatformSettings } from '../platform/settings';
 import { PLAN_DEFAULTS } from '../platform/plans';
 import { trialEndFrom } from '../billing/billing.service';
+import { creditAllowanceFor } from '../billing/aiCredits.service';
 import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // links are valid for 24 hours
@@ -162,6 +163,7 @@ export async function registerOrganization(input: {
   }
 
   const passwordHash = await hashPassword(input.password);
+  const trialCredits = await creditAllowanceFor('TRIAL');
 
   const { user } = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
@@ -175,8 +177,16 @@ export async function registerOrganization(input: {
         maxUsers: PLAN_DEFAULTS.TRIAL.maxUsers,
         maxProjects: PLAN_DEFAULTS.TRIAL.maxProjects,
         trialEndsAt: trialEndFrom(),
+        // Seed the first AI credit period now — periodStart defaults to this
+        // moment, so without this the monthly rollover wouldn't fire for 30 days.
+        aiCreditBalance: trialCredits,
       },
     });
+    if (trialCredits > 0) {
+      await tx.aiCreditLedger.create({
+        data: { organizationId: org.id, delta: trialCredits, balanceAfter: trialCredits, reason: 'Trial allowance' },
+      });
+    }
     const user = await tx.user.create({
       data: {
         organizationId: org.id,

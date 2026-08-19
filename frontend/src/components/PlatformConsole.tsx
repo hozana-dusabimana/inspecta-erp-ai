@@ -24,14 +24,15 @@ interface Props {
 // ─────────────────────────────── Types ───────────────────────────────
 
 type OrgStatus = 'ACTIVE' | 'SUSPENDED';
-type PlanTier = 'TRIAL' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
+type PlanTier = 'TRIAL' | 'STARTER' | 'PROFESSIONAL' | 'BUSINESS' | 'ENTERPRISE';
 
-const PLAN_TIERS: PlanTier[] = ['TRIAL', 'STARTER', 'PROFESSIONAL', 'ENTERPRISE'];
+const PLAN_TIERS: PlanTier[] = ['TRIAL', 'STARTER', 'PROFESSIONAL', 'BUSINESS', 'ENTERPRISE'];
 
 const PLAN_TONE: Record<PlanTier, string> = {
   TRIAL: 'bg-brand-surface text-brand-on-surface-variant',
   STARTER: 'bg-sky-100 text-sky-700',
   PROFESSIONAL: 'bg-violet-100 text-violet-700',
+  BUSINESS: 'bg-amber-100 text-amber-700',
   ENTERPRISE: 'bg-brand-primary/10 text-brand-primary',
 };
 
@@ -1729,6 +1730,261 @@ function ReviewModal({ request, approve, onClose, onDone }: {
   );
 }
 
+// ───────────────────────── AI Copilot credits ─────────────────────────
+
+interface CreditRequest {
+  id: string;
+  credits: number;
+  amount: string;
+  currency: string;
+  payerName: string;
+  payerPhone: string;
+  reference: string;
+  paidAt: string | null;
+  note: string | null;
+  status: RequestStatus;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  createdAt: string;
+  organization: { id: string; name: string; slug: string; aiCreditBalance: number; aiSpendLimitCredits: number };
+  paymentAccount: { id: string; label: string; accountNumber: string } | null;
+}
+
+function AiCreditsTab() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<RequestStatus | ''>('PENDING');
+  const [page, setPage] = useState(1);
+  const [reviewing, setReviewing] = useState<{ req: CreditRequest; approve: boolean } | null>(null);
+  const pageSize = 25;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-ai-credits', status, page],
+    queryFn: () => api.get<CreditRequest[]>(`/platform/ai-credit-requests?page=${page}&pageSize=${pageSize}&status=${status}`),
+    refetchInterval: 60_000,
+  });
+  const rows = data?.data ?? [];
+  const total = data?.meta?.total ?? 0;
+  const pending = (data?.meta as { pending?: number } | undefined)?.pending ?? 0;
+
+  return (
+    <div>
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 mb-5">
+        <Kpi label="Awaiting Approval" value={pending} tone={pending > 0 ? 'warning' : undefined} hint="top-ups waiting on you" />
+        <Kpi label="Shown" value={total} hint="matching this filter" />
+        <Kpi label="Credits Pending" value={rows.filter((r) => r.status === 'PENDING').reduce((s, r) => s + r.credits, 0).toLocaleString()} />
+        <Kpi label="Approved (page)" value={rows.filter((r) => r.status === 'APPROVED').length} />
+      </div>
+
+      <GrantCreditsForm onDone={() => qc.invalidateQueries({ queryKey: ['platform-companies'] })} />
+
+      <div className="flex flex-wrap items-center gap-2 mb-4 mt-5">
+        {(['PENDING', 'APPROVED', 'REJECTED', ''] as const).map((s) => (
+          <button
+            key={s || 'all'}
+            onClick={() => { setStatus(s); setPage(1); }}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              status === s ? 'bg-brand-primary text-white' : 'bg-brand-surface-container text-brand-on-surface-variant hover:text-brand-primary'
+            }`}
+          >
+            {s || 'All'}
+          </button>
+        ))}
+      </div>
+
+      <div className={`${cardCls} overflow-x-auto`}>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+              <th className="px-4 py-3 font-bold">Company</th>
+              <th className="px-4 py-3 font-bold text-right">Credits</th>
+              <th className="px-4 py-3 font-bold text-right">Amount</th>
+              <th className="px-4 py-3 font-bold">Payer</th>
+              <th className="px-4 py-3 font-bold">Reference</th>
+              <th className="px-4 py-3 font-bold">Status</th>
+              <th className="px-4 py-3 font-bold text-right">Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-on-surface-variant">Loading requests…</td></tr>}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-brand-outline-variant/10 last:border-0 hover:bg-brand-surface/40">
+                <td className="px-4 py-3">
+                  <p className="font-bold text-brand-primary">{r.organization.name}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant">balance {r.organization.aiCreditBalance.toLocaleString()} · limit {r.organization.aiSpendLimitCredits.toLocaleString()}</p>
+                </td>
+                <td className="px-4 py-3 text-right font-mono font-bold">{r.credits.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right font-mono">{money(r.amount, r.currency)}</td>
+                <td className="px-4 py-3">
+                  <p className="text-brand-on-surface">{r.payerName}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant font-mono">{r.payerPhone}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="font-mono text-[11px] text-brand-primary font-bold">{r.reference}</p>
+                  <p className="text-[10px] text-brand-on-surface-variant">{r.paymentAccount?.label ?? '—'} · {fmtDate(r.paidAt)}</p>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${REQ_TONE[r.status]}`}>{r.status}</span>
+                  {r.reviewNote && <p className="text-[10px] text-brand-on-surface-variant mt-1 max-w-[12rem]">{r.reviewNote}</p>}
+                </td>
+                <td className="px-4 py-3">
+                  {r.status === 'PENDING' ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <button title="Approve & grant" onClick={() => setReviewing({ req: r, approve: true })} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-emerald-600">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button title="Reject" onClick={() => setReviewing({ req: r, approve: false })} className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-status-critical">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-right text-[10px] text-brand-on-surface-variant">{fmtDate(r.reviewedAt)}</p>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!isLoading && rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-brand-on-surface-variant">No AI credit requests here.</td></tr>
+            )}
+          </tbody>
+        </table>
+        <Pager page={page} pageSize={pageSize} total={total} onPage={setPage} />
+      </div>
+
+      {reviewing && (
+        <CreditReviewModal
+          request={reviewing.req}
+          approve={reviewing.approve}
+          onClose={() => setReviewing(null)}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ['platform-ai-credits'] });
+            qc.invalidateQueries({ queryKey: ['platform-companies'] });
+            setReviewing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreditReviewModal({ request, approve, onClose, onDone }: {
+  request: CreditRequest; approve: boolean; onClose: () => void; onDone: () => void;
+}) {
+  const [note, setNote] = useState('');
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/platform/ai-credit-requests/${request.id}/${approve ? 'approve' : 'reject'}`, { note }),
+    onSuccess: onDone,
+  });
+  const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Could not complete the review' : null;
+
+  return (
+    <Modal title={`${approve ? 'Approve' : 'Reject'} credit top-up — ${request.organization.name}`} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} className="space-y-3">
+        <div className={`${cardCls} p-3 space-y-1 text-[11px]`}>
+          {([
+            ['Credits', request.credits.toLocaleString()],
+            ['Amount', money(request.amount, request.currency)],
+            ['Payer', `${request.payerName} · ${request.payerPhone}`],
+            ['Reference', request.reference],
+            ['Paid to', request.paymentAccount ? `${request.paymentAccount.label} (${request.paymentAccount.accountNumber})` : '—'],
+            ['Declared paid', fmtDate(request.paidAt)],
+          ] as const).map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-4">
+              <span className="text-brand-on-surface-variant">{k}</span>
+              <span className="font-semibold text-brand-primary text-right">{v}</span>
+            </div>
+          ))}
+          {request.note && <p className="pt-2 text-brand-on-surface-variant italic">“{request.note}”</p>}
+        </div>
+
+        <div className={`flex gap-2 p-3 rounded-lg ${approve ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+          <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${approve ? 'text-emerald-600' : 'text-red-600'}`} />
+          <p className={`text-[11px] leading-relaxed ${approve ? 'text-emerald-800' : 'text-red-700'}`}>
+            {approve
+              ? <>Confirm the transfer actually arrived before approving. This adds {request.credits.toLocaleString()} credits to {request.organization.name}'s balance immediately.</>
+              : <>The company will be told the payment could not be verified, and their balance is unchanged.</>}
+          </p>
+        </div>
+
+        <div>
+          <label className={labelCls}>{approve ? 'NOTE (OPTIONAL)' : 'REASON (SENT TO THE COMPANY)'}</label>
+          <textarea
+            className={`${inputCls} h-20 py-2 resize-none`}
+            required={!approve}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={approve ? 'e.g. Confirmed on MoMo statement' : 'e.g. No transfer found with this reference'}
+          />
+        </div>
+
+        {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
+        <button
+          type="submit"
+          disabled={mutation.isPending}
+          className={`w-full h-11 text-white font-bold text-xs rounded-lg transition-all disabled:opacity-60 ${approve ? 'bg-emerald-600 hover:opacity-90' : 'bg-brand-status-critical hover:opacity-90'}`}
+        >
+          {mutation.isPending ? 'Working…' : approve ? 'Approve & Grant' : 'Reject Request'}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
+/** Goodwill/correction grants — bypasses the request flow entirely. */
+function GrantCreditsForm({ onDone }: { onDone: () => void }) {
+  const [search, setSearch] = useState('');
+  const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [done, setDone] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ['platform-companies-search', search],
+    queryFn: () => api.get<{ id: string; name: string }[]>(`/platform/companies?search=${encodeURIComponent(search)}&pageSize=6`),
+    enabled: search.trim().length > 1 && !picked,
+  });
+  const results = data?.data ?? [];
+
+  const grant = useMutation({
+    mutationFn: () => api.post(`/platform/companies/${picked!.id}/ai-credits/grant`, { amount: Number(amount), reason }),
+    onSuccess: () => { setPicked(null); setSearch(''); setAmount(''); setReason(''); setDone(true); setTimeout(() => setDone(false), 2500); onDone(); },
+  });
+  const err = grant.error instanceof ApiError ? grant.error.message : grant.isError ? 'Could not grant credits' : null;
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); grant.mutate(); }} className={`${cardCls} p-4`}>
+      <h4 className="font-display text-xs font-extrabold text-brand-primary mb-1">Goodwill / correction grant</h4>
+      <p className="text-[10px] text-brand-on-surface-variant mb-3">Adds (or claws back, with a negative amount) credits directly — bypasses the request flow.</p>
+      <div className="grid sm:grid-cols-4 gap-2 items-start">
+        <div className="relative sm:col-span-2">
+          <input
+            className={inputCls}
+            placeholder="Search company…"
+            value={picked ? picked.name : search}
+            onChange={(e) => { setPicked(null); setSearch(e.target.value); }}
+          />
+          {!picked && results.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-brand-surface-container-lowest border border-brand-outline-variant/20 rounded-lg shadow-lg overflow-hidden">
+              {results.map((c) => (
+                <button type="button" key={c.id} onClick={() => { setPicked(c); setSearch(''); }}
+                  className="block w-full text-left px-3 py-2 text-xs hover:bg-brand-surface">
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <input type="number" required className={inputCls} placeholder="Amount (± credits)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <input className={inputCls} required placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+      </div>
+      {err && <p className="text-red-600 text-[11px] font-semibold mt-2">{err}</p>}
+      <div className="flex items-center gap-3 mt-3">
+        <button type="submit" disabled={!picked || grant.isPending} className={btnCls}>{grant.isPending ? 'Granting…' : 'Grant'}</button>
+        {done && <span className="text-emerald-600 text-[11px] font-bold flex items-center gap-1"><Check className="w-4 h-4" /> Done</span>}
+      </div>
+    </form>
+  );
+}
+
 // ───────────────────── Pricing & payment accounts ─────────────────────
 
 interface PriceRow {
@@ -1738,6 +1994,7 @@ interface PriceRow {
   currency: string;
   description: string | null;
   isPublic: boolean;
+  aiCreditsIncluded: number;
 }
 
 function PricingCard() {
@@ -1756,6 +2013,7 @@ function PricingCard() {
         currency: r.currency || 'RWF',
         description: r.description || null,
         isPublic: r.isPublic,
+        aiCreditsIncluded: Number(r.aiCreditsIncluded) || 0,
       })),
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['platform-pricing'] }); setSaved(true); setTimeout(() => setSaved(false), 2500); },
@@ -1782,6 +2040,7 @@ function PricingCard() {
               <th className="py-2 font-bold">Plan</th>
               <th className="py-2 font-bold">Monthly</th>
               <th className="py-2 font-bold">Annual</th>
+              <th className="py-2 font-bold">AI credits/mo</th>
               <th className="py-2 font-bold text-center">Sell</th>
             </tr>
           </thead>
@@ -1798,6 +2057,10 @@ function PricingCard() {
                 <td className="py-2 pr-2">
                   <input type="number" min={0} className={`${controlCls} w-32`} value={r.annualPrice}
                     onChange={(e) => set(r.plan, { annualPrice: e.target.value })} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input type="number" min={0} className={`${controlCls} w-28`} value={r.aiCreditsIncluded}
+                    onChange={(e) => set(r.plan, { aiCreditsIncluded: Number(e.target.value) || 0 })} />
                 </td>
                 <td className="py-2 text-center">
                   <input type="checkbox" className="w-4 h-4 accent-brand-secondary-container" checked={r.isPublic}
@@ -2143,7 +2406,7 @@ function AnnouncementCard() {
 
 export type PlatformTab =
   | 'overview' | 'companies' | 'users' | 'projects'
-  | 'watchlist' | 'finance' | 'adoption' | 'subscriptions' | 'audit' | 'settings';
+  | 'watchlist' | 'finance' | 'adoption' | 'subscriptions' | 'ai-credits' | 'audit' | 'settings';
 
 const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: string }> = {
   overview: {
@@ -2186,6 +2449,11 @@ const PAGE_META: Record<PlatformTab, { view: AppView; title: string; subtitle: s
     title: 'Subscriptions',
     subtitle: 'Payments companies have declared. Approving one activates their plan.',
   },
+  'ai-credits': {
+    view: AppView.PLATFORM_AI_CREDITS,
+    title: 'AI Credits',
+    subtitle: 'AI Copilot credit top-ups companies have declared, plus goodwill grants.',
+  },
   audit: {
     view: AppView.PLATFORM_AUDIT,
     title: 'Audit Trail',
@@ -2224,6 +2492,7 @@ export default function PlatformConsole({ tab, onNavigate, onLogout }: Props & {
           {tab === 'finance' && <FinanceTab />}
           {tab === 'adoption' && <AdoptionTab />}
           {tab === 'subscriptions' && <SubscriptionsTab />}
+          {tab === 'ai-credits' && <AiCreditsTab />}
           {tab === 'audit' && <AuditTab />}
           {tab === 'settings' && <SettingsTab />}
         </>

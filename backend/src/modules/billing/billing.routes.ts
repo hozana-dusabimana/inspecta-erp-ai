@@ -8,6 +8,7 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { usageFor, PLAN_DEFAULTS, PLAN_LABELS } from '../platform/plans';
 import { billingStateFor, planPrices, priceFor } from './billing.service';
+import { getCreditStatus, setSpendLimit } from './aiCredits.service';
 import { notifyPlatformAdmins } from '../notifications/notify';
 
 /**
@@ -44,7 +45,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
-    const [state, usage, prices, accounts, requests, org] = await Promise.all([
+    const [state, usage, prices, accounts, requests, org, aiCredits] = await Promise.all([
       billingStateFor(orgId),
       usageFor(orgId),
       planPrices(),
@@ -60,6 +61,7 @@ router.get(
         select: requestSelect,
       }),
       prisma.organization.findUnique({ where: { id: orgId }, select: { name: true, currency: true } }),
+      getCreditStatus(orgId),
     ]);
     if (!state || !org) throw NotFound('Organization not found');
 
@@ -67,6 +69,7 @@ router.get(
       company: org.name,
       state,
       usage,
+      aiCredits,
       // Only sellable plans, with the limits each one grants so the choice is informed.
       plans: prices
         .filter((p) => p.isPublic)
@@ -78,6 +81,7 @@ router.get(
           currency: p.currency,
           description: p.description,
           limits: PLAN_DEFAULTS[p.plan],
+          aiCreditsIncluded: p.aiCreditsIncluded,
           current: p.plan === state.plan,
         })),
       paymentAccounts: accounts,
@@ -209,6 +213,138 @@ router.delete(
     await auditFromRequest(req, 'DELETE', 'subscription-request', existing.id, {
       oldValues: { reference: existing.reference, plan: existing.plan },
     });
+    return ok(res, { id: existing.id, withdrawn: true });
+  }),
+);
+
+// ─────────────────────── AI Copilot credits ───────────────────────
+
+// GET /api/billing/ai-credits — balance, monthly allowance, and spend limit.
+router.get('/ai-credits', asyncHandler(async (req, res) => ok(res, await getCreditStatus(req.user!.orgId))));
+
+const spendLimitSchema = z.object({ limit: z.number().int().min(0).max(1_000_000) });
+
+// PUT /api/billing/ai-credits/spend-limit — the ceiling a company admin sets
+// on how many credits can be requested in a single top-up. Nothing purchases
+// itself; this only bounds what an admin is allowed to ask for.
+router.put(
+  '/ai-credits/spend-limit',
+  requirePermission('user:write'),
+  asyncHandler(async (req, res) => {
+    const { limit } = spendLimitSchema.parse(req.body);
+    await setSpendLimit(req.user!.orgId, limit);
+    await auditFromRequest(req, 'UPDATE', 'ai-credit-spend-limit', req.user!.orgId, { newValues: { limit } });
+    return ok(res, await getCreditStatus(req.user!.orgId));
+  }),
+);
+
+const creditRequestSelect = {
+  id: true,
+  credits: true,
+  amount: true,
+  currency: true,
+  payerName: true,
+  payerPhone: true,
+  reference: true,
+  paidAt: true,
+  note: true,
+  status: true,
+  reviewedAt: true,
+  reviewNote: true,
+  createdAt: true,
+  paymentAccount: { select: { id: true, label: true, accountNumber: true } },
+} as const;
+
+const creditRequestSchema = z.object({
+  credits: z.number().int().min(1),
+  paymentAccountId: z.string().trim().optional(),
+  payerName: z.string().trim().min(2),
+  payerPhone: z.string().trim().min(6),
+  reference: z.string().trim().min(3),
+  paidAt: z.string().datetime().optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+// POST /api/billing/ai-credits/requests — "I have paid for a credit top-up."
+// Priced at the Starter plan's per-credit rate (the smallest, so nobody pays
+// more per credit by picking a cheaper tier's top-up).
+router.post(
+  '/ai-credits/requests',
+  requirePermission('user:write'),
+  asyncHandler(async (req, res) => {
+    const body = creditRequestSchema.parse(req.body);
+    const orgId = req.user!.orgId;
+
+    const [open, limit, prices] = await Promise.all([
+      prisma.aiCreditPurchaseRequest.findFirst({ where: { organizationId: orgId, status: 'PENDING' }, select: { id: true } }),
+      prisma.organization.findUnique({ where: { id: orgId }, select: { aiSpendLimitCredits: true } }),
+      planPrices(),
+    ]);
+    if (open) throw Conflict('You already have a credit top-up awaiting approval. Please wait for it to be reviewed.');
+    if (body.credits > (limit?.aiSpendLimitCredits ?? 0)) {
+      throw BadRequest(`This request exceeds your spending limit of ${limit?.aiSpendLimitCredits ?? 0} credits. Raise the limit in Billing first.`);
+    }
+
+    const starter = prices.find((p) => p.plan === 'STARTER');
+    const perCredit = starter && starter.aiCreditsIncluded > 0 ? Number(starter.monthlyPrice) / starter.aiCreditsIncluded : 0;
+    const amount = Math.round(perCredit * body.credits);
+
+    if (body.paymentAccountId) {
+      const account = await prisma.paymentAccount.findFirst({ where: { id: body.paymentAccountId, isActive: true }, select: { id: true } });
+      if (!account) throw BadRequest('Unknown payment account');
+    }
+
+    const created = await prisma.aiCreditPurchaseRequest.create({
+      data: {
+        organizationId: orgId,
+        requestedById: req.user!.id,
+        credits: body.credits,
+        amount,
+        currency: starter?.currency ?? 'RWF',
+        paymentAccountId: body.paymentAccountId ?? null,
+        payerName: body.payerName,
+        payerPhone: body.payerPhone,
+        reference: body.reference,
+        paidAt: body.paidAt ? new Date(body.paidAt) : new Date(),
+        note: body.note ?? null,
+      },
+      select: creditRequestSelect,
+    });
+
+    await auditFromRequest(req, 'CREATE', 'ai-credit-request', created.id, { newValues: { credits: body.credits, amount, reference: body.reference } });
+
+    const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+    await notifyPlatformAdmins({
+      type: 'APPROVAL',
+      severity: 'MEDIUM',
+      title: 'AI credit top-up awaiting approval',
+      message: `${org?.name ?? 'A company'} requested ${body.credits} AI credits (${created.amount} ${created.currency}) — reference ${body.reference}.`,
+      link: '/platform/ai-credits',
+    });
+
+    return ok(res, created, 201);
+  }),
+);
+
+// GET /api/billing/ai-credits/requests — the company's own top-up history.
+router.get(
+  '/ai-credits/requests',
+  asyncHandler(async (req, res) =>
+    ok(res, await prisma.aiCreditPurchaseRequest.findMany({ where: { organizationId: req.user!.orgId }, orderBy: { createdAt: 'desc' }, select: creditRequestSelect })),
+  ),
+);
+
+// DELETE /api/billing/ai-credits/requests/:id — withdraw a claim submitted by mistake.
+router.delete(
+  '/ai-credits/requests/:id',
+  requirePermission('user:write'),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.aiCreditPurchaseRequest.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
+    if (!existing) throw NotFound('Credit request not found');
+    if (existing.status !== 'PENDING') throw BadRequest('Only a pending request can be withdrawn');
+
+    await prisma.aiCreditPurchaseRequest.delete({ where: { id: existing.id } });
+    await auditFromRequest(req, 'DELETE', 'ai-credit-request', existing.id, { oldValues: { reference: existing.reference, credits: existing.credits } });
     return ok(res, { id: existing.id, withdrawn: true });
   }),
 );

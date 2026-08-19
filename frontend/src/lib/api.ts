@@ -154,7 +154,12 @@ export const api = {
   async stream(path: string, body: unknown, onEvent: (evt: any) => void): Promise<void> {
     const headers = authHeaders({ 'Content-Type': 'application/json' });
     const res = await fetch(`${API_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!res.ok || !res.body) throw new ApiError(res.status, `Stream failed (${res.status})`);
+    if (!res.ok || !res.body) {
+      // A pre-flight failure (e.g. out of AI credits) is sent as normal JSON,
+      // not SSE, since it happens before the stream headers are written.
+      const json = (await res.json().catch(() => ({}))) as ApiEnvelope<unknown>;
+      throw new ApiError(res.status, json.error || `Stream failed (${res.status})`, json.details);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';

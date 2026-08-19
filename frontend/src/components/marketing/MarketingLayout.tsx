@@ -48,6 +48,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <Link to="/inspecta-erp" className="hover:text-[#FC6061] transition-colors">Inspecta ERP</Link>
+          <Link to="/pricing" className="hover:text-[#FC6061] transition-colors">Pricing</Link>
           <Link to="/team" className="hover:text-[#FC6061] transition-colors">Team</Link>
           <Link to="/contact" className="hover:text-[#FC6061] transition-colors">Contact</Link>
         </div>
@@ -63,7 +64,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       {/* Mobile menu */}
       {mobile && (
         <div className="md:hidden border-b border-[var(--mk-border)] bg-[var(--mk-surface)] px-5 py-3 space-y-1 text-sm font-semibold">
-          {[['/', 'Home'], ['/about', 'About'], ...serviceLinks, ['/inspecta-erp', 'Inspecta ERP'], ['/team', 'Team'], ['/contact', 'Contact'], ['/login', 'Client Login']].map(([to, label]) => (
+          {[['/', 'Home'], ['/about', 'About'], ...serviceLinks, ['/inspecta-erp', 'Inspecta ERP'], ['/pricing', 'Pricing'], ['/team', 'Team'], ['/contact', 'Contact'], ['/login', 'Client Login']].map(([to, label]) => (
             <Link key={to} to={to} onClick={() => setMobile(false)} className="block py-2 hover:text-[#FC6061]">{label}</Link>
           ))}
         </div>
@@ -84,6 +85,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               <li><Link to="/" className="hover:text-[#FC6061]">Home</Link></li>
               <li><Link to="/about" className="hover:text-[#FC6061]">About Us</Link></li>
               <li><Link to="/inspecta-erp" className="hover:text-[#FC6061]">Inspecta ERP</Link></li>
+              <li><Link to="/pricing" className="hover:text-[#FC6061]">Pricing</Link></li>
               <li><Link to="/team" className="hover:text-[#FC6061]">Our Team</Link></li>
               <li><Link to="/contact" className="hover:text-[#FC6061]">Contact</Link></li>
             </ul>

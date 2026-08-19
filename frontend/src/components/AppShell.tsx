@@ -75,6 +75,13 @@ function PlatformSidebar({ active, onSelect }: { active?: AppView; onSelect: (v:
   });
   const pending = (data?.meta as { pending?: number } | undefined)?.pending ?? 0;
 
+  const { data: creditData } = useQuery({
+    queryKey: ['platform-pending-ai-credits'],
+    queryFn: () => api.get<unknown[]>('/platform/ai-credit-requests?status=PENDING&pageSize=1'),
+    refetchInterval: 60_000,
+  });
+  const pendingCredits = (creditData?.meta as { pending?: number } | undefined)?.pending ?? 0;
+
   return (
     <nav className="px-3 space-y-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
       <p className="px-4 pb-2 text-[9px] font-bold uppercase tracking-widest text-brand-on-primary-container/50">
@@ -85,7 +92,11 @@ function PlatformSidebar({ active, onSelect }: { active?: AppView; onSelect: (v:
           key={item.id}
           item={item}
           active={item.view === active}
-          badge={item.view === AppView.PLATFORM_SUBSCRIPTIONS ? pending : undefined}
+          badge={
+            item.view === AppView.PLATFORM_SUBSCRIPTIONS ? pending
+              : item.view === AppView.PLATFORM_AI_CREDITS ? pendingCredits
+              : undefined
+          }
           onSelect={onSelect}
         />
       ))}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  CreditCard, Smartphone, Landmark, Check, Clock, X, AlertTriangle, Copy, Send,
+  CreditCard, Smartphone, Landmark, Check, Clock, X, AlertTriangle, Copy, Send, Sparkles,
 } from 'lucide-react';
 import { AppView } from '../types';
 import { api, ApiError } from '../lib/api';
@@ -56,14 +56,39 @@ interface PaymentRequest {
   paymentAccount: { id: string; label: string; accountNumber: string } | null;
 }
 
+interface AiCreditStatus {
+  plan: string;
+  balance: number;
+  monthlyAllowance: number;
+  periodStart: string;
+  nextTopUpAt: string;
+  spendLimit: number;
+}
+
 interface BillingPayload {
   company: string;
   state: BillingState;
   usage: { plan: string; users: { used: number; limit: number | null }; projects: { used: number; limit: number | null } };
-  plans: PlanOption[];
+  plans: (PlanOption & { aiCreditsIncluded: number })[];
   paymentAccounts: PaymentAccount[];
   requests: PaymentRequest[];
   pendingRequest: PaymentRequest | null;
+  aiCredits: AiCreditStatus;
+}
+
+interface CreditRequest {
+  id: string;
+  credits: number;
+  amount: string;
+  currency: string;
+  payerName: string;
+  payerPhone: string;
+  reference: string;
+  note: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewNote: string | null;
+  createdAt: string;
+  paymentAccount: { id: string; label: string; accountNumber: string } | null;
 }
 
 const cardCls = 'bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm';
@@ -116,6 +141,162 @@ function CopyField({ value }: { value: string }) {
 
 function quota(used: number, limit: number | null) {
   return `${used} / ${limit ?? '∞'}`;
+}
+
+/** AI Copilot credit balance, spend-limit control, and top-up requests. */
+function AiCreditsCard({ b, canPay, paymentAccounts }: { b: BillingPayload; canPay: boolean; paymentAccounts: PaymentAccount[] }) {
+  const qc = useQueryClient();
+  const { aiCredits } = b;
+  const [limitInput, setLimitInput] = useState(String(aiCredits.spendLimit));
+  const [creditsForm, setCreditsForm] = useState({ credits: '', paymentAccountId: '', payerName: '', payerPhone: '', reference: '', note: '' });
+  const [showTopUp, setShowTopUp] = useState(false);
+
+  const { data: reqData } = useQuery({
+    queryKey: ['ai-credit-requests'],
+    queryFn: () => api.get<CreditRequest[]>('/billing/ai-credits/requests'),
+  });
+  const requests = reqData?.data ?? [];
+  const pending = requests.find((r) => r.status === 'PENDING') ?? null;
+
+  const saveLimit = useMutation({
+    mutationFn: () => api.put('/billing/ai-credits/spend-limit', { limit: Number(limitInput) || 0 }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing'] }),
+  });
+
+  const submit = useMutation({
+    mutationFn: () => api.post('/billing/ai-credits/requests', { ...creditsForm, credits: Number(creditsForm.credits) || 0 }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ai-credit-requests'] });
+      qc.invalidateQueries({ queryKey: ['billing'] });
+      setCreditsForm({ credits: '', paymentAccountId: '', payerName: '', payerPhone: '', reference: '', note: '' });
+      setShowTopUp(false);
+    },
+  });
+  const withdraw = useMutation({
+    mutationFn: (id: string) => api.del(`/billing/ai-credits/requests/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-credit-requests'] }),
+  });
+  const submitErr = submit.error instanceof ApiError ? submit.error.message : submit.isError ? 'Could not submit your request' : null;
+
+  const pct = aiCredits.monthlyAllowance > 0 ? Math.min(100, Math.round((aiCredits.balance / aiCredits.monthlyAllowance) * 100)) : 0;
+
+  return (
+    <div className={`${cardCls} p-5 mb-6`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-brand-secondary-container" />
+          <h3 className="font-display text-lg font-extrabold text-brand-primary">AI Copilot credits</h3>
+        </div>
+        <span className="font-mono text-sm font-extrabold text-brand-primary">{aiCredits.balance.toLocaleString()} left</span>
+      </div>
+
+      <div className="w-full h-2 rounded-full bg-brand-surface-container overflow-hidden mb-2">
+        <div className="h-full bg-brand-secondary-container transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-[11px] text-brand-on-surface-variant mb-4">
+        {aiCredits.monthlyAllowance.toLocaleString()} credits/month on your plan · balance carries over ·
+        next top-up {fmtDate(aiCredits.nextTopUpAt)}
+      </p>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="p-3 rounded-lg border border-brand-outline-variant/30 bg-brand-surface/40">
+          <label className={labelCls}>SPENDING LIMIT (MAX CREDITS PER TOP-UP REQUEST)</label>
+          <p className="text-[10px] text-brand-on-surface-variant mb-2">Nothing purchases itself — this only bounds what an admin may request. Raise it before requesting a bigger top-up.</p>
+          {canPay ? (
+            <div className="flex items-center gap-2">
+              <input type="number" min={0} className={`${inputCls} w-28`} value={limitInput} onChange={(e) => setLimitInput(e.target.value)} />
+              <button onClick={() => saveLimit.mutate()} disabled={saveLimit.isPending} className="text-xs font-bold text-brand-primary hover:text-brand-secondary-container disabled:opacity-50">
+                {saveLimit.isPending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          ) : (
+            <p className="font-mono text-sm font-extrabold text-brand-primary">{aiCredits.spendLimit.toLocaleString()}</p>
+          )}
+        </div>
+
+        <div className="p-3 rounded-lg border border-brand-outline-variant/30 bg-brand-surface/40">
+          <label className={labelCls}>NEED MORE CREDITS?</label>
+          {pending ? (
+            <div className="flex items-center gap-2 mt-1">
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-xs font-bold text-amber-700">{pending.credits.toLocaleString()} credits awaiting approval</span>
+              {canPay && (
+                <button onClick={() => withdraw.mutate(pending.id)} className="text-[10px] font-bold text-brand-on-surface-variant hover:text-brand-status-critical ml-auto">Withdraw</button>
+              )}
+            </div>
+          ) : canPay ? (
+            <button onClick={() => setShowTopUp((v) => !v)} className={`mt-1 text-xs font-bold ${btnCls} px-3 py-1.5`}>
+              {showTopUp ? 'Cancel' : 'Request a top-up'}
+            </button>
+          ) : (
+            <p className="text-[11px] text-brand-on-surface-variant mt-1">Ask an administrator to request more credits.</p>
+          )}
+        </div>
+      </div>
+
+      {canPay && showTopUp && !pending && (
+        <form onSubmit={(e) => { e.preventDefault(); submit.mutate(); }} className="mt-4 p-4 rounded-lg border border-brand-outline-variant/30 space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>CREDITS TO PURCHASE (max {aiCredits.spendLimit.toLocaleString()})</label>
+              <input type="number" min={1} max={aiCredits.spendLimit} required className={inputCls} value={creditsForm.credits}
+                onChange={(e) => setCreditsForm({ ...creditsForm, credits: e.target.value })} />
+            </div>
+            <div>
+              <label className={labelCls}>PAID TO</label>
+              <select className={inputCls} value={creditsForm.paymentAccountId} onChange={(e) => setCreditsForm({ ...creditsForm, paymentAccountId: e.target.value })}>
+                <option value="">Select the account you paid</option>
+                {paymentAccounts.map((a) => <option key={a.id} value={a.id}>{a.label} — {a.accountNumber}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>PAYER NAME</label>
+              <input className={inputCls} required value={creditsForm.payerName} onChange={(e) => setCreditsForm({ ...creditsForm, payerName: e.target.value })} />
+            </div>
+            <div>
+              <label className={labelCls}>PAYER PHONE</label>
+              <input className={inputCls} required value={creditsForm.payerPhone} onChange={(e) => setCreditsForm({ ...creditsForm, payerPhone: e.target.value })} placeholder="+250…" />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>TRANSACTION REFERENCE</label>
+            <input className={inputCls} required value={creditsForm.reference} onChange={(e) => setCreditsForm({ ...creditsForm, reference: e.target.value })} placeholder="e.g. MoMo transaction ID" />
+          </div>
+          {submitErr && <p className="text-red-600 text-[11px] font-semibold">{submitErr}</p>}
+          <button type="submit" disabled={submit.isPending} className={`w-full h-10 flex items-center justify-center gap-2 ${btnCls}`}>
+            <Send className="w-4 h-4" /> {submit.isPending ? 'Submitting…' : 'Submit for approval'}
+          </button>
+        </form>
+      )}
+
+      {requests.length > 0 && (
+        <div className="mt-5 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-brand-on-surface-variant border-b border-brand-outline-variant/20">
+                <th className="py-2 font-bold">Requested</th>
+                <th className="py-2 font-bold text-right">Credits</th>
+                <th className="py-2 font-bold text-right">Amount</th>
+                <th className="py-2 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((r) => (
+                <tr key={r.id} className="border-b border-brand-outline-variant/10 last:border-0">
+                  <td className="py-2 text-brand-on-surface-variant">{fmtDate(r.createdAt)}</td>
+                  <td className="py-2 text-right font-mono">{r.credits.toLocaleString()}</td>
+                  <td className="py-2 text-right font-mono">{money(r.amount, r.currency)}</td>
+                  <td className="py-2"><span className={`px-2 py-1 rounded-full text-[10px] font-bold ${REQUEST_TONE[r.status]}`}>{r.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BillingPage({ onNavigate, onLogout }: Props) {
@@ -241,6 +422,8 @@ export default function BillingPage({ onNavigate, onLogout }: Props) {
         </div>
       </div>
 
+      <AiCreditsCard b={b} canPay={canPay} paymentAccounts={b.paymentAccounts} />
+
       {/* ── Plans ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h3 className="font-display text-sm font-extrabold text-brand-primary">Choose a plan</h3>
@@ -286,6 +469,7 @@ export default function BillingPage({ onNavigate, onLogout }: Props) {
                 <ul className="text-[11px] text-brand-on-surface-variant space-y-1 mb-4">
                   <li className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-600" /> {p.limits.maxUsers ?? 'Unlimited'} users</li>
                   <li className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-600" /> {p.limits.maxProjects ?? 'Unlimited'} projects</li>
+                  <li className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-600" /> {p.aiCreditsIncluded?.toLocaleString() ?? 0} AI credits/month</li>
                   <li className="flex items-center gap-2"><Check className="w-3 h-3 text-emerald-600" /> All ERP modules</li>
                 </ul>
                 <button

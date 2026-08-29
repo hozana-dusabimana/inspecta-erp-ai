@@ -21,13 +21,13 @@ const money = (v: string | number, currency = 'RWF') =>
 // Shown while /api/public/pricing loads, and as a safe fallback if a tier is
 // hidden or the API is briefly unreachable — keeps the agreed numbers visible.
 const FALLBACK: PlanRow[] = [
-  { plan: 'STARTER', label: 'Starter', monthlyPrice: '150000', annualPrice: '1500000', currency: 'RWF', aiCreditsIncluded: 100,
+  { plan: 'STARTER', label: 'Starter', monthlyPrice: '350000', annualPrice: '3500000', currency: 'RWF', aiCreditsIncluded: 100,
     description: 'For a first project or two, getting off spreadsheets.', limits: { maxUsers: 5, maxProjects: 2 } },
-  { plan: 'PROFESSIONAL', label: 'Professional', monthlyPrice: '250000', annualPrice: '2500000', currency: 'RWF', aiCreditsIncluded: 500,
+  { plan: 'PROFESSIONAL', label: 'Professional', monthlyPrice: '550000', annualPrice: '5500000', currency: 'RWF', aiCreditsIncluded: 500,
     description: 'Full ERP, Executive Intelligence, and priority support for growing contractors.', limits: { maxUsers: 15, maxProjects: 5 } },
-  { plan: 'BUSINESS', label: 'Business', monthlyPrice: '500000', annualPrice: '5000000', currency: 'RWF', aiCreditsIncluded: 2000,
+  { plan: 'BUSINESS', label: 'Business', monthlyPrice: '1250000', annualPrice: '12500000', currency: 'RWF', aiCreditsIncluded: 2000,
     description: 'Advanced finance, procurement, inventory, and quality & safety for contractors running several sites at once.', limits: { maxUsers: 40, maxProjects: 15 } },
-  { plan: 'ENTERPRISE', label: 'Enterprise', monthlyPrice: '1000000', annualPrice: '10000000', currency: 'RWF', aiCreditsIncluded: 5000,
+  { plan: 'ENTERPRISE', label: 'Enterprise', monthlyPrice: '1750000', annualPrice: '17500000', currency: 'RWF', aiCreditsIncluded: 5000,
     description: 'Large or multi-company construction organizations — custom users, projects, integrations, and SLA.', limits: { maxUsers: null, maxProjects: null } },
 ];
 

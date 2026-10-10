@@ -33,6 +33,7 @@ import BillingPage from './components/BillingPage';
 import PlanningDashboards from './components/PlanningDashboards';
 import ExecutiveDashboard from './components/ExecutiveDashboard';
 import AppShell, { ShellChrome } from './components/AppShell';
+import FloatingCopilot from './components/FloatingCopilot';
 import BookDemoModal from './components/BookDemoModal';
 import { MODULES } from './modules';
 
@@ -131,6 +132,8 @@ export default function App() {
           Offline — showing cached data. Changes will need a connection to sync.
         </div>
       )}
+
+      <FloatingCopilot />
 
       <Routes>
         <Route path="/" element={<LandingRoute />} />

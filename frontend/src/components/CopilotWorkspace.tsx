@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { AppView, ChatMessage, CopilotField, CopilotPreview } from '../types';
 import { api } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { useChat } from '../lib/chat';
+import Markdown from './Markdown';
 
 interface GuidedResult {
   text?: string;
@@ -127,6 +130,9 @@ interface CopilotWorkspaceProps {
   onAddMessage: (msg: ChatMessage) => void;
   onSetHistory?: (msgs: ChatMessage[]) => void;
   pageContext?: string;
+  /** `panel` = compact floating window (no page chrome); default is the full page. */
+  variant?: 'page' | 'panel';
+  onClose?: () => void;
 }
 
 /** A file/voice clip queued on the composer, sent as base64 with the next message. */
@@ -144,9 +150,11 @@ function fileToBase64(file: Blob): Promise<string> {
   });
 }
 
-export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext }: CopilotWorkspaceProps) {
+export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext, variant = 'page', onClose }: CopilotWorkspaceProps) {
+  const panel = variant === 'panel';
   const [input, setInput] = useState('');
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const { conversationId, setConversationId } = useChat();
+  const routerNavigate = useNavigate();
   const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [streamingText, setStreamingText] = useState('');
@@ -219,6 +227,8 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
           });
           setStreamingText('');
           loadCredits();
+          // The agent opened a page for the user (open_page tool).
+          if (typeof evt.navigateTo === 'string' && evt.navigateTo.startsWith('/')) routerNavigate(evt.navigateTo);
         }
       });
     } catch (err) {
@@ -438,10 +448,11 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   };
 
   return (
-    <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden" id="copilot-workspace-root">
+    <div className={panel ? "bg-brand-surface text-brand-on-surface font-sans flex flex-col h-full overflow-hidden" : "min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden"} id={panel ? "copilot-panel-root" : "copilot-workspace-root"}>
       {/* Top Header */}
-      <header className="h-16 w-full bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 border-b border-brand-outline-variant/10 shadow-sm shrink-0">
+      <header className={`${panel ? 'h-12 px-3' : 'h-16 px-6'} w-full bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center border-b border-brand-outline-variant/10 shadow-sm shrink-0`}>
         <div className="flex items-center gap-3">
+          {!panel && (<>
           <button 
             id="btn-copilot-back"
             onClick={() => onNavigate(AppView.DASHBOARD)}
@@ -451,6 +462,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
           </button>
           
           <div className="h-6 w-[1px] bg-brand-outline-variant/30"></div>
+          </>)}
           
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-md">
@@ -495,6 +507,12 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               </div>
             )}
           </div>
+          {panel ? (
+            <>
+              <button onClick={() => onNavigate(AppView.COPILOT)} title="Open full page" aria-label="Open full page" className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary/5"><Globe className="w-4 h-4" /></button>
+              <button onClick={onClose} title="Close" aria-label="Close Copilot" className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary/5"><X className="w-4 h-4" /></button>
+            </>
+          ) : (
           <button
             onClick={() => onNavigate(AppView.DASHBOARD)}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-brand-primary font-bold text-xs hover:bg-brand-primary/5 transition-all"
@@ -502,12 +520,13 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
             <Layers className="w-4 h-4" />
             <span>ERP Console</span>
           </button>
+          )}
         </div>
       </header>
 
       {/* Messages Canvas Log Area */}
-      <main className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar space-y-6 bg-slate-50/50">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <main className={`flex-1 overflow-y-auto custom-scrollbar space-y-6 bg-slate-50/50 ${panel ? 'px-3 py-4' : 'px-6 py-6'}`}>
+        <div className={`mx-auto space-y-6 ${panel ? '' : 'max-w-2xl'}`}>
           {chatHistory.map((msg, idx) => { const isLast = idx === chatHistory.length - 1; return (
             <motion.div
               key={msg.id}
@@ -532,9 +551,11 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
                   <div className="ai-shimmer absolute inset-0 opacity-5 pointer-events-none rounded-2xl"></div>
                 )}
                 
-                <p className="font-sans text-xs leading-relaxed font-semibold whitespace-pre-wrap">
-                  {msg.text}
-                </p>
+                {msg.sender === 'assistant' ? (
+                  <Markdown>{msg.text}</Markdown>
+                ) : (
+                  <p className="font-sans text-xs leading-relaxed font-semibold whitespace-pre-wrap">{msg.text}</p>
+                )}
 
                 {/* Guided-create widgets (only interactive on the latest message). */}
                 {msg.field && isLast && <CreateFieldWidget field={msg.field} disabled={isLoading} onSubmit={submitField} />}
@@ -605,7 +626,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               </div>
               <div className="bg-brand-surface-container-lowest text-brand-on-surface rounded-2xl rounded-tl-none border border-brand-outline-variant/20 shadow-sm p-4 max-w-xl">
                 {streamingText ? (
-                  <p className="text-xs leading-relaxed whitespace-pre-wrap">{streamingText}<span className="inline-block w-1.5 h-3.5 bg-brand-primary/70 ml-0.5 align-middle animate-pulse" /></p>
+                  <div><Markdown>{streamingText}</Markdown><span className="inline-block w-1.5 h-3.5 bg-brand-primary/70 ml-0.5 align-middle animate-pulse" /></div>
                 ) : (
                   <div className="flex items-center gap-3">
                     <div className="flex gap-1">
@@ -649,17 +670,17 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       </main>
 
       {/* Floating Prompt Suggestion Chips & Bottom Chat Input */}
-      <footer className="bg-brand-surface-container-lowest border-t border-brand-outline-variant/10 p-4 shrink-0">
-        <div className="max-w-2xl mx-auto space-y-3">
+      <footer className={`bg-brand-surface-container-lowest border-t border-brand-outline-variant/10 shrink-0 ${panel ? 'p-2.5' : 'p-4'}`}>
+        <div className={`mx-auto space-y-3 ${panel ? '' : 'max-w-2xl'}`}>
           
           {/* Quick chip triggers */}
-          <div className="flex flex-wrap gap-2 justify-center">
+          <div className={panel ? "flex gap-2 overflow-x-auto pb-1 custom-scrollbar" : "flex flex-wrap gap-2 justify-center"}>
             {['Productivity', 'Cost & EVM', 'Forecast Profit', 'Schedule Delays', 'Inventory', 'Compliance Risks'].map((chip) => (
               <button 
                 key={chip}
                 id={`chip-${chip.toLowerCase().replace(' ', '-')}`}
                 onClick={() => handleSuggestionClick(chip)}
-                className="px-3 py-1.5 rounded-full border border-brand-primary/10 hover:border-brand-primary bg-brand-surface text-brand-primary text-[10px] font-bold tracking-tight transition-all cursor-pointer flex items-center gap-1 hover:bg-brand-primary/5 shadow-sm"
+                className="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full border border-brand-primary/10 hover:border-brand-primary bg-brand-surface text-brand-primary text-[10px] font-bold tracking-tight transition-all cursor-pointer flex items-center gap-1 hover:bg-brand-primary/5 shadow-sm"
               >
                 <Brain className="w-3 h-3 text-brand-secondary-container" />
                 <span>{chip}</span>

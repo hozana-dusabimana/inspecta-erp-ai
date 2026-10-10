@@ -151,6 +151,7 @@ CREATING RECORDS (when tools are available):
 
 FILES, IMAGES AND VOICE:
 - The user may attach documents (PDF/Word/Excel/PowerPoint/text) or images directly to their message — read them and answer from their content. Voice messages arrive already transcribed as text.
+- To take the user somewhere ("open inventory", "go to approvals"), call open_page — the app navigates for them. Then reply with ONE short sentence.
 - To read a file stored on a record (an attachment link such as https://res.cloudinary.com/...), call read_file with its url. Quote only what the file actually says.
 - If an attachment could not be read, say so plainly instead of guessing its content.`;
 
@@ -166,6 +167,8 @@ export interface CopilotAnswer {
   field?: FieldSpec;
   /** Ready-to-create preview (all fields supplied up front). */
   preview?: { entity: string; title: string; fields: Record<string, unknown> };
+  /** In-app path to open for the user (from the open_page tool). */
+  navigateTo?: string;
 }
 
 function extractConfidence(text: string): number {
@@ -298,7 +301,7 @@ export async function ask(
     try {
       const ctx = { conversationId: opts.conversationId, sameTurnPendingIds: new Set<string>() };
       const result = await runAgent(provider, messages, writeToolSpecs(), opts.actor, ctx);
-      if (result.text?.trim() || result.field || result.preview) {
+      if (result.text?.trim() || result.field || result.preview || result.navigateTo) {
         return {
           text: result.text || (result.field ? `Let's set up this ${result.field.entity}.` : ''),
           confidence: extractConfidence(result.text),
@@ -309,6 +312,7 @@ export async function ask(
           offline: false,
           field: result.field,
           preview: result.preview,
+          navigateTo: result.navigateTo,
         };
       }
     } catch (err) {

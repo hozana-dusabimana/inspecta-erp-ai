@@ -9,6 +9,9 @@ interface ChatState {
   setHistory: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   /** Label of the last non-Copilot page, so the Copilot knows the page context. */
   pageContext: string;
+  /** Server-side conversation shared by the Copilot page and the floating panel. */
+  conversationId: string | null;
+  setConversationId: (id: string | null) => void;
 }
 
 const ChatContext = createContext<ChatState | undefined>(undefined);
@@ -22,6 +25,7 @@ const GREETING: ChatMessage = {
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [chatHistory, setHistory] = useState<ChatMessage[]>([GREETING]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const location = useLocation();
   const lastView = useRef<string>('Dashboard');
 
@@ -36,7 +40,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const addMessage = (msg: ChatMessage) => setHistory((prev) => [...prev, msg]);
 
   return (
-    <ChatContext.Provider value={{ chatHistory, addMessage, setHistory, pageContext: lastView.current }}>
+    <ChatContext.Provider value={{ chatHistory, addMessage, setHistory, pageContext: lastView.current, conversationId, setConversationId }}>
       {children}
     </ChatContext.Provider>
   );

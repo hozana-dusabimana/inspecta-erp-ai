@@ -343,7 +343,30 @@ const DEFS: Record<string, WriteToolDef> = {
   },
 };
 
+/** In-app pages the Copilot can open on the user's behalf (mirrors frontend/src/lib/routes.ts). */
+export const NAV_PAGES: Record<string, string> = {
+  '/dashboard': 'Dashboard', '/executive': 'Executive dashboard', '/portfolio': 'Portfolio',
+  '/planning': 'Planning & Resources', '/planning-dashboards': 'Planning dashboards', '/scheduling': 'Scheduling (CPM)',
+  '/human-resources': 'Human Resources', '/payroll': 'Labor & Payroll', '/point-of-sale': 'Point of Sale',
+  '/equipment': 'Equipment', '/production': 'Production', '/field-ops': 'Field Operations',
+  '/finance': 'Finance & Cost Control', '/profitability': 'Profitability', '/inventory': 'Inventory',
+  '/requisitions': 'Material Requisitions', '/procurement': 'Procurement', '/qaqc': 'Quality & Compliance',
+  '/hse': 'Safety (HSE)', '/risk': 'Risk Register', '/approvals': 'Approvals', '/documents': 'Documents',
+  '/reports': 'Reports', '/notifications': 'Notifications', '/daily-entry': 'Daily Entry',
+  '/admin': 'Admin', '/billing': 'Billing & AI credits',
+};
+
 const LOOKUP_SPECS: ToolSpec[] = [
+  {
+    name: 'open_page',
+    description: 'Take the user to a page of the ERP (e.g. \"open inventory\", \"go to the risk register\", \"show me approvals\"). Use it whenever the user asks to open/go to/see a module or page.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['page'],
+      properties: { page: { type: 'string', enum: Object.keys(NAV_PAGES), description: 'Path of the page to open' } },
+    },
+  },
   {
     name: 'list_projects',
     description: 'List existing projects (id, code, name, status) to resolve a project name to its id.',
@@ -398,7 +421,7 @@ export function writeToolSpecs(): ToolSpec[] {
 }
 
 export function isWriteToolName(name: string): boolean {
-  if (name === 'list_projects' || name === 'list_clients' || name === 'read_file') return true;
+  if (name === 'list_projects' || name === 'list_clients' || name === 'read_file' || name === 'open_page') return true;
   const m = /^(preview|commit)_(.+)$/.exec(name);
   return !!m && !!DEFS[m[2]];
 }
@@ -829,6 +852,10 @@ export async function executeWriteTool(
   }
   if (name === 'list_projects') return listProjects(actor);
   if (name === 'list_clients') return listClients(actor);
+  if (name === 'open_page') {
+    const page = String(args.page ?? '');
+    return NAV_PAGES[page] ? { navigate: page, opened: NAV_PAGES[page] } : { error: `Unknown page "${page}".` };
+  }
   if (name === 'read_file') return readFileFromUrl(String(args.url ?? ''), args.question ? String(args.question) : undefined);
   const preview = /^preview_(.+)$/.exec(name);
   if (preview) return previewWrite(preview[1], args, actor, ctx);

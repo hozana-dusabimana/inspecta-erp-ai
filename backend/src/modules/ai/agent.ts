@@ -11,6 +11,8 @@ export interface AgentResult {
   field?: FieldSpec;
   /** A ready-to-create preview (when the user supplied everything up front). */
   preview?: { entity: string; title: string; fields: Record<string, unknown> };
+  /** An in-app path the user asked to be taken to (from open_page). */
+  navigateTo?: string;
 }
 
 /**
@@ -34,13 +36,14 @@ export async function runAgent(
   let model = provider.name;
   let field: FieldSpec | undefined;
   let preview: AgentResult['preview'];
+  let navigateTo: string | undefined;
 
   for (let i = 0; i < maxIterations; i++) {
     const completion = await provider.complete(convo, { tools, toolChoice: 'auto' });
     model = completion.model;
     const calls = completion.toolCalls ?? [];
     if (!calls.length) {
-      return { text: completion.text, toolCallsMade, committed, provider: provider.name, model, field, preview };
+      return { text: completion.text, toolCallsMade, committed, provider: provider.name, model, field, preview, navigateTo };
     }
 
     // Record the assistant's tool-call turn, then run each call and feed results back.
@@ -57,6 +60,7 @@ export async function runAgent(
         if (gr.preview) preview = gr.preview;
         toolContent = JSON.stringify({ started: !gr.error, entity: (call.arguments as { entity?: string }).entity, error: gr.error ?? null });
       }
+      if (call.name === 'open_page' && (result as { navigate?: string }).navigate) navigateTo = (result as { navigate: string }).navigate;
       if (result && typeof result === 'object' && (result as { created?: boolean }).created) committed = true;
       convo.push({ role: 'tool', tool_call_id: call.id, name: call.name, content: toolContent });
     }
@@ -72,5 +76,6 @@ export async function runAgent(
     model: final.model || model,
     field,
     preview,
+    navigateTo,
   };
 }

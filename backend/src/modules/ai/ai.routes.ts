@@ -151,7 +151,7 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     send({ delta: tokens.slice(i, i + 3).join('') });
     await new Promise((r) => setTimeout(r, 12));
   }
-  send({ done: true, conversationId, transcript: body.attachments?.some(isAudio) ? input.prompt : undefined, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview, creditsUsed: cost });
+  send({ done: true, conversationId, transcript: body.attachments?.some(isAudio) ? input.prompt : undefined, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview, navigateTo: answer.navigateTo, creditsUsed: cost });
   res.end();
 }));
 

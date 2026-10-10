@@ -42,23 +42,27 @@ jobs:
       - name: Package backend (no node_modules)
         run: tar czf /tmp/backend.tgz -C backend --exclude=node_modules --exclude=dist --exclude=.env .
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Set up SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
       - name: Ship & redeploy (exec channel; SFTP is disabled on host)
         env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
           HOST: 176.126.87.142
           USER: root
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          sshpass -e ssh $OPTS "$USER@$HOST" "mkdir -p /home/inspectaapi/app"
-          sshpass -e ssh $OPTS "$USER@$HOST" "cat > /tmp/backend.tgz" < /tmp/backend.tgz
+          ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" "mkdir -p /home/inspectaapi/app"
+          ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" "cat > /tmp/backend.tgz" < /tmp/backend.tgz
           # The server .env is operator-owned: this deploy never writes to it,
           # edits it, or deletes it. The commit SHA is handed to compose as a
           # shell variable instead of being stamped into the file, and the
           # cleanup below explicitly preserves it.
-          sshpass -e ssh $OPTS "$USER@$HOST" '
+          ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" '
             set -e
             cd /home/inspectaapi/app
             find . -maxdepth 1 -mindepth 1 ! -name .env -exec rm -rf {} +
@@ -69,7 +73,6 @@ jobs:
 
       - name: Health check (retry until the API is listening)
         env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
           HOST: 176.126.87.142
           USER: root
         run: |
@@ -77,7 +80,7 @@ jobs:
           # The container runs prisma db push + seed before Node listens, so the
           # port can accept-then-reset for ~15s. Poll for up to ~2 minutes.
           for i in $(seq 1 24); do
-            if sshpass -e ssh $OPTS "$USER@$HOST" 'curl -fsS -m 5 http://127.0.0.1:5010/api/health' ; then
+            if ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" 'curl -fsS -m 5 http://127.0.0.1:5010/api/health' ; then
               echo ""
               echo "✅ backend healthy after $((i*5))s"
               exit 0
@@ -86,5 +89,5 @@ jobs:
             sleep 5
           done
           echo "❌ backend did not become healthy in time; recent logs:"
-          sshpass -e ssh $OPTS "$USER@$HOST" 'docker logs --tail 30 inspecta-prod-backend 2>&1' || true
+          ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" 'docker logs --tail 30 inspecta-prod-backend 2>&1' || true
           exit 1

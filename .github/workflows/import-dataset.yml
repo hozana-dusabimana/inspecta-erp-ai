@@ -37,18 +37,22 @@ jobs:
             exit 1
           fi
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+      - name: Set up SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
       - name: Copy workbook into the container, import, then clean up
         env:
-          SSHPASS: ${{ secrets.SSH_PASSWORD }}
           HOST: 176.126.87.142
           USER: root
           SRV_FILE: ${{ github.event.inputs.server_file }}
         run: |
           OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-          sshpass -e ssh $OPTS "$USER@$HOST" "
+          ssh $OPTS -i ~/.ssh/deploy_key "$USER@$HOST" "
             set -e
             cd /home/inspectaapi/app
             if [ ! -f '$SRV_FILE' ]; then echo 'Uploaded file not found: $SRV_FILE'; exit 1; fi

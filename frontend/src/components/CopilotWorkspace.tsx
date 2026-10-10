@@ -469,10 +469,10 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
               <Bot className="text-white w-4.5 h-4.5" />
             </div>
             <div>
-              <h2 className="font-display text-sm font-extrabold text-brand-primary">Inspecta AI Copilot</h2>
+              <h2 className="font-display text-sm font-extrabold text-brand-primary whitespace-nowrap">{panel ? 'Inspecta AI' : 'Inspecta AI Copilot'}</h2>
               <div className="flex items-center gap-1 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[9px] font-bold text-brand-on-surface-variant uppercase tracking-wider">Grounded on your live data</span>
+                <span className="text-[9px] font-bold text-brand-on-surface-variant uppercase tracking-wider whitespace-nowrap">{panel ? 'Live data' : 'Grounded on your live data'}</span>
               </div>
             </div>
           </div>
@@ -483,21 +483,21 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
             <button
               onClick={() => onNavigate(AppView.BILLING)}
               title={`${credits.balance.toLocaleString()} of ${credits.monthlyAllowance.toLocaleString()} monthly AI credits remaining`}
-              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+              className={`${panel ? 'flex' : 'hidden md:flex'} items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                 credits.balance <= 0
                   ? 'border-brand-status-critical/30 text-brand-status-critical hover:bg-brand-status-critical/5'
                   : 'border-brand-primary/10 text-brand-primary hover:bg-brand-primary/5'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" /> {credits.balance.toLocaleString()} credits
+              <Sparkles className="w-3.5 h-3.5" /> <span className="whitespace-nowrap">{credits.balance.toLocaleString()}{panel ? '' : ' credits'}</span>
             </button>
           )}
           <button onClick={newChat} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white bg-brand-primary font-bold text-xs hover:bg-brand-primary-container transition-all">
-            <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">New</span>
+            <Plus className="w-3.5 h-3.5" /> {!panel && <span className="hidden sm:inline">New</span>}
           </button>
           <div className="relative">
             <button onClick={() => { setShowHistory((s) => !s); loadHistory(); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-brand-primary font-bold text-xs hover:bg-brand-primary/5 transition-all border border-brand-primary/10">
-              <Clock className="w-3.5 h-3.5" /> <span className="hidden sm:inline">History</span>
+              <Clock className="w-3.5 h-3.5" /> {!panel && <span className="hidden sm:inline">History</span>}
             </button>
             {showHistory && (
               <div className="absolute right-0 mt-2 w-72 max-h-80 overflow-y-auto custom-scrollbar bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-xl z-50 py-1">

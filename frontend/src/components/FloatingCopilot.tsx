@@ -28,7 +28,7 @@ export default function FloatingCopilot() {
   }, []);
 
   const isPublic = pathname === '/' || HIDDEN_PREFIXES.some((p) => pathname.startsWith(p));
-  if (!user || isPublic || pathname.startsWith('/platform')) return null;
+  if (!user || isPublic) return null;
 
   return (
     <>
@@ -36,13 +36,13 @@ export default function FloatingCopilot() {
         {open && (
           <motion.div
             key="copilot-panel"
-            initial={{ opacity: 0, y: 24, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.97 }}
-            transition={{ duration: 0.18 }}
+            initial={{ x: 40, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 40, opacity: 0 }}
+            transition={{ duration: 0.2 }}
             role="dialog"
             aria-label="Inspecta AI Copilot"
-            className="fixed z-[55] bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-[420px] h-[min(640px,calc(100vh-8rem))] rounded-2xl overflow-hidden border border-brand-outline-variant/30 shadow-2xl bg-brand-surface"
+            className="fixed z-[55] top-0 right-0 h-dvh w-full sm:w-[440px] overflow-hidden border-l border-brand-outline-variant/30 shadow-2xl bg-brand-surface"
           >
             <CopilotWorkspace
               variant="panel"
@@ -57,16 +57,17 @@ export default function FloatingCopilot() {
         )}
       </AnimatePresence>
 
-      <button
-        id="btn-floating-copilot"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close AI Copilot' : 'Open AI Copilot'}
-        title="Ask Inspecta AI"
-        className="fixed z-[55] bottom-6 right-4 sm:right-6 h-14 px-5 rounded-full bg-brand-primary text-white shadow-xl hover:bg-brand-primary-container transition-all flex items-center gap-2 cursor-pointer"
-      >
-        <Sparkles className="w-5 h-5" />
-        <span className="hidden sm:inline text-xs font-bold">Ask AI</span>
-      </button>
+      {!open && (
+        <button
+          id="btn-floating-copilot"
+          onClick={() => setOpen(true)}
+          aria-label="Open AI Copilot"
+          title="Ask Inspecta AI"
+          className="fixed z-[55] bottom-5 right-4 sm:right-6 w-12 h-12 rounded-full bg-brand-primary text-white shadow-xl ring-4 ring-white/70 hover:bg-brand-primary-container hover:scale-105 transition-all flex items-center justify-center cursor-pointer"
+        >
+          <Sparkles className="w-5 h-5" />
+        </button>
+      )}
     </>
   );
 }

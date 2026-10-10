@@ -53,6 +53,8 @@ export function createApp() {
 
   app.use(helmet());
   app.use(cors({ origin: env.corsOrigin.split(',').map((s) => s.trim()), credentials: true }));
+  // Copilot messages can carry base64 images/documents/voice (Satellite allows ~10 MB per request).
+  app.use('/api/ai', express.json({ limit: '14mb' }));
   app.use(express.json({ limit: '4mb' }));
   if (!env.isProd) app.use(morgan('dev'));
 

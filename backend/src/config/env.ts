@@ -31,7 +31,13 @@ export const env = {
   },
 
   ai: {
-    provider: (process.env.AI_PROVIDER ?? 'openrouter').toLowerCase(),
+    provider: (process.env.AI_PROVIDER ?? 'satellite').toLowerCase(),
+    satellite: {
+      apiKey: process.env.SATELLITE_API_KEY ?? '',
+      baseUrl: (process.env.SATELLITE_BASE_URL ?? 'https://api-satellite.isiri.rw/api/v1').replace(/\/+$/, ''),
+      // satellite-fast | satellite (default) | satellite-pro
+      model: process.env.SATELLITE_MODEL ?? 'satellite',
+    },
     openrouter: {
       apiKey: process.env.OPENROUTER_API_KEY ?? '',
       model: process.env.OPENROUTER_MODEL ?? 'meta-llama/llama-3.3-70b-instruct:free',
@@ -90,7 +96,7 @@ export function validateProductionEnv(): void {
   if (env.jwt.refreshSecret.length < 24) fatal.push('JWT_REFRESH_SECRET is too short (use ≥ 32 random chars)');
   if (env.seed.adminPassword === 'Admin@123') warn.push('SEED_ADMIN_PASSWORD is the public default — change it after first login');
 
-  const providerKey = { openrouter: env.ai.openrouter.apiKey, claude: env.ai.claude.apiKey, gemini: env.ai.gemini.apiKey }[env.ai.provider];
+  const providerKey = { satellite: env.ai.satellite.apiKey, openrouter: env.ai.openrouter.apiKey, claude: env.ai.claude.apiKey, gemini: env.ai.gemini.apiKey }[env.ai.provider];
   if (!providerKey) warn.push(`AI provider "${env.ai.provider}" has no API key — Copilot runs in offline/deterministic mode`);
   if (!env.cloudinary.cloudName || !env.cloudinary.apiKey || !env.cloudinary.apiSecret) {
     warn.push('Cloudinary not configured — file uploads will fail (attaching links still works)');

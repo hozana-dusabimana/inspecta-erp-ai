@@ -43,7 +43,10 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
-      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      AI_PROVIDER: ${AI_PROVIDER:-satellite}
+      SATELLITE_API_KEY: ${SATELLITE_API_KEY:-}
+      SATELLITE_BASE_URL: ${SATELLITE_BASE_URL:-https://api-satellite.isiri.rw/api/v1}
+      SATELLITE_MODEL: ${SATELLITE_MODEL:-satellite}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

@@ -1,5 +1,7 @@
 import { prisma } from '../../lib/prisma';
-import { getProvider, anyConfiguredProvider, ChatMessage } from './providers';
+import { getProvider, anyConfiguredProvider, ChatMessage, Attachment } from './providers';
+import { inlineAttachments } from './file-reader';
+import { satelliteConfigured } from './satellite';
 import { selectTools, runTools } from './tools';
 import { retrieve, RagSource } from './rag';
 import { runAgent } from './agent';
@@ -145,7 +147,12 @@ CREATING RECORDS (when tools are available):
 - After start_create, the SYSTEM collects the remaining fields from the user through on-screen input widgets and handles the preview and confirmation. So do NOT ask the user for field values yourself, do NOT list the fields, and do NOT try to preview or confirm — just reply with ONE short sentence (e.g. "Sure — let's set up that project below.").
 - Only call start_create ONCE per create request. For anything else (questions, analysis), just answer normally.
 - Never invent data. Never write tool calls, function names, or JSON/brace payloads as text in your reply — speak only in plain language.
-- The "Confidence: <n>%" line is NOT required when creating records.`;
+- The "Confidence: <n>%" line is NOT required when creating records.
+
+FILES, IMAGES AND VOICE:
+- The user may attach documents (PDF/Word/Excel/PowerPoint/text) or images directly to their message — read them and answer from their content. Voice messages arrive already transcribed as text.
+- To read a file stored on a record (an attachment link such as https://res.cloudinary.com/...), call read_file with its url. Quote only what the file actually says.
+- If an attachment could not be read, say so plainly instead of guessing its content.`;
 
 export interface CopilotAnswer {
   text: string;
@@ -175,6 +182,8 @@ export interface AskOptions {
   conversationId?: string;
   /** The signed-in user; required to enable agentic create-by-chat (writes run as them). */
   actor?: Actor;
+  /** Images/documents the user attached to this message. */
+  attachments?: Attachment[];
 }
 
 export async function ask(
@@ -270,6 +279,16 @@ export async function ask(
 
   const provider = providerName ? getProvider(providerName) : anyConfiguredProvider();
   if (!provider || !provider.isConfigured()) return offlineAnswer();
+
+  // Attachments: Satellite takes images/files natively on the user message; other
+  // providers get them extracted to text (via Satellite) and appended to the prompt.
+  if (opts.attachments?.length) {
+    const last = messages[messages.length - 1];
+    if (provider.name === 'satellite') last.attachments = opts.attachments;
+    else if (satelliteConfigured()) {
+      last.content += `\n\n${await inlineAttachments(opts.attachments)}`;
+    }
+  }
 
   // Agentic path: a tool-capable provider + a signed-in actor + a conversation
   // lets the Copilot CREATE records (preview → confirm → commit) as the user.

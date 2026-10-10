@@ -20,7 +20,9 @@ import {
   Loader2,
   AlertTriangle,
   Play,
-  Info
+  Info,
+  Paperclip,
+  X
 } from 'lucide-react';
 import { AppView, ChatMessage, CopilotField, CopilotPreview } from '../types';
 import { api } from '../lib/api';
@@ -127,6 +129,21 @@ interface CopilotWorkspaceProps {
   pageContext?: string;
 }
 
+/** A file/voice clip queued on the composer, sent as base64 with the next message. */
+interface PendingAttachment { filename: string; mime: string; data: string; }
+
+const MAX_ATTACH_BYTES = 4 * 1024 * 1024; // keeps a message (base64 inflates ~33%) under the API's ~10 MB request limit
+const MAX_ATTACHMENTS = 6;
+
+function fileToBase64(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split('base64,')[1] ?? '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext }: CopilotWorkspaceProps) {
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -138,6 +155,24 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   const [isLoading, setIsLoading] = useState(false);
   const [credits, setCredits] = useState<{ balance: number; monthlyAllowance: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+
+  const notice = (text: string) =>
+    onAddMessage({ id: Math.random().toString(), sender: 'assistant', text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+
+  const addFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const next: PendingAttachment[] = [];
+    for (const f of Array.from(files)) {
+      if (pending.length + next.length >= MAX_ATTACHMENTS) { notice(`You can attach up to ${MAX_ATTACHMENTS} files per message.`); break; }
+      if (f.size > MAX_ATTACH_BYTES) { notice(`"${f.name}" is larger than 4 MB — please attach a smaller file.`); continue; }
+      next.push({ filename: f.name, mime: f.type, data: await fileToBase64(f) });
+    }
+    if (next.length) setPending((p) => [...p, ...next]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const loadCredits = () => {
     api.get<{ balance: number; monthlyAllowance: number }>('/ai/credits')
@@ -155,13 +190,16 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     scrollToBottom();
   }, [chatHistory, isLoading, isListening]);
 
-  const fetchAiResponse = async (userText: string) => {
+  const fetchAiResponse = async (userText: string, attachments: PendingAttachment[] = []) => {
     setIsLoading(true);
     setStreamingText('');
     let acc = '';
     try {
       // Streamed Copilot — grounded strictly on the organization's live data (SSE).
-      await api.stream('/ai/chat/stream', { prompt: userText, conversationId: conversationId ?? undefined, pageContext }, (evt) => {
+      await api.stream('/ai/chat/stream', { prompt: userText, conversationId: conversationId ?? undefined, pageContext, attachments: attachments.length ? attachments : undefined }, (evt) => {
+        if (evt.transcript && attachments.some((a) => a.mime.startsWith('audio/'))) {
+          onAddMessage({ id: Math.random().toString(), sender: 'user', text: `🎤 “${evt.transcript}”`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+        }
         if (evt.delta) { acc += evt.delta; setStreamingText(acc); }
         else if (evt.done) {
           if (evt.conversationId) setConversationId(evt.conversationId);
@@ -198,21 +236,25 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     }
   };
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = (textToSend?: string, extra?: PendingAttachment[]) => {
     const prompt = textToSend || input;
-    if (!prompt.trim()) return;
+    const attachments = [...(extra ?? []), ...(textToSend ? [] : pending)];
+    if (!prompt.trim() && !attachments.length) return;
 
-    const userMessage: ChatMessage = {
-      id: Math.random().toString(),
-      sender: 'user',
-      text: prompt,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+    const voiceOnly = attachments.length > 0 && attachments.every((a) => a.mime.startsWith('audio/')) && !prompt.trim();
+    const names = attachments.filter((a) => !a.mime.startsWith('audio/')).map((a) => `📎 ${a.filename}`);
+    // A voice-only message is echoed once the server returns the transcript.
+    if (!voiceOnly) {
+      onAddMessage({
+        id: Math.random().toString(),
+        sender: 'user',
+        text: [prompt.trim(), ...names].filter(Boolean).join('\n'),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    }
+    if (!textToSend) { setInput(''); setPending([]); }
 
-    onAddMessage(userMessage);
-    if (!textToSend) setInput('');
-
-    fetchAiResponse(prompt);
+    fetchAiResponse(prompt.trim(), attachments);
   };
 
   // ── Guided create: submit a field value / skip / add-new ──────
@@ -309,9 +351,42 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     }]);
   };
 
-  // Real voice input via the browser Web Speech API (Chrome/Edge). Falls back
-  // gracefully with a notice when the API is unavailable.
-  const handleMicClick = () => {
+  // Voice: record with the microphone and send the clip to the Copilot, which
+  // transcribes it server-side (works in every modern browser). Falls back to the
+  // browser's Web Speech API where recording isn't available.
+  const handleMicClick = async () => {
+    if (isListening && recorderRef.current) {
+      recorderRef.current.stop(); // onstop sends the clip
+      return;
+    }
+    if (!isListening && typeof MediaRecorder !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const rec = new MediaRecorder(stream);
+        const chunks: Blob[] = [];
+        rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+        rec.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          recorderRef.current = null;
+          setIsListening(false);
+          const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+          if (blob.size > MAX_ATTACH_BYTES) { notice('That recording is too long (about 2 minutes max). Please record a shorter message.'); return; }
+          if (blob.size < 800) return; // nothing captured
+          const mime = (blob.type || 'audio/webm').split(';')[0];
+          handleSend(undefined, [{ filename: `voice.${mime.split('/')[1] || 'webm'}`, mime, data: await fileToBase64(blob) }]);
+        };
+        recorderRef.current = rec;
+        rec.start();
+        setIsListening(true);
+        // Safety stop at ~2 minutes (the transcription limit).
+        setTimeout(() => { if (recorderRef.current === rec && rec.state === 'recording') rec.stop(); }, 115_000);
+        return;
+      } catch {
+        notice('I could not access the microphone. Allow microphone access in your browser, or type your question instead.');
+        return;
+      }
+    }
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -592,9 +667,41 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
             ))}
           </div>
 
+          {/* Queued attachments */}
+          {pending.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pending.map((a, i) => (
+                <span key={`${a.filename}-${i}`} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-brand-surface border border-brand-outline-variant/30 text-[10px] font-semibold text-brand-on-surface">
+                  <Paperclip className="w-3 h-3 text-brand-secondary-container" />
+                  <span className="max-w-[160px] truncate">{a.filename}</span>
+                  <button onClick={() => setPending((p) => p.filter((_, j) => j !== i))} aria-label={`Remove ${a.filename}`} className="cursor-pointer text-brand-on-surface/50 hover:text-brand-status-critical">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Interactive Chat Input form */}
           <div className="flex items-center gap-3">
-            <button 
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.html"
+              onChange={(e) => void addFiles(e.target.files)}
+            />
+            <button
+              id="btn-copilot-attach"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach a document or image"
+              title="Attach a document or image"
+              className="w-11 h-11 rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer bg-brand-secondary-container/10 text-brand-secondary-container border border-brand-secondary-container/10 hover:bg-brand-secondary-container/20"
+            >
+              <Paperclip className="w-4.5 h-4.5" />
+            </button>
+            <button
               id="btn-copilot-mic"
               onClick={handleMicClick}
               className={`w-11 h-11 rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-md ${

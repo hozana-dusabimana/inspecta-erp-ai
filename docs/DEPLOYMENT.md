@@ -46,7 +46,7 @@ Generate secrets: `openssl rand -base64 48`
 |-----|-----------------|
 | `SEED_ADMIN_PASSWORD` | Defaults to public `Admin@123` — **change immediately**. Applied while the superadmin has never signed in; afterwards the account owns its password (see `SEED_ADMIN_RESET_PASSWORD`) |
 | `SEED_ADMIN_RESET_PASSWORD` | Unset. Set `true` for **one** deploy to force `SEED_ADMIN_PASSWORD` back onto a locked-out superadmin, then remove it |
-| `AI_PROVIDER` + provider key (`OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) | Copilot runs in offline/deterministic mode (still answers from live data) |
+| `AI_PROVIDER` + provider key (`SATELLITE_API_KEY` / `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`) | Copilot runs in offline/deterministic mode (still answers from live data) |
 | `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET` | File uploads disabled (attaching links still works) |
 | `SMTP_HOST` + creds | Email notifications disabled (in-app still works) |
 

@@ -329,11 +329,16 @@ position and shortfall, which is what the Requisitions screen renders.
 
 ## AI providers
 
-Set one key in `backend/.env`. Default provider is **OpenRouter** (free models).
+Set one key in `backend/.env`. Default provider is **Satellite** ([docs](https://satellite.isiri.rw/docs)) —
+chat, vision (images), document reading (PDF/Word/Excel/PowerPoint/text) and speech-to-text with one key.
+Satellite has no native tool calls, so the Copilot's agentic tools run over a JSON tool protocol in
+`backend/src/modules/ai/providers.ts`.
 
 ```env
-AI_PROVIDER=openrouter            # openrouter | claude | gemini
-OPENROUTER_API_KEY=...            # https://openrouter.ai/keys (free tier)
+AI_PROVIDER=satellite             # satellite | openrouter | claude | gemini
+SATELLITE_API_KEY=sk-sat-...      # satellite.isiri.rw → API keys
+SATELLITE_MODEL=satellite         # satellite-fast | satellite | satellite-pro
+OPENROUTER_API_KEY=...            # optional fallback — https://openrouter.ai/keys
 ANTHROPIC_API_KEY=...             # optional
 GEMINI_API_KEY=...                # optional
 ```

@@ -1,4 +1,6 @@
+import { randomUUID } from 'crypto';
 import { env } from '../../config/env';
+import { satelliteChat, satelliteConfigured, stripDataUrl } from './satellite';
 
 /** A tool/function call the model asked us to run. */
 export interface ToolCall {
@@ -7,9 +9,19 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
+/** A file or image the user attached to a message (base64, no data: prefix needed). */
+export interface Attachment {
+  kind: 'image' | 'file';
+  filename: string;
+  mime: string;
+  data: string;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** Images/documents on a `user` message. Sent natively by Satellite; ignored by other providers. */
+  attachments?: Attachment[];
   /** Present on assistant messages that requested tool calls (OpenAI shape). */
   tool_calls?: ToolCall[];
   /** Present on `role:'tool'` result messages — links back to the call. */
@@ -42,7 +54,7 @@ export interface AiCompletion {
 export interface AiProvider {
   readonly name: string;
   isConfigured(): boolean;
-  /** `opts.tools` engages function calling (OpenRouter only); without it, plain text. */
+  /** `opts.tools` engages function calling (Satellite emulated, OpenRouter native); without it, plain text. */
   complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<AiCompletion>;
   /** Whether this provider can do function/tool calling. */
   supportsTools?: boolean;
@@ -69,7 +81,113 @@ function toOpenAiMessages(messages: ChatMessage[]): Record<string, unknown>[] {
   });
 }
 
-// ───────────────────────── OpenRouter (default) ─────────────────────────
+// ───────────────────────── Satellite (default) ─────────────────────────
+// Satellite speaks chat-completions but has no native tool calls yet, so tool use
+// is emulated with a JSON protocol: the model replies with ONLY
+// {"tool_calls":[{"name":...,"arguments":{...}}]} to call tools; tool results go
+// back as user messages. The agent loop above this layer is unchanged.
+
+function toolProtocolPrompt(tools: ToolSpec[]): string {
+  const defs = tools
+    .map((t) => `- ${t.name}: ${t.description}\n  parameters (JSON Schema): ${JSON.stringify(t.parameters)}`)
+    .join('\n');
+  return (
+    `TOOLS — you can call these tools to look things up or act:\n${defs}\n\n` +
+    `HOW TO CALL A TOOL (this protocol OVERRIDES any earlier instruction about not writing tool calls or JSON):\n` +
+    `- To call one or more tools, reply with ONLY this JSON object and nothing else: ` +
+    `{"tool_calls":[{"name":"<tool name>","arguments":{...}}]}\n` +
+    `- Tool results come back in a user message starting "TOOL RESULT". Then either call more tools the same way, or give your final answer in plain language.\n` +
+    `- If no tool is needed, just answer in plain language — never output the JSON protocol to the user as an answer.`
+  );
+}
+
+/** Pull a tool-call envelope out of a model reply; null when it is a plain answer. */
+export function parseToolCalls(text: string, tools: ToolSpec[]): ToolCall[] | null {
+  const known = new Set(tools.map((t) => t.name));
+  const cleaned = text.replace(/```(?:json)?/gi, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const obj = parsed as { tool_calls?: unknown; tool_call?: unknown; name?: unknown };
+  const raw = Array.isArray(obj.tool_calls) ? obj.tool_calls : obj.tool_call ? [obj.tool_call] : obj.name ? [obj] : [];
+  const calls: ToolCall[] = [];
+  for (const r of raw) {
+    const c = r as { name?: unknown; arguments?: unknown; function?: { name?: unknown; arguments?: unknown } };
+    const name = String(c.name ?? c.function?.name ?? '');
+    if (!known.has(name)) continue;
+    const args = c.arguments ?? c.function?.arguments;
+    calls.push({
+      id: `call_${randomUUID().slice(0, 8)}`,
+      name,
+      arguments: typeof args === 'string' ? safeParseArgs(args) : args && typeof args === 'object' ? (args as Record<string, unknown>) : {},
+    });
+  }
+  return calls.length ? calls : null;
+}
+
+/** Our ChatMessage[] → Satellite wire messages (text, image_url and file parts; tool turns folded into text). */
+function toSatelliteMessages(messages: ChatMessage[], tools?: ToolSpec[]): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      out.push({ role: 'user', content: `TOOL RESULT (${m.name ?? 'tool'}):\n${m.content}` });
+    } else if (m.role === 'assistant' && m.tool_calls?.length) {
+      out.push({
+        role: 'assistant',
+        content: JSON.stringify({ tool_calls: m.tool_calls.map((tc) => ({ name: tc.name, arguments: tc.arguments })) }),
+      });
+    } else if (m.role === 'user' && m.attachments?.length) {
+      out.push({
+        role: 'user',
+        content: [
+          ...m.attachments.map((a) =>
+            a.kind === 'image'
+              ? { type: 'image_url', image_url: { url: `data:${a.mime};base64,${stripDataUrl(a.data)}` } }
+              : { type: 'file', file: { filename: a.filename, file_data: stripDataUrl(a.data) } },
+          ),
+          { type: 'text', text: m.content },
+        ],
+      });
+    } else {
+      out.push({ role: m.role, content: m.content });
+    }
+  }
+  if (tools?.length) {
+    const idx = out.findIndex((m) => m.role === 'system');
+    const proto = toolProtocolPrompt(tools);
+    if (idx >= 0) out[idx] = { role: 'system', content: `${out[idx].content as string}\n\n${proto}` };
+    else out.unshift({ role: 'system', content: proto });
+  }
+  return out;
+}
+
+class SatelliteProvider implements AiProvider {
+  readonly name = 'satellite';
+  readonly supportsTools = true;
+  isConfigured() {
+    return satelliteConfigured();
+  }
+  async complete(messages: ChatMessage[], opts?: CompleteOptions): Promise<AiCompletion> {
+    const tools = opts?.toolChoice === 'none' ? undefined : opts?.tools;
+    const r = await satelliteChat(toSatelliteMessages(messages, tools));
+    const toolCalls = tools?.length ? parseToolCalls(r.text, tools) : null;
+    return {
+      text: toolCalls ? '' : r.text,
+      provider: this.name,
+      model: r.model,
+      toolCalls: toolCalls ?? undefined,
+      finishReason: r.finishReason,
+    };
+  }
+}
+
+// ───────────────────────── OpenRouter (fallback) ─────────────────────────
 class OpenRouterProvider implements AiProvider {
   readonly name = 'openrouter';
   readonly supportsTools = true;
@@ -211,6 +329,7 @@ class GeminiProvider implements AiProvider {
 }
 
 const registry: Record<string, AiProvider> = {
+  satellite: new SatelliteProvider(),
   openrouter: new OpenRouterProvider(),
   claude: new ClaudeProvider(),
   gemini: new GeminiProvider(),
@@ -219,11 +338,11 @@ const registry: Record<string, AiProvider> = {
 /** Resolve a provider by name, falling back to the configured default. */
 export function getProvider(preferred?: string): AiProvider {
   const key = (preferred ?? env.ai.provider).toLowerCase();
-  return registry[key] ?? registry.openrouter;
+  return registry[key] ?? registry.satellite;
 }
 
 export function anyConfiguredProvider(): AiProvider | null {
-  const order = [env.ai.provider, 'openrouter', 'claude', 'gemini'];
+  const order = [env.ai.provider, 'satellite', 'openrouter', 'claude', 'gemini'];
   for (const name of order) {
     const p = registry[name];
     if (p && p.isConfigured()) return p;

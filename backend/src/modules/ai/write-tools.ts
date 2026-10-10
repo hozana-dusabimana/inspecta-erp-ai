@@ -6,6 +6,7 @@ import { CrudOptions, runCreate } from '../../lib/crud';
 import { Permission, resolvePermissions } from '../../auth/permissions';
 import { actorCan } from '../../middleware/auth';
 import { ToolSpec } from './providers';
+import { readFileFromUrl } from './file-reader';
 import { createSchema as projectCreateSchema } from '../projects/projects.routes';
 import { upsertSchema as clientUpsertSchema } from '../clients/clients.routes';
 import { riskCrud } from '../risk/risk.routes';
@@ -353,6 +354,21 @@ const LOOKUP_SPECS: ToolSpec[] = [
     description: 'List existing clients (id, name, type) to resolve a client name to its id.',
     parameters: { type: 'object', additionalProperties: false, properties: {} },
   },
+  {
+    name: 'read_file',
+    description:
+      'Read a file attached to a record (a link from an attachments field: PDF, Word, Excel, PowerPoint, text, image/photo or audio) ' +
+      'and return its text — documents are extracted, photos are described/transcribed, audio is transcribed. Optionally pass `question` to focus on an image.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['url'],
+      properties: {
+        url: { type: 'string', description: 'The attachment link (https://res.cloudinary.com/...)' },
+        question: { type: 'string', description: 'What to look for (images only)' },
+      },
+    },
+  },
 ];
 
 // Single tool the model calls to KICK OFF a create. After this, the server drives
@@ -382,7 +398,7 @@ export function writeToolSpecs(): ToolSpec[] {
 }
 
 export function isWriteToolName(name: string): boolean {
-  if (name === 'list_projects' || name === 'list_clients') return true;
+  if (name === 'list_projects' || name === 'list_clients' || name === 'read_file') return true;
   const m = /^(preview|commit)_(.+)$/.exec(name);
   return !!m && !!DEFS[m[2]];
 }
@@ -813,6 +829,7 @@ export async function executeWriteTool(
   }
   if (name === 'list_projects') return listProjects(actor);
   if (name === 'list_clients') return listClients(actor);
+  if (name === 'read_file') return readFileFromUrl(String(args.url ?? ''), args.question ? String(args.question) : undefined);
   const preview = /^preview_(.+)$/.exec(name);
   if (preview) return previewWrite(preview[1], args, actor, ctx);
   const commit = /^commit_(.+)$/.exec(name);

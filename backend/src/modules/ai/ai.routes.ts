@@ -5,19 +5,67 @@ import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import * as service from './ai.service';
+import { Attachment } from './providers';
+import { audioFormat, transcribeAudio } from './satellite';
 import { TOOLS, runTools } from './tools';
 import { CREDIT_COSTS, chatCreditCost, assertCreditsAvailable, deductCredits, getCreditStatus } from '../billing/aiCredits.service';
 
 const router = Router();
 router.use(authenticate);
 
+const attachmentSchema = z.object({
+  filename: z.string().min(1).max(200),
+  mime: z.string().max(100).default(''),
+  data: z.string().min(1).max(7_000_000), // base64
+});
+
 const chatSchema = z.object({
-  prompt: z.string().min(1).max(4000),
-  provider: z.enum(['openrouter', 'claude', 'gemini']).optional(),
+  prompt: z.string().max(4000).default(''),
+  provider: z.enum(['satellite', 'openrouter', 'claude', 'gemini']).optional(),
   projectId: z.string().optional(),
   pageContext: z.string().max(80).optional(),
   conversationId: z.string().optional(),
-});
+  attachments: z.array(attachmentSchema).max(6).optional(),
+}).refine((b) => b.prompt.trim().length > 0 || (b.attachments?.length ?? 0) > 0, { message: 'Write a message or attach a file.' });
+
+type ChatBody = z.infer<typeof chatSchema>;
+
+const isAudio = (a: { filename: string; mime: string }) =>
+  a.mime.startsWith('audio/') || /\.(wav|mp3|m4a|ogg|flac|webm)$/i.test(a.filename) && !a.mime.startsWith('video/');
+const isImage = (a: { filename: string; mime: string }) =>
+  a.mime.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(a.filename);
+
+/**
+ * Turn the request into what the model sees: voice clips are transcribed into the
+ * prompt text; images and documents are passed on as attachments.
+ */
+async function prepareInput(body: ChatBody): Promise<{ prompt: string; attachments: Attachment[]; note: string }> {
+  const total = (body.attachments ?? []).reduce((s, a) => s + a.data.length, 0);
+  if (total > 13_000_000) throw BadRequest('Attachments are too large (limit about 10 MB in total).');
+  let prompt = body.prompt.trim();
+  const attachments: Attachment[] = [];
+  const names: string[] = [];
+  for (const a of body.attachments ?? []) {
+    if (isAudio(a)) {
+      let text: string;
+      try { text = await transcribeAudio(a.data, audioFormat(a.mime, a.filename)); }
+      catch (e) { throw BadRequest(e instanceof Error ? e.message : 'Could not transcribe the recording.'); }
+      prompt = prompt ? `${prompt}\n\n(voice message) ${text}` : text;
+      names.push('🎤 voice message');
+    } else {
+      const kind = isImage(a) ? 'image' : 'file';
+      attachments.push({ kind, filename: a.filename, mime: a.mime || (kind === 'image' ? 'image/png' : 'application/octet-stream'), data: a.data });
+      names.push(`📎 ${a.filename}`);
+    }
+  }
+  if (!prompt) prompt = attachments.length ? 'Please review the attached file(s) and tell me what is important.' : '';
+  return { prompt, attachments, note: names.length ? `\n\n[${names.join(', ')}]` : '' };
+}
+
+/** Credits for one chat: the usual tier, bumped up when files/voice were processed. */
+function chatCost(answer: Parameters<typeof chatCreditCost>[0], body: ChatBody): number {
+  return Math.max(chatCreditCost(answer), body.attachments?.length ? CREDIT_COSTS.CHAT_WITH_TOOLS : 0);
+}
 
 /**
  * Resolve the caller's conversation, creating one if needed. Done BEFORE the
@@ -40,21 +88,23 @@ router.post(
     const body = chatSchema.parse(req.body);
     const orgId = req.user!.orgId;
     await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
-    const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, body.prompt);
+    const input = await prepareInput(body);
+    const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, input.prompt);
 
-    const answer = await service.ask(orgId, body.prompt, {
+    const answer = await service.ask(orgId, input.prompt, {
       provider: body.provider,
       projectId: body.projectId,
       pageContext: body.pageContext,
       conversationId,
       actor: req.user!,
+      attachments: input.attachments,
     });
-    const cost = chatCreditCost(answer);
+    const cost = chatCost(answer, body);
     await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
     // Persist the exchange (conversation memory).
     await prisma.aiMessage.createMany({ data: [
-      { conversationId, role: 'user', content: body.prompt },
+      { conversationId, role: 'user', content: input.prompt + input.note },
       { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
     ] });
     await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
@@ -68,6 +118,8 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
   const body = chatSchema.parse(req.body);
   const orgId = req.user!.orgId;
   await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
+  // Transcribe voice / validate files BEFORE opening the stream so errors are normal JSON 400s.
+  const input = await prepareInput(body);
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -76,19 +128,19 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
   const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
   // Ensure the conversation exists before answering (agentic previews attach to it).
-  const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, body.prompt);
+  const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, input.prompt);
 
   // Compute the grounded answer (tools + RAG + agentic writes + provider/offline), then stream it.
-  const answer = await service.ask(orgId, body.prompt, {
+  const answer = await service.ask(orgId, input.prompt, {
     provider: body.provider, projectId: body.projectId, pageContext: body.pageContext,
-    conversationId, actor: req.user!,
+    conversationId, actor: req.user!, attachments: input.attachments,
   });
-  const cost = chatCreditCost(answer);
+  const cost = chatCost(answer, body);
   await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
   // Persist conversation memory.
   await prisma.aiMessage.createMany({ data: [
-    { conversationId, role: 'user', content: body.prompt },
+    { conversationId, role: 'user', content: input.prompt + input.note },
     { conversationId, role: 'assistant', content: answer.text, confidence: answer.confidence },
   ] });
   await prisma.aiConversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
@@ -99,8 +151,21 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     send({ delta: tokens.slice(i, i + 3).join('') });
     await new Promise((r) => setTimeout(r, 12));
   }
-  send({ done: true, conversationId, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview, creditsUsed: cost });
+  send({ done: true, conversationId, transcript: body.attachments?.some(isAudio) ? input.prompt : undefined, sources: answer.sources, confidence: answer.confidence, provider: answer.provider, model: answer.model, offline: answer.offline, field: answer.field, preview: answer.preview, creditsUsed: cost });
   res.end();
+}));
+
+// ── Voice: speech → text (for dictating into the composer) ────
+const transcribeSchema = z.object({ audio: z.string().min(1).max(7_000_000), mime: z.string().max(100).optional(), filename: z.string().max(200).optional() });
+router.post('/transcribe', requirePermission('ai:use'), asyncHandler(async (req, res) => {
+  const body = transcribeSchema.parse(req.body);
+  const orgId = req.user!.orgId;
+  await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
+  let text: string;
+  try { text = await transcribeAudio(body.audio, audioFormat(body.mime, body.filename)); }
+  catch (e) { throw BadRequest(e instanceof Error ? e.message : 'Could not transcribe the recording.'); }
+  await deductCredits(orgId, CREDIT_COSTS.CHAT, 'AI voice transcription', req.user!.id);
+  return ok(res, { text });
 }));
 
 // ── Guided create: deterministic, server-driven field-by-field intake ─────────

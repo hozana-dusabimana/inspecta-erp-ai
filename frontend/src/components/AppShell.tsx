@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight, Layers, Eye, AlertTriangle } from 'lucide-react';
 import { AppView } from '../types';
@@ -436,19 +436,16 @@ export default function AppShell() {
         )}
         <TopHeader onOpenSidebar={() => setSidebarOpen(true)} onStartTour={startTour} />
 
-        {/* Only the page content animates — the chrome above is untouched. */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="flex-1 flex flex-col min-h-0"
-          >
-            <Outlet context={chrome} />
-          </motion.div>
-        </AnimatePresence>
+        {/* Opacity-only fade with no exit phase: text never bounces or waits on the old page. */}
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.12 }}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          <Outlet context={chrome} />
+        </motion.div>
       </div>
 
       <OnboardingTour open={tourOpen} onClose={closeTour} />

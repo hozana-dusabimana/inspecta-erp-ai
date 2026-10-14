@@ -306,6 +306,7 @@ const DEFS: Record<string, WriteToolDef> = {
       required: ['projectId', 'description'],
       properties: {
         projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        wbsCode: { type: 'string', description: 'WBS code the non-conformance relates to (optional)' },
         description: { type: 'string' },
         severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] },
         status: { type: 'string', enum: ['DRAFT', 'OPEN', 'IN_PROGRESS', 'INVESTIGATING', 'CORRECTIVE_ACTION', 'CLOSED'] },
@@ -325,9 +326,10 @@ const DEFS: Record<string, WriteToolDef> = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['projectId', 'description', 'amount'],
+      required: ['projectId', 'wbsCode', 'description', 'amount'],
       properties: {
         projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        wbsCode: { type: 'string', description: 'WBS code this cost is charged to, e.g. 1.2.3' },
         category: { type: 'string', enum: ['LABOR', 'MATERIAL', 'EQUIPMENT', 'SUBCONTRACTOR', 'OVERHEAD', 'OTHER'] },
         description: { type: 'string' },
         amount: { type: 'number', minimum: 0 },
@@ -486,6 +488,7 @@ const DEFS: Record<string, WriteToolDef> = {
         quantity: { type: 'number', minimum: 0 },
         unitCost: { type: 'number' },
         projectId: { type: 'string' },
+        wbsCode: { type: 'string', description: 'WBS code the material is issued to (needs projectId)' },
         reference: { type: 'string' },
         note: { type: 'string' },
         date: { type: 'string', description: 'ISO 8601 date/datetime' },
@@ -597,7 +600,8 @@ const START_CREATE_SPEC: ToolSpec = {
   name: 'start_create',
   description:
     'Begin creating a record when the user wants to create/add a project, client, risk, NCR, cost entry, ' +
-    'material, stock movement (receipt/issue/adjustment), material requirement, or supplier. ' +
+    'material, stock movement (receipt/issue/adjustment), material requirement, supplier, WBS item, BOQ line, ' +
+    'schedule activity, production entry (daily output) or equipment usage log (equipment hours). ' +
     'Pass any values the user already stated in `values` (e.g. name, budget, quantity). ' +
     'After you call this, the SYSTEM collects the remaining fields from the user via input widgets — do NOT ask for fields yourself and do NOT preview; just briefly acknowledge (one short sentence).',
   parameters: {
@@ -605,7 +609,7 @@ const START_CREATE_SPEC: ToolSpec = {
     additionalProperties: false,
     required: ['entity'],
     properties: {
-      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry', 'material', 'stock_movement', 'material_requirement', 'supplier'] },
+      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry', 'material', 'stock_movement', 'material_requirement', 'supplier', 'wbs_item', 'boq_item', 'schedule_activity', 'production_entry', 'equipment_usage'] },
       values: { type: 'object', description: 'Fields the user already provided, e.g. {"name":"...","quantity":100}', additionalProperties: true },
     },
   },
@@ -683,11 +687,12 @@ async function commitWrite(entity: string, actor: Actor, ctx: ToolRunContext) {
   let record: Record<string, unknown> | undefined;
   try {
     ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(pending.argsJson as Record<string, unknown>, actor, pending.entity), true));
+    record = await loadPersisted(def, record, actor);
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Create failed.' };
   }
   await prisma.aiPendingAction.update({ where: { id: pending.id }, data: { status: 'committed' } });
-  return { created: true, entity, id: record?.id, saved: previewFields(record ?? {}) };
+  return { created: true, entity, id: record?.id, saved: await labelledPreview(previewFields(record ?? {}), actor) };
 }
 
 async function listProjects(actor: Actor) {
@@ -722,6 +727,45 @@ function previewFields(data: Record<string, unknown>): Record<string, unknown> {
     out[k] = v;
   }
   return out;
+}
+
+/**
+ * Replace raw ids in a preview with readable labels (project name, WBS code,
+ * client…) so the user confirms what they actually mean, not a cuid.
+ */
+async function labelledPreview(fields: Record<string, unknown>, actor: Actor): Promise<Record<string, unknown>> {
+  const org = actor.orgId;
+  const lookups: Record<string, [string, (id: string) => Promise<string | null>]> = {
+    projectId: ['project', async (id) => { const r = await prisma.project.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    wbsItemId: ['wbs', async (id) => { const r = await prisma.wbsItem.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    parentId: ['parent WBS', async (id) => { const r = await prisma.wbsItem.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    clientId: ['client', async (id) => (await prisma.client.findFirst({ where: { id, organizationId: org }, select: { name: true } }))?.name ?? null],
+    managerId: ['manager', async (id) => { const r = await prisma.user.findFirst({ where: { id, organizationId: org }, select: { fullName: true, email: true } }); return r && (r.fullName || r.email); }],
+    equipmentId: ['equipment', async (id) => { const r = await prisma.equipment.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    materialId: ['material', async (id) => { const r = await prisma.material.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    supplierId: ['supplier', async (id) => (await prisma.supplier.findFirst({ where: { id, organizationId: org }, select: { name: true } }))?.name ?? null],
+  };
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    const lk = lookups[k];
+    if (lk && typeof v === 'string') {
+      const label = await lk[1](v).catch(() => null);
+      out[lk[0]] = label ?? v;
+    } else out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * "Saved" must mean saved: re-read the row from the database after the create
+ * pipeline returns, scoped to the org. Throws if it is not actually there, so
+ * the Copilot can never report success for a record that does not exist.
+ */
+async function loadPersisted(def: WriteToolDef, record: Record<string, unknown> | undefined, actor: Actor): Promise<Record<string, unknown>> {
+  const id = record?.id;
+  const row = id ? await (prisma as any)[def.crud.model].findFirst({ where: { id: String(id), organizationId: actor.orgId } }) : null;
+  if (!row) throw new Error(`The ${def.title} could not be confirmed in the database, so it was NOT saved.`);
+  return row as Record<string, unknown>;
 }
 
 // The whole (normalized) user message must BE one of these to count as a bare
@@ -763,12 +807,13 @@ export async function tryConfirmPending(prompt: string, actor: Actor, conversati
   let record: Record<string, unknown> | undefined;
   try {
     ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(pending.argsJson as Record<string, unknown>, actor, pending.entity), true));
+    record = await loadPersisted(def, record, actor);
   } catch (e) {
     return `I couldn't save the ${def.title}: ${e instanceof Error ? e.message : 'validation failed'}.`;
   }
   await prisma.aiPendingAction.update({ where: { id: pending.id }, data: { status: 'committed' } });
   const label = (record?.code as string) || (record?.name as string) || (record?.id as string) || '';
-  const fields = previewFields(record ?? {});
+  const fields = await labelledPreview(previewFields(record ?? {}), actor);
   const lines = Object.entries(fields).map(([k, v]) => `- ${k}: ${v}`).join('\n');
   return `Done — I've created the ${def.title}${label ? ` (${label})` : ''}.\n${lines}`;
 }
@@ -806,17 +851,17 @@ const FIELD_ORDER: Record<string, string[]> = {
   project: ['name', 'clientId', 'location', 'budget', 'startDate', 'endDate', 'managerId'],
   client: ['name', 'clientType', 'contactName', 'email', 'phone', 'address'],
   risk: ['projectId', 'title', 'probability', 'impact', 'category', 'owner', 'mitigation'],
-  ncr: ['projectId', 'description', 'severity', 'rootCause', 'responsiblePerson', 'dueDate'],
-  cost_entry: ['projectId', 'description', 'amount', 'category', 'date'],
+  ncr: ['projectId', 'wbsCode', 'description', 'severity', 'rootCause', 'responsiblePerson', 'dueDate'],
+  cost_entry: ['projectId', 'wbsCode', 'description', 'amount', 'category', 'date'],
   material: ['name', 'category', 'unit', 'reorderLevel', 'unitCost', 'supplierId'],
-  stock_movement: ['materialId', 'type', 'quantity', 'unitCost', 'projectId', 'reference', 'note', 'date'],
+  stock_movement: ['materialId', 'type', 'quantity', 'unitCost', 'projectId', 'wbsCode', 'reference', 'note', 'date'],
   material_requirement: ['projectId', 'materialId', 'plannedQuantity', 'requiredByDate', 'supplierId', 'leadTimeDays', 'note'],
   supplier: ['name', 'category', 'contactName', 'email', 'phone', 'tinNumber', 'paymentTerms', 'leadTimeDays'],
   wbs_item: ['projectId', 'code', 'name', 'parentId', 'unit', 'quantity', 'budgetAmount', 'description'],
-  boq_item: ['projectId', 'code', 'description', 'quantity', 'rate', 'unit', 'category', 'wbsCode', 'markupPct', 'contingencyPct'],
-  schedule_activity: ['projectId', 'code', 'name', 'durationDays', 'wbsCode', 'startDate', 'predecessors', 'milestone'],
-  production_entry: ['projectId', 'wbsActivity', 'plannedQty', 'actualQty', 'date', 'wbsCode', 'laborHours', 'equipmentHours', 'remarks'],
-  equipment_usage: ['projectId', 'equipmentId', 'wbsCode', 'hoursUsed', 'date', 'note'],
+  boq_item: ['projectId', 'wbsCode', 'code', 'description', 'quantity', 'rate', 'unit', 'category', 'markupPct', 'contingencyPct'],
+  schedule_activity: ['projectId', 'wbsCode', 'code', 'name', 'durationDays', 'startDate', 'predecessors', 'milestone'],
+  production_entry: ['projectId', 'wbsCode', 'wbsActivity', 'plannedQty', 'actualQty', 'date', 'laborHours', 'equipmentHours', 'remarks'],
+  equipment_usage: ['projectId', 'wbsCode', 'equipmentId', 'hoursUsed', 'date', 'note'],
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -835,13 +880,14 @@ const FIELD_LABELS: Record<string, string> = {
   plannedQty: 'Planned quantity', actualQty: 'Actual quantity', equipmentId: 'Equipment', hoursUsed: 'Hours used', rate: 'Unit rate',
 };
 
-type RefModel = 'client' | 'project' | 'user' | 'material' | 'supplier';
+type RefModel = 'client' | 'project' | 'user' | 'material' | 'supplier' | 'equipment';
 const REFERENCES: Record<string, { model: RefModel; allowAdd: boolean; addLabel?: string }> = {
   clientId: { model: 'client', allowAdd: true, addLabel: 'Add a new client' },
   projectId: { model: 'project', allowAdd: true, addLabel: 'Add a new project' },
   managerId: { model: 'user', allowAdd: false },
   materialId: { model: 'material', allowAdd: true, addLabel: 'Add a new material' },
   supplierId: { model: 'supplier', allowAdd: true, addLabel: 'Add a new supplier' },
+  equipmentId: { model: 'equipment', allowAdd: false },
 };
 
 const DATE_FIELDS_G = new Set(['startDate', 'endDate', 'dueDate', 'date', 'requiredByDate']);
@@ -869,17 +915,31 @@ async function referenceOptions(model: RefModel, orgId: string): Promise<FieldOp
     const rows = await prisma.supplier.findMany({ where: { organizationId: orgId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
     return rows.map((r) => ({ value: r.id, label: r.name }));
   }
+  if (model === 'equipment') {
+    const rows = await prisma.equipment.findMany({ where: { organizationId: orgId }, select: { id: true, code: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
+    return rows.map((r) => ({ value: r.id, label: `${r.code} — ${r.name}` }));
+  }
   const rows = await prisma.user.findMany({ where: { organizationId: orgId, isActive: true }, select: { id: true, fullName: true, email: true }, orderBy: { fullName: 'asc' }, take: 200 });
   return rows.map((r) => ({ value: r.id, label: r.fullName || r.email }));
 }
 
-async function buildFieldSpec(entity: string, field: string, actor: Actor): Promise<FieldSpec> {
+async function wbsOptions(projectId: string, actor: Actor, by: 'code' | 'id'): Promise<FieldOption[]> {
+  const rows = await prisma.wbsItem.findMany({ where: { organizationId: actor.orgId, projectId }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' }, take: 500 });
+  return rows.map((r) => ({ value: by === 'code' ? r.code : r.id, label: `${r.code} — ${r.name}` }));
+}
+
+async function buildFieldSpec(entity: string, field: string, actor: Actor, values: Record<string, unknown> = {}): Promise<FieldSpec> {
   const def = DEFS[entity];
   const props = (def.parameters.properties ?? {}) as Record<string, { type?: string; enum?: string[] }>;
   const prop = props[field] ?? {};
   const required = (((def.parameters.required as string[]) ?? [])).includes(field);
   const label = FIELD_LABELS[field] ?? field;
   const ref = REFERENCES[field];
+  const pid = typeof values.projectId === 'string' ? values.projectId : '';
+  if ((field === 'wbsCode' || field === 'parentId') && pid) {
+    const options = await wbsOptions(pid, actor, field === 'wbsCode' ? 'code' : 'id');
+    if (options.length || field === 'wbsCode') return { entity, name: field, label, type: 'select', required, options };
+  }
   if (ref) {
     return { entity, name: field, label, type: 'select', required, options: await referenceOptions(ref.model, actor.orgId), allowAdd: ref.allowAdd, addLabel: ref.addLabel };
   }
@@ -924,17 +984,28 @@ function activeSession(conversationId: string, userId: string, statuses: string[
 async function withWbsItem(values: Record<string, unknown>, actor: Actor, entity: string): Promise<Record<string, unknown>> {
   if (!('wbsCode' in values)) return values;
   const { wbsCode, ...rest } = values;
+  if (wbsCode === undefined || wbsCode === null || wbsCode === '') return rest;
+  if (!rest.projectId) throw new Error('Pick a project before choosing a WBS code.');
   const item = await prisma.wbsItem.findFirst({
     where: { organizationId: actor.orgId, projectId: String(rest.projectId ?? ''), code: String(wbsCode) },
     select: { id: true },
   });
   if (!item) throw new Error(`No WBS item with code "${wbsCode}" in that project.`);
-  return entity === 'production_entry' ? rest : { ...rest, wbsItemId: item.id };
+  return { ...rest, wbsItemId: item.id };
 }
 
 async function advanceSession(sessionId: string, entity: string, values: Record<string, unknown>, skipped: string[], actor: Actor, leadText?: string): Promise<GuidedResult> {
+  if (values.wbsCode && values.projectId) {
+    const known = await prisma.wbsItem.findFirst({ where: { organizationId: actor.orgId, projectId: String(values.projectId), code: String(values.wbsCode) }, select: { id: true } });
+    if (!known) {
+      const bad = String(values.wbsCode);
+      delete values.wbsCode;
+      await prisma.aiPendingAction.update({ where: { id: sessionId }, data: { argsJson: toJson(values) } });
+      return { text: leadText, field: await buildFieldSpec(entity, 'wbsCode', actor, values), error: `There is no WBS item "${bad}" in that project — pick one from the list (or create the WBS item first).`, sessionActive: true };
+    }
+  }
   const nf = nextFieldName(entity, values, skipped);
-  if (nf) return { text: leadText, field: await buildFieldSpec(entity, nf, actor), sessionActive: true };
+  if (nf) return { text: leadText, field: await buildFieldSpec(entity, nf, actor, values), sessionActive: true };
   // All fields gathered → build a preview (dry-run through the real pipeline).
   let data: Record<string, unknown>;
   try {
@@ -943,7 +1014,7 @@ async function advanceSession(sessionId: string, entity: string, values: Record<
     return { text: leadText, error: e instanceof Error ? e.message : 'Some details are invalid.', sessionActive: true };
   }
   await prisma.aiPendingAction.update({ where: { id: sessionId }, data: { status: 'pending', previewJson: toJson(data) } });
-  return { text: leadText, preview: { entity, title: DEFS[entity].title, fields: previewFields(data) }, sessionActive: true };
+  return { text: leadText, preview: { entity, title: DEFS[entity].title, fields: await labelledPreview(previewFields(data), actor) }, sessionActive: true };
 }
 
 export async function startCreateSession(entity: string, rawValues: Record<string, unknown>, actor: Actor, conversationId: string): Promise<GuidedResult> {
@@ -957,6 +1028,20 @@ export async function startCreateSession(entity: string, rawValues: Record<strin
   for (const [k, v] of Object.entries(coerced)) {
     if (allowed.has(k) && v !== undefined && v !== null && v !== '') values[k] = v;
   }
+  // The model often passes a name/code where an id is needed — resolve it
+  // deterministically (org-scoped, unique match only); otherwise drop it so the
+  // widget asks the user to pick from the list.
+  const resolveRef = async (field: 'projectId' | 'equipmentId' | 'materialId') => {
+    const raw = values[field];
+    if (typeof raw !== 'string') return;
+    const model = field === 'projectId' ? prisma.project : field === 'equipmentId' ? prisma.equipment : prisma.material;
+    const rows: { id: string }[] = await (model as any).findMany({
+      where: { organizationId: actor.orgId, OR: [{ id: raw }, { code: { equals: raw, mode: 'insensitive' } }, { name: { equals: raw, mode: 'insensitive' } }] },
+      select: { id: true }, take: 2,
+    });
+    if (rows.length === 1) values[field] = rows[0].id; else delete values[field];
+  };
+  for (const f of ['projectId', 'equipmentId', 'materialId'] as const) await resolveRef(f);
   const session = await prisma.aiPendingAction.create({
     data: {
       conversationId, organizationId: actor.orgId, userId: actor.id,
@@ -1008,21 +1093,21 @@ export async function answerCreateField(
   const required = (((def.parameters.required as string[]) ?? [])).includes(fieldName);
 
   if (action === 'skip') {
-    if (required) return { field: await buildFieldSpec(entity, fieldName, actor), error: `${FIELD_LABELS[fieldName] ?? fieldName} is required — please provide it.`, sessionActive: true };
+    if (required) return { field: await buildFieldSpec(entity, fieldName, actor, values), error: `${FIELD_LABELS[fieldName] ?? fieldName} is required — please provide it.`, sessionActive: true };
     if (!skipped.includes(fieldName)) skipped.push(fieldName);
   } else if (action === 'addNew') {
     const ref = REFERENCES[fieldName];
     if (ref) {
       const created = await createReference(ref.model, String(value ?? ''), actor);
-      if (created.error) return { field: await buildFieldSpec(entity, fieldName, actor), error: created.error, sessionActive: true };
+      if (created.error) return { field: await buildFieldSpec(entity, fieldName, actor, values), error: created.error, sessionActive: true };
       values[fieldName] = created.id;
     } else if (CREATABLE_ENUM_FIELDS.has(`${entity}.${fieldName}`)) {
       // Creatable select: keep the free-typed value as-is (mirrors the form's creatable category).
       const custom = String(value ?? '').trim();
-      if (!custom) return { field: await buildFieldSpec(entity, fieldName, actor), error: `Please enter a ${(FIELD_LABELS[fieldName] ?? fieldName).toLowerCase()}.`, sessionActive: true };
+      if (!custom) return { field: await buildFieldSpec(entity, fieldName, actor, values), error: `Please enter a ${(FIELD_LABELS[fieldName] ?? fieldName).toLowerCase()}.`, sessionActive: true };
       values[fieldName] = coerceArgTypes(normalizeDates({ [fieldName]: custom }), def.parameters)[fieldName];
     } else {
-      return { field: await buildFieldSpec(entity, fieldName, actor), error: `You can't add a new value for this field.`, sessionActive: true };
+      return { field: await buildFieldSpec(entity, fieldName, actor, values), error: `You can't add a new value for this field.`, sessionActive: true };
     }
   } else {
     values[fieldName] = coerceArgTypes(normalizeDates({ [fieldName]: value }), def.parameters)[fieldName];
@@ -1039,11 +1124,12 @@ export async function commitCreateSession(conversationId: string, actor: Actor):
   let record: Record<string, unknown> | undefined;
   try {
     ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(session.argsJson as Record<string, unknown>, actor, session.entity), true));
+    record = await loadPersisted(def, record, actor);
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Create failed.', sessionActive: true };
   }
   await prisma.aiPendingAction.update({ where: { id: session.id }, data: { status: 'committed' } });
-  return { created: { entity: session.entity, id: String(record?.id), fields: previewFields(record ?? {}) }, done: true };
+  return { created: { entity: session.entity, id: String(record?.id), fields: await labelledPreview(previewFields(record ?? {}), actor) }, done: true };
 }
 
 export async function cancelCreateSession(conversationId: string, actor: Actor): Promise<GuidedResult> {

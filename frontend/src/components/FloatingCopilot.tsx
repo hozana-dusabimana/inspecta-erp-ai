@@ -42,7 +42,7 @@ export default function FloatingCopilot() {
             transition={{ duration: 0.2 }}
             role="dialog"
             aria-label="Inspecta AI Copilot"
-            className="fixed z-[55] top-0 right-0 h-dvh w-full sm:w-[440px] overflow-hidden border-l border-brand-outline-variant/30 shadow-2xl bg-brand-surface"
+            className="fixed z-[55] top-0 bottom-0 right-0 w-full sm:w-[440px] max-w-full overflow-hidden border-l border-brand-outline-variant/30 shadow-2xl bg-brand-surface-container-low flex flex-col"
           >
             <CopilotWorkspace
               variant="panel"

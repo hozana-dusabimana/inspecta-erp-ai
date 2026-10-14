@@ -448,7 +448,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   };
 
   return (
-    <div className={panel ? "bg-brand-surface text-brand-on-surface font-sans flex flex-col h-full overflow-hidden" : "min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden"} id={panel ? "copilot-panel-root" : "copilot-workspace-root"}>
+    <div className={panel ? "bg-brand-surface-container-low text-brand-on-surface font-sans flex flex-col flex-1 min-h-0 h-full overflow-hidden" : "min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden"} id={panel ? "copilot-panel-root" : "copilot-workspace-root"}>
       {/* Top Header */}
       <header className={`${panel ? 'h-12 px-3' : 'h-16 px-6'} w-full bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center border-b border-brand-outline-variant/10 shadow-sm shrink-0`}>
         <div className="flex items-center gap-3">
@@ -525,7 +525,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       </header>
 
       {/* Messages Canvas Log Area */}
-      <main className={`flex-1 overflow-y-auto custom-scrollbar space-y-6 bg-slate-50/50 ${panel ? 'px-3 py-4' : 'px-6 py-6'}`}>
+      <main className={`flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-6 bg-brand-surface-container-low ${panel ? 'px-3 py-4' : 'px-6 py-6'}`}>
         <div className={`mx-auto space-y-6 ${panel ? '' : 'max-w-2xl'}`}>
           {chatHistory.map((msg, idx) => { const isLast = idx === chatHistory.length - 1; return (
             <motion.div
@@ -670,7 +670,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       </main>
 
       {/* Floating Prompt Suggestion Chips & Bottom Chat Input */}
-      <footer className={`bg-brand-surface-container-lowest border-t border-brand-outline-variant/10 shrink-0 ${panel ? 'p-2.5' : 'p-4'}`}>
+      <footer className={`bg-brand-surface-container-lowest border-t border-brand-outline-variant/30 shrink-0 ${panel ? 'p-2.5' : 'p-4'}`}>
         <div className={`mx-auto space-y-3 ${panel ? '' : 'max-w-2xl'}`}>
           
           {/* Quick chip triggers */}
@@ -742,7 +742,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                className="w-full h-11 bg-brand-surface border border-brand-outline-variant/30 rounded-xl px-4 pr-11 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/5 text-brand-on-surface"
+                className="w-full h-11 bg-brand-surface-container border border-brand-outline-variant/40 rounded-xl px-4 pr-11 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/5 text-brand-on-surface"
               />
               <button 
                 id="btn-copilot-send"

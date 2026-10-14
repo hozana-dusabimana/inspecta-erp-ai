@@ -235,7 +235,9 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       onAddMessage({
         id: Math.random().toString(),
         sender: 'assistant',
-        text: err instanceof Error
+        text: err instanceof Error && /inspect mode/i.test(err.message)
+          ? "The Copilot is switched off while you're inspecting another company's workspace (inspect mode is read-only). Exit inspect mode from the platform console to chat with the Copilot in your own workspace."
+          : err instanceof Error
           ? `I couldn't reach the analysis service: ${err.message}. Please ensure the backend is running and you are signed in.`
           : 'The Copilot service is currently unavailable.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

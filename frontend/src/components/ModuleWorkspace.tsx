@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
 import ResourceManager, { Column, Field, FilterDef, SummaryCardDef } from './ResourceManager';
+import ExcelImportBar, { ImporterDef } from './ExcelImport';
 
 export interface TabDef {
   key: string;
@@ -24,6 +25,8 @@ export interface TabDef {
   summaryCards?: SummaryCardDef[];
   /** Enable per-record document attachments on the edit form (project_documents module key, e.g. 'ncr'). */
   attachModule?: string;
+  /** Excel import for this tab (template download + upload + row-level result). */
+  importer?: ImporterDef;
   /** Optional custom renderer; when set it replaces the generic ResourceManager. */
   component?: React.ComponentType<{ projectId?: string; canWrite: boolean }>;
 }
@@ -112,6 +115,10 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               canWrite={hasPermission(current.writePerm)}
             />
           ) : (
+            <>
+            {current.importer && hasPermission(current.writePerm) && (
+              <ExcelImportBar def={current.importer} projectId={projectId || undefined} projectScoped={current.projectScoped} />
+            )}
             <ResourceManager
               endpoint={current.endpoint}
               entityLabel={current.entityLabel}
@@ -126,6 +133,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               summaryCards={current.summaryCards}
               attachModule={current.attachModule}
             />
+            </>
           )}
         </React.Fragment>
       )}

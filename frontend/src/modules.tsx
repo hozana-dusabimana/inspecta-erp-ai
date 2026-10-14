@@ -5,6 +5,7 @@ import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
+import ScheduleBaselines from './components/ScheduleBaselines';
 import WbsTree from './components/WbsTree';
 import DocumentRegister from './components/DocumentRegister';
 import BoqVersions from './components/BoqVersions';
@@ -302,62 +303,6 @@ function ProcurementPanel() {
   );
 }
 
-// WBS/BOQ Excel import & export for the selected project.
-function PlanningIO({ projectId }: { projectId?: string }) {
-  const qc = useQueryClient();
-  const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  if (!projectId) {
-    return (
-      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 mb-2 text-xs text-brand-on-surface-variant">
-        Select a project above to import/export WBS & BOQ from Excel.
-      </div>
-    );
-  }
-
-  const doExport = (kind: 'wbs' | 'boq') =>
-    api.download(`/planning/io/${kind}/export.xlsx?projectId=${projectId}`, `${kind}.xlsx`);
-
-  const doImport = async (kind: 'wbs' | 'boq', file: File) => {
-    setBusy(true); setMsg(null);
-    try {
-      const res = await api.upload<{ created: number; skipped: number; errors: string[] }>(`/planning/io/${kind}/import?projectId=${projectId}`, file);
-      const d = res.data;
-      setMsg(`${kind.toUpperCase()}: imported ${d.created}${d.skipped ? `, skipped ${d.skipped}` : ''}.${d.errors?.length ? ' ' + d.errors[0] : ''}`);
-      qc.invalidateQueries({ queryKey: [`/planning/${kind}`] });
-    } catch (e) {
-      setMsg(`Import failed: ${e instanceof Error ? e.message : 'error'}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const Row = ({ kind, label }: { kind: 'wbs' | 'boq'; label: string }) => (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs font-bold text-brand-primary w-10">{label}</span>
-      <button onClick={() => doExport(kind)} className="px-3 py-1.5 rounded-md bg-brand-primary/5 text-brand-primary border border-brand-primary/10 text-[11px] font-bold hover:bg-brand-primary/10">Export .xlsx</button>
-      <label className={`px-3 py-1.5 rounded-md bg-brand-primary text-white text-[11px] font-bold cursor-pointer hover:bg-brand-primary-container ${busy ? 'opacity-50' : ''}`}>
-        Import .xlsx
-        <input type="file" accept=".xlsx" className="hidden" disabled={busy}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) doImport(kind, f); e.target.value = ''; }} />
-      </label>
-    </div>
-  );
-
-  return (
-    <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 mb-2 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-brand-primary text-sm">Excel Import / Export</h3>
-        {msg && <span className="text-[11px] font-semibold text-brand-on-surface-variant">{msg}</span>}
-      </div>
-      <Row kind="wbs" label="WBS" />
-      <Row kind="boq" label="BOQ" />
-      <p className="text-[10px] text-brand-on-surface-variant">Tip: export to get the exact column template, fill rows, then import.</p>
-    </div>
-  );
-}
-
 // KPI banners shown above the tabs (consistent with Finance/Inventory).
 function PosSummary() {
   const { data } = useQuery({ queryKey: ['/pos/summary'], queryFn: () => api.get<any>('/pos/summary') });
@@ -392,10 +337,10 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.PLANNING,
     title: 'Planning & Resources',
     subtitle: 'Project setup, WBS, BOQ & resource baseline (Module 1)',
-    summary: (pid) => <PlanningIO projectId={pid} />,
     tabs: [
       {
         key: 'projects', label: 'Project Setup', endpoint: '/projects', entityLabel: 'Project', attachModule: 'project',
+        importer: { label: 'projects', path: '/projects/import', templatePath: '/projects/template.xlsx', hint: 'One row per project. Link a client by name (import Clients first) and a manager by email. Codes are generated when left blank; projects that already exist are skipped.' },
         filters: [{ field: 'status', label: 'Status', options: opt(['PLANNING', 'ACTIVE', 'ON_HOLD', 'AT_RISK', 'COMPLETED', 'CANCELLED']) }],
         readPerm: 'project:read', writePerm: 'project:write',
         columns: [
@@ -410,6 +355,7 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'clients', label: 'Clients', endpoint: '/clients', entityLabel: 'Client', attachModule: 'client',
+        importer: { label: 'clients', path: '/clients/import', templatePath: '/clients/template.xlsx', hint: 'One row per client. Clients with a name already on file are skipped.' },
         readPerm: 'client:read', writePerm: 'client:write',
         columns: [
           { key: 'name', label: 'Name', sortable: true }, { key: 'contactName', label: 'Contact' },
@@ -450,6 +396,7 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'wbs', label: 'WBS', endpoint: '/planning/wbs', entityLabel: 'WBS Item', attachModule: 'wbs',
+        importer: { label: 'WBS', path: '/planning/io/wbs/import', templatePath: '/planning/io/wbs/template.xlsx', exportPath: '/planning/io/wbs/export.xlsx', hint: 'Nesting comes from parentCode, or from dotted codes (1.1 sits under 1). Existing codes are skipped, so re-importing is safe.' },
         projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Activity' },
@@ -477,6 +424,7 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'boq', label: 'BOQ', endpoint: '/planning/boq', entityLabel: 'BOQ Item', attachModule: 'boq',
+        importer: { label: 'BOQ', path: '/planning/io/boq/import', templatePath: '/planning/io/boq/template.xlsx', exportPath: '/planning/io/boq/export.xlsx', hint: 'Link each line to a WBS item with wbsCode (import the WBS first). Amount and budget are computed from quantity × rate, markup and contingency.' },
         projectScoped: true, readPerm: 'planning:read', writePerm: 'planning:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'category', label: 'Category' },
@@ -506,6 +454,7 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'productivity', label: 'Productivity', endpoint: '/planning/productivity', entityLabel: 'Productivity Standard',
+        importer: { label: 'productivity rates', path: '/planning/io/productivity/import', templatePath: '/planning/io/productivity/template.xlsx', hint: 'One rate per activity + unit (units per crew-day). A row for an existing activity + unit updates its rate.' },
         readPerm: 'productivity:read', writePerm: 'productivity:write',
         columns: [
           { key: 'activity', label: 'Activity' }, { key: 'unit', label: 'Unit' },
@@ -1613,6 +1562,7 @@ export const MODULES: Record<string, ModuleDef> = {
     tabs: [
       {
         key: 'activities', label: 'Activities', endpoint: '/scheduling', entityLabel: 'Activity', attachModule: 'activity',
+        importer: { label: 'activities', path: '/scheduling/import', templatePath: '/scheduling/template.xlsx', hint: 'Link activities to the WBS with wbsCode (import the WBS first). Finish dates are computed from start + duration; then import Dependencies for typed links and lags.' },
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
@@ -1636,6 +1586,7 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'dependencies', label: 'Dependencies', endpoint: '/scheduling/dependencies', entityLabel: 'Dependency',
+        importer: { label: 'dependencies', path: '/scheduling/dependencies/import', templatePath: '/scheduling/dependencies/template.xlsx', hint: 'Import activities first. Links that duplicate an existing one, or would make the schedule circular, are skipped and listed.' },
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         columns: [
           { key: 'activity', label: 'Activity', render: (r) => r.activity ? `${r.activity.code} — ${r.activity.name}` : '—' },
@@ -1654,6 +1605,11 @@ export const MODULES: Record<string, ModuleDef> = {
           ] },
           { name: 'lagDays', label: 'Lag (days)', type: 'number' },
         ],
+      },
+      {
+        key: 'baselines', label: 'Baselines', endpoint: '/scheduling/baselines', entityLabel: 'Baseline',
+        projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
+        component: ScheduleBaselines, columns: [], fields: [],
       },
     ],
   },

@@ -5,6 +5,7 @@ import { asyncHandler, ok, paginated } from '../../lib/http';
 import { NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
+import { xlsxRaw, rowsFromXlsx, sendTemplate, str, ImportReport, auditImport } from '../../lib/xlsx-import';
 
 const router = Router();
 router.use(authenticate);
@@ -47,6 +48,62 @@ router.get(
     ]);
 
     return paginated(res, data, { page, pageSize, total });
+  }),
+);
+
+// Excel template + import. Registered before `/:id` so these paths are not read as an id.
+router.get(
+  '/template.xlsx',
+  requirePermission('client:write'),
+  asyncHandler(async (_req, res) => {
+    await sendTemplate(res, 'Clients', [
+      { header: 'name', example: 'Kigali Heights Ltd', note: 'Required, at least 2 characters. Clients already on file with the same name are skipped.' },
+      { header: 'clientType', example: 'private', note: 'Optional: private, government or individual.' },
+      { header: 'contactName', example: 'Jean Mugisha', note: 'Optional.' },
+      { header: 'email', example: 'jean@example.com', note: 'Optional, must be a valid email.' },
+      { header: 'phone', example: '+250 788 000 000', note: 'Optional.' },
+      { header: 'address', example: 'KG 7 Ave, Kigali', note: 'Optional.' },
+      { header: 'taxNumber', example: '123456789', note: 'Optional TIN.' },
+    ], 'clients-template.xlsx');
+  }),
+);
+
+router.post(
+  '/import',
+  requirePermission('client:write'),
+  xlsxRaw,
+  asyncHandler(async (req, res) => {
+    const orgId = req.user!.orgId;
+    const rows = await rowsFromXlsx(req.body as Buffer);
+    const existing = await prisma.client.findMany({ where: { organizationId: orgId }, select: { name: true } });
+    const known = new Set(existing.map((c) => c.name.trim().toLowerCase()));
+    const report = new ImportReport();
+    const data: Record<string, unknown>[] = [];
+    for (const { rowNo, cells: r } of rows) {
+      const parsed = upsertSchema.safeParse({
+        name: str(r.name),
+        clientType: str(r.clienttype).toLowerCase() || undefined,
+        contactName: str(r.contactname) || undefined,
+        email: str(r.email) || undefined,
+        phone: str(r.phone) || undefined,
+        address: str(r.address) || undefined,
+        taxNumber: str(r.taxnumber) || undefined,
+      });
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        report.fail(rowNo, `${issue.path.join('.') || 'row'}: ${issue.message}`);
+        continue;
+      }
+      const key = parsed.data.name.trim().toLowerCase();
+      if (known.has(key)) { report.exists(rowNo, `client "${parsed.data.name}" already exists`); continue; }
+      known.add(key);
+      data.push({ ...parsed.data, name: parsed.data.name.trim(), email: parsed.data.email || null, organizationId: orgId });
+    }
+    if (data.length) await prisma.client.createMany({ data: data as never });
+    report.created = data.length;
+    const outcome = report.outcome();
+    await auditImport(req, 'client', outcome);
+    return ok(res, outcome, 201);
   }),
 );
 

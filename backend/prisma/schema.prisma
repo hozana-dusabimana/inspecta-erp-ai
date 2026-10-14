@@ -622,6 +622,7 @@ model Project {
   documents         Document[]
   projectDocuments  ProjectDocument[]
   scheduleActivities ScheduleActivity[]
+  scheduleBaselines  ScheduleBaseline[]
   siteDiaries        SiteDiary[]
   fieldTasks         FieldTask[]
   attendances        Attendance[]
@@ -1349,6 +1350,48 @@ model ScheduleDependency {
   @@index([organizationId])
   @@index([projectId])
   @@map("schedule_dependencies")
+}
+
+// Frozen copy of a project's schedule (activity dates + durations) so later
+// progress/slippage can be measured against the plan. Created from the live
+// schedule (SNAPSHOT) or imported from Excel/P6/MSP (IMPORT).
+model ScheduleBaseline {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  versionNo      Int
+  name           String
+  note           String?
+  source         String   @default("SNAPSHOT")
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project    Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activities ScheduleBaselineActivity[]
+
+  @@unique([projectId, versionNo])
+  @@index([organizationId])
+  @@index([projectId])
+  @@map("schedule_baselines")
+}
+
+model ScheduleBaselineActivity {
+  id           String    @id @default(cuid())
+  baselineId   String
+  activityCode String
+  activityName String
+  wbsCode      String?
+  durationDays Int       @default(1)
+  startDate    DateTime?
+  finishDate   DateTime?
+  milestone    Boolean   @default(false)
+
+  baseline ScheduleBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+
+  @@index([baselineId])
+  @@map("schedule_baseline_activities")
 }
 
 // ──────────────────── M16 — Field Operations ─────────────────

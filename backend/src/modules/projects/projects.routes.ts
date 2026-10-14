@@ -7,6 +7,7 @@ import { NotFound, BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { assertProjectQuotaAvailable } from '../platform/plans';
+import { xlsxRaw, rowsFromXlsx, sendTemplate, str, numOrU, dateOrU, hasValue, ImportReport, auditImport } from '../../lib/xlsx-import';
 
 const router = Router();
 router.use(authenticate);
@@ -132,6 +133,110 @@ router.get(
     ]);
 
     return paginated(res, data, { page, pageSize, total });
+  }),
+);
+
+// Excel template + import. Registered before `/:id` so these paths are not read as an id.
+router.get(
+  '/template.xlsx',
+  requirePermission('project:write'),
+  asyncHandler(async (_req, res) => {
+    await sendTemplate(res, 'Projects', [
+      { header: 'name', example: 'Kigali Heights Tower', note: 'Required, at least 2 characters.' },
+      { header: 'code', example: '', note: 'Optional. Auto-generated (PRJ-0001, …) when blank. A code that already exists is skipped.' },
+      { header: 'clientName', example: 'Kigali Heights Ltd', note: 'Optional. Must match a client already on file (import Clients first).' },
+      { header: 'location', example: 'Rwanda, Kigali, Gasabo', note: 'Optional free text.' },
+      { header: 'projectType', example: 'Building', note: 'Optional.' },
+      { header: 'category', example: 'Commercial', note: 'Optional.' },
+      { header: 'status', example: 'PLANNING', note: 'Optional: PLANNING, ACTIVE, ON_HOLD, AT_RISK, COMPLETED or CANCELLED. Default PLANNING.' },
+      { header: 'budget', example: 250000000, note: 'Optional contract value ≥ 0.' },
+      { header: 'currency', example: 'RWF', note: 'Optional 3-letter ISO code. Default RWF.' },
+      { header: 'startDate', example: '2026-01-05', note: 'Optional Excel date or YYYY-MM-DD.' },
+      { header: 'endDate', example: '2027-06-30', note: 'Optional; not before startDate.' },
+      { header: 'plannedProfitMargin', example: 12, note: 'Optional 0–100.' },
+      { header: 'managerEmail', example: 'pm@company.com', note: 'Optional. Must be an existing user of your company.' },
+      { header: 'description', example: '', note: 'Optional.' },
+    ], 'projects-template.xlsx', 'Your plan’s project limit applies: rows beyond the limit are rejected.');
+  }),
+);
+
+router.post(
+  '/import',
+  requirePermission('project:write'),
+  xlsxRaw,
+  asyncHandler(async (req, res) => {
+    const orgId = req.user!.orgId;
+    const rows = await rowsFromXlsx(req.body as Buffer);
+    const [org, projects, clients, users] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId }, select: { maxProjects: true } }),
+      prisma.project.findMany({ where: { organizationId: orgId }, select: { code: true, name: true } }),
+      prisma.client.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
+      prisma.user.findMany({ where: { organizationId: orgId }, select: { id: true, email: true } }),
+    ]);
+    const codes = new Set(projects.map((p) => p.code.toLowerCase()));
+    const names = new Set(projects.map((p) => p.name.trim().toLowerCase()));
+    const clientsByName = new Map<string, string[]>();
+    for (const c of clients) { const k = c.name.trim().toLowerCase(); clientsByName.set(k, [...(clientsByName.get(k) ?? []), c.id]); }
+    const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
+    let room = org?.maxProjects == null ? Infinity : Math.max(0, org.maxProjects - projects.length);
+    let seq = projects.length + 1;
+    const nextCode = () => {
+      for (;;) { const c = `PRJ-${String(seq++).padStart(4, '0')}`; if (!codes.has(c.toLowerCase())) return c; }
+    };
+
+    const report = new ImportReport();
+    const data: Record<string, unknown>[] = [];
+    for (const { rowNo, cells: r } of rows) {
+      const name = str(r.name);
+      if (name.length < 2) { report.fail(rowNo, 'name is required (at least 2 characters)'); continue; }
+      const givenCode = str(r.code);
+      if (givenCode) {
+        if (givenCode.length < 2) { report.fail(rowNo, 'code must be at least 2 characters'); continue; }
+        if (codes.has(givenCode.toLowerCase())) { report.exists(rowNo, `project code "${givenCode}" already exists`); continue; }
+      } else if (names.has(name.toLowerCase())) {
+        report.exists(rowNo, `project "${name}" already exists`); continue;
+      }
+      const statusRaw = str(r.status).toUpperCase().replace(/[\s-]+/g, '_');
+      if (statusRaw && !(statusRaw in ProjectStatus)) { report.fail(rowNo, `status "${str(r.status)}" is not one of ${Object.keys(ProjectStatus).join(', ')}`); continue; }
+      const budget = hasValue(r.budget) ? numOrU(r.budget) : 0;
+      if (budget === undefined || budget < 0) { report.fail(rowNo, 'budget must be a number ≥ 0'); continue; }
+      const currency = str(r.currency).toUpperCase();
+      if (currency && !/^[A-Z]{3}$/.test(currency)) { report.fail(rowNo, 'currency must be a 3-letter code such as RWF'); continue; }
+      const margin = numOrU(r.plannedprofitmargin);
+      if (hasValue(r.plannedprofitmargin) && (margin === undefined || margin < 0 || margin > 100)) { report.fail(rowNo, 'plannedProfitMargin must be between 0 and 100'); continue; }
+      const start = dateOrU(r.startdate); const end = dateOrU(r.enddate);
+      if (start === null || end === null) { report.fail(rowNo, 'startDate/endDate is not a valid date'); continue; }
+      if (start && end && end < start) { report.fail(rowNo, 'endDate is before startDate'); continue; }
+      let clientId: string | undefined;
+      if (hasValue(r.clientname)) {
+        const matches = clientsByName.get(str(r.clientname).toLowerCase()) ?? [];
+        if (matches.length === 0) { report.fail(rowNo, `client "${str(r.clientname)}" not found (import or add the client first)`); continue; }
+        if (matches.length > 1) { report.fail(rowNo, `several clients are named "${str(r.clientname)}" — rename one so the match is unambiguous`); continue; }
+        clientId = matches[0];
+      }
+      let managerId: string | undefined;
+      if (hasValue(r.manageremail)) {
+        managerId = userByEmail.get(str(r.manageremail).toLowerCase());
+        if (!managerId) { report.fail(rowNo, `no user with email "${str(r.manageremail)}" in your company`); continue; }
+      }
+      if (room <= 0) { report.fail(rowNo, 'project limit of your plan reached — contact your administrator to upgrade'); continue; }
+      room--;
+      const code = givenCode || nextCode();
+      codes.add(code.toLowerCase());
+      names.add(name.toLowerCase());
+      data.push({
+        organizationId: orgId, code, name, clientId, managerId,
+        description: str(r.description) || undefined, location: str(r.location) || undefined,
+        projectType: str(r.projecttype) || undefined, category: str(r.category) || undefined,
+        status: statusRaw ? (statusRaw as ProjectStatus) : undefined, budget, currency: currency || undefined,
+        plannedProfitMargin: margin, startDate: start ?? undefined, endDate: end ?? undefined,
+      });
+    }
+    if (data.length) await prisma.project.createMany({ data: data as never });
+    report.created = data.length;
+    const outcome = report.outcome();
+    await auditImport(req, 'project', outcome);
+    return ok(res, outcome, 201);
   }),
 );
 

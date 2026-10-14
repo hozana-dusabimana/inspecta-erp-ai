@@ -13,7 +13,11 @@ isolation throughout. Mark each: ✅ pass / ❌ fail (+ note) / ⏭ N/A.
 ## 1. Planning & Resources
 - [ ] Create a project; it appears in the dashboard with correct status/health.
 - [ ] Build a WBS tree (drag to reparent / to root); structure persists on reload.
-- [ ] Import a BOQ (Excel); totals match the file.
+- [ ] Import a BOQ (Excel); totals match the file; lines link to their WBS item.
+- [ ] Download each Excel template (Clients, Projects, WBS, BOQ, Activities, Dependencies, Baseline, Productivity), fill it, import; bad rows are listed with row numbers and re-importing adds nothing twice.
+- [ ] Import dependencies that would form a loop — they are rejected, the schedule still computes.
+- [ ] Take a schedule baseline, move an activity, compare: the slipped activity shows its finish variance.
+- [ ] Ask the Copilot to create a client, a dependency, a baseline and a productivity rate — each shows a preview and saves only after confirming.
 - [ ] Create a BOQ version snapshot; compare two versions shows correct Δ cost / added / removed lines.
 - [ ] Add equipment, crews, trades, materials, suppliers; all list/edit/delete correctly.
 - [ ] Build a schedule with dependencies; CPM/critical path displays.

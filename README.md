@@ -356,6 +356,32 @@ With no key configured, the Copilot still answers from real data deterministical
 
 ---
 
+## Fast data entry: Excel import & Copilot
+
+The whole setup chain can be loaded two ways — pick whichever is quicker.
+
+**1. Excel import** — each tab below has an *Import … from Excel* bar with a **Template** download
+(header row, an example row and a *Notes* sheet). Rows that already exist are skipped, so
+re-importing a file is safe; bad rows are skipped and listed with their sheet row number.
+
+| Tab | Endpoint | Notes |
+|---|---|---|
+| Clients | `POST /clients/import` | skips names already on file |
+| Projects | `POST /projects/import` | links client by name, manager by email; honours the plan's project limit |
+| WBS | `POST /planning/io/wbs/import?projectId=` | tree from `parentCode` or dotted codes (`1.1` under `1`) |
+| BOQ | `POST /planning/io/boq/import?projectId=` | `wbsCode` links each line to the WBS |
+| Productivity rates | `POST /planning/io/productivity/import` | activity + unit already present → rate is updated |
+| Schedule activities | `POST /scheduling/import?projectId=` | `wbsCode`, start/duration → finish, predecessor codes |
+| Dependencies | `POST /scheduling/dependencies/import?projectId=` | FS/SS/FF/SF + lag; duplicates and circular links are skipped |
+| Schedule baseline | `POST /scheduling/baselines/import?projectId=` | planned dates by activity code (e.g. from P6/MS Project) |
+
+Templates: `GET …/template.xlsx` (or `…/import-template.xlsx` for baselines). Shared helpers: `backend/src/lib/xlsx-import.ts`.
+
+**2. AI Copilot** — just say what you want ("add a client", "link A20 after A10", "baseline the schedule").
+It collects the fields, shows a preview, and only saves after you confirm. Create-only (no edits).
+Entities: client, project, WBS item, BOQ line, schedule activity, **schedule dependency**, **schedule baseline**,
+**productivity baseline rate**, plus risks, NCRs, costs, materials, suppliers, production and equipment logs.
+
 ## Importing a dataset (BuildCore sample workbook)
 
 `backend/prisma/import-dataset.ts` (`npm run import:dataset`) loads the 27-sheet

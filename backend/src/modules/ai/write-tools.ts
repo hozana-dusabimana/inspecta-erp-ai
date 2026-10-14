@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { CrudOptions, runCreate } from '../../lib/crud';
-import { wbsCreate, boqCreate } from '../planning/planning.routes';
-import { activitySchema as activityCreate } from '../scheduling/scheduling.routes';
+import { wbsOpts, boqOpts, productivityOpts } from '../planning/planning.routes';
+import { activityOpts, activityValidator, dependencyOpts } from '../scheduling/scheduling.routes';
+import { baselineCrud } from '../scheduling/baselines';
+import { assertProjectQuotaAvailable } from '../platform/plans';
 import { createSchema as productionCreate } from '../production/production.routes';
 import { usageSchema as usageCreate } from '../equipment/equipment.routes';
 import { Permission, resolvePermissions } from '../../auth/permissions';
@@ -90,6 +92,8 @@ function coerceArgTypes(args: Record<string, unknown>, parameters: Record<string
       out[k] = Number(v);
     } else if (t === 'boolean' && typeof v === 'string') {
       out[k] = v === 'true';
+    } else if (t === 'array' && typeof v === 'string') {
+      out[k] = v.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
     } else if (allowed && typeof v === 'string') {
       const match = allowed.find((e) => norm(e) === norm(v));
       if (match) out[k] = match;
@@ -122,6 +126,8 @@ const projectCrud: CrudOptions = {
     { field: 'clientId', model: 'client' },
     { field: 'managerId', model: 'user' },
   ],
+  // Same plan limit the Projects screen enforces — the Copilot must not be a way around it.
+  validate: async (_data, req) => assertProjectQuotaAvailable(req.user!.orgId),
   transform: (d) => {
     d.budget = d.budget ?? 0;
     d.progressPct = d.progressPct ?? 0;
@@ -155,52 +161,15 @@ const materialCrud: CrudOptions = {
   refs: [{ field: 'supplierId', model: 'supplier' }],
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const wbsCrud: CrudOptions = {
-  model: 'wbsItem',
-  entity: 'wbs-item',
-  readPerm: 'planning:read',
-  writePerm: 'planning:write',
-  createSchema: wbsCreate,
-  updateSchema: wbsCreate.partial(),
-  requireProject: true,
-  refs: [{ field: 'parentId', model: 'wbsItem' }],
-};
-
-const boqCrud: CrudOptions = {
-  model: 'boqItem',
-  entity: 'boq-item',
-  readPerm: 'planning:read',
-  writePerm: 'planning:write',
-  createSchema: boqCreate,
-  updateSchema: boqCreate.partial(),
-  requireProject: true,
-  refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
-  transform: (d) => {
-    const cost = Number(d.quantity ?? 0) * Number(d.rate ?? 0);
-    d.amount = cost;
-    d.budget = cost + (cost * Number(d.markupPct ?? 0)) / 100 + (cost * Number(d.contingencyPct ?? 0)) / 100;
-    return d;
-  },
-};
-
-const scheduleCrud: CrudOptions = {
-  model: 'scheduleActivity',
-  entity: 'schedule-activity',
-  readPerm: 'scheduling:read',
-  writePerm: 'scheduling:write',
-  createSchema: activityCreate,
-  updateSchema: activityCreate.partial(),
-  requireProject: true,
-  refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
-  transform: (d) => {
-    const start = d.startDate as Date | undefined;
-    const duration = Number(d.durationDays ?? 0);
-    if (start instanceof Date && duration > 0) d.finishDate = new Date(start.getTime() + duration * DAY_MS);
-    return d;
-  },
-};
+// Planning & scheduling reuse the exact option objects the REST routes are built
+// from, so the Copilot, the forms and the Excel imports can never drift apart.
+const wbsCrud: CrudOptions = wbsOpts;
+const boqCrud: CrudOptions = boqOpts;
+// The Copilot also insists every predecessor code already exists (the form is lenient).
+const scheduleCrud: CrudOptions = { ...activityOpts, validate: activityValidator(true) };
+const dependencyCrud: CrudOptions = dependencyOpts;
+const productivityCrud: CrudOptions = productivityOpts;
+const baselineCreateCrud: CrudOptions = baselineCrud;
 
 const productionCrud: CrudOptions = {
   model: 'productionEntry',
@@ -407,9 +376,65 @@ const DEFS: Record<string, WriteToolDef> = {
         name: { type: 'string' },
         durationDays: { type: 'integer', minimum: 1 },
         startDate: { type: 'string', description: 'ISO 8601 date/datetime' },
-        predecessors: { type: 'array', items: { type: 'string' }, description: 'Predecessor activity ids' },
+        predecessors: { type: 'array', items: { type: 'string' }, description: 'Codes of predecessor activities that already exist in the project (finish-to-start), e.g. ["A10","A20"]' },
         progressPct: { type: 'number', minimum: 0, maximum: 100 },
         milestone: { type: 'boolean' },
+      },
+    },
+  },
+  schedule_dependency: {
+    entity: 'schedule_dependency',
+    title: 'schedule dependency',
+    description: 'Link two schedule activities: the activity depends on a predecessor (FS/SS/FF/SF with optional lag). Rejected when it would create a circular schedule.',
+    intake: 'which project, the activity, the predecessor it depends on, the relationship type and the lag in days',
+    crud: dependencyCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'activityCode', 'predecessorCode'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        activityCode: { type: 'string', description: 'Code of the activity that depends on the predecessor, e.g. A20' },
+        predecessorCode: { type: 'string', description: 'Code of the predecessor activity, e.g. A10' },
+        type: { type: 'string', enum: ['FS', 'SS', 'FF', 'SF'], description: 'FS finish→start (default), SS start→start, FF finish→finish, SF start→finish' },
+        lagDays: { type: 'integer', description: 'Lag in days (negative = lead). Default 0' },
+      },
+    },
+  },
+  schedule_baseline: {
+    entity: 'schedule_baseline',
+    title: 'schedule baseline',
+    description: 'Freeze the current schedule of a project as a baseline (a snapshot of every activity\'s dates and duration) to measure slippage against later.',
+    intake: 'which project and an optional name and note',
+    crud: baselineCreateCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        name: { type: 'string', description: 'Baseline name, e.g. "Contract baseline" (defaults to "Baseline N")' },
+        note: { type: 'string' },
+      },
+    },
+  },
+  productivity_standard: {
+    entity: 'productivity_standard',
+    title: 'productivity baseline rate',
+    description: 'Add a planned productivity rate (output units per crew-day) for an activity to the organization\'s productivity library.',
+    intake: 'the activity, the output unit, the planned rate per crew-day, and optionally the company/historical standard and the benchmark source',
+    crud: productivityCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['activity', 'unit', 'productivityRate'],
+      properties: {
+        activity: { type: 'string', description: 'Activity, e.g. "Block laying"' },
+        unit: { type: 'string', description: 'Output unit, e.g. m2, m3' },
+        productivityRate: { type: 'number', exclusiveMinimum: 0, description: 'Planned output units per crew-day' },
+        companyStandard: { type: 'number', minimum: 0 },
+        historicalStandard: { type: 'number', minimum: 0 },
+        benchmarkSource: { type: 'string' },
       },
     },
   },
@@ -608,7 +633,8 @@ const START_CREATE_SPEC: ToolSpec = {
   description:
     'Begin creating a record when the user wants to create/add a project, client, risk, NCR, cost entry, ' +
     'material, stock movement (receipt/issue/adjustment), material requirement, supplier, WBS item, BOQ line, ' +
-    'schedule activity, production entry (daily output) or equipment usage log (equipment hours). ' +
+    'schedule activity, schedule dependency (link two activities), schedule baseline (freeze the current schedule), ' +
+    'productivity baseline rate, production entry (daily output) or equipment usage log (equipment hours). ' +
     'Pass any values the user already stated in `values` (e.g. name, budget, quantity). ' +
     'After you call this, the SYSTEM collects the remaining fields from the user via input widgets — do NOT ask for fields yourself and do NOT preview; just briefly acknowledge (one short sentence).',
   parameters: {
@@ -616,7 +642,7 @@ const START_CREATE_SPEC: ToolSpec = {
     additionalProperties: false,
     required: ['entity'],
     properties: {
-      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry', 'material', 'stock_movement', 'material_requirement', 'supplier', 'wbs_item', 'boq_item', 'schedule_activity', 'production_entry', 'equipment_usage'] },
+      entity: { type: 'string', enum: ['project', 'client', 'risk', 'ncr', 'cost_entry', 'material', 'stock_movement', 'material_requirement', 'supplier', 'wbs_item', 'boq_item', 'schedule_activity', 'schedule_dependency', 'schedule_baseline', 'productivity_standard', 'production_entry', 'equipment_usage'] },
       values: { type: 'object', description: 'Fields the user already provided, e.g. {"name":"...","quantity":100}', additionalProperties: true },
     },
   },
@@ -746,6 +772,8 @@ async function labelledPreview(fields: Record<string, unknown>, actor: Actor): P
     projectId: ['project', async (id) => { const r = await prisma.project.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
     wbsItemId: ['wbs', async (id) => { const r = await prisma.wbsItem.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
     parentId: ['parent WBS', async (id) => { const r = await prisma.wbsItem.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    activityId: ['activity', async (id) => { const r = await prisma.scheduleActivity.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
+    predecessorId: ['predecessor', async (id) => { const r = await prisma.scheduleActivity.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
     clientId: ['client', async (id) => (await prisma.client.findFirst({ where: { id, organizationId: org }, select: { name: true } }))?.name ?? null],
     managerId: ['manager', async (id) => { const r = await prisma.user.findFirst({ where: { id, organizationId: org }, select: { fullName: true, email: true } }); return r && (r.fullName || r.email); }],
     equipmentId: ['equipment', async (id) => { const r = await prisma.equipment.findFirst({ where: { id, organizationId: org }, select: { code: true, name: true } }); return r && `${r.code} — ${r.name}`; }],
@@ -867,6 +895,9 @@ const FIELD_ORDER: Record<string, string[]> = {
   wbs_item: ['projectId', 'code', 'name', 'parentId', 'unit', 'quantity', 'budgetAmount', 'description'],
   boq_item: ['projectId', 'wbsCode', 'code', 'description', 'quantity', 'rate', 'unit', 'category', 'markupPct', 'contingencyPct'],
   schedule_activity: ['projectId', 'wbsCode', 'code', 'name', 'durationDays', 'startDate', 'predecessors', 'milestone'],
+  schedule_dependency: ['projectId', 'activityCode', 'predecessorCode', 'type', 'lagDays'],
+  schedule_baseline: ['projectId', 'name', 'note'],
+  productivity_standard: ['activity', 'unit', 'productivityRate', 'companyStandard', 'historicalStandard', 'benchmarkSource'],
   production_entry: ['projectId', 'wbsCode', 'wbsActivity', 'plannedQty', 'actualQty', 'date', 'laborHours', 'equipmentHours', 'remarks'],
   equipment_usage: ['projectId', 'wbsCode', 'equipmentId', 'hoursUsed', 'date', 'note'],
 };
@@ -883,9 +914,12 @@ const FIELD_LABELS: Record<string, string> = {
   materialId: 'Material', type: 'Movement type', quantity: 'Quantity', reference: 'Reference', note: 'Note',
   plannedQuantity: 'Planned quantity', requiredByDate: 'Required by', leadTimeDays: 'Lead time (days)',
   tinNumber: 'TIN (tax number)', paymentTerms: 'Payment terms',
-  wbsCode: 'WBS code', code: 'Code', durationDays: 'Duration (days)', wbsActivity: 'Activity',
+  wbsCode: 'WBS code', activityCode: 'Activity (depends on the predecessor)', predecessorCode: 'Predecessor activity', lagDays: 'Lag (days)', productivityRate: 'Planned rate (units per crew-day)', companyStandard: 'Company standard', historicalStandard: 'Historical standard', benchmarkSource: 'Benchmark source', predecessors: 'Predecessor activity codes (comma-separated, optional)', activity: 'Activity', code: 'Code', durationDays: 'Duration (days)', wbsActivity: 'Activity',
   plannedQty: 'Planned quantity', actualQty: 'Actual quantity', equipmentId: 'Equipment', hoursUsed: 'Hours used', rate: 'Unit rate',
 };
+
+// Where one label doesn't fit every entity (e.g. `type` means different things).
+const ENTITY_FIELD_LABELS: Record<string, string> = { 'schedule_dependency.type': 'Relationship type', 'schedule_baseline.name': 'Baseline name', 'schedule_baseline.note': 'Note' };
 
 type RefModel = 'client' | 'project' | 'user' | 'material' | 'supplier' | 'equipment';
 const REFERENCES: Record<string, { model: RefModel; allowAdd: boolean; addLabel?: string }> = {
@@ -940,9 +974,13 @@ async function buildFieldSpec(entity: string, field: string, actor: Actor, value
   const props = (def.parameters.properties ?? {}) as Record<string, { type?: string; enum?: string[] }>;
   const prop = props[field] ?? {};
   const required = (((def.parameters.required as string[]) ?? [])).includes(field);
-  const label = FIELD_LABELS[field] ?? field;
+  const label = ENTITY_FIELD_LABELS[`${entity}.${field}`] ?? FIELD_LABELS[field] ?? field;
   const ref = REFERENCES[field];
   const pid = typeof values.projectId === 'string' ? values.projectId : '';
+  if ((field === 'activityCode' || field === 'predecessorCode') && pid) {
+    const acts = await prisma.scheduleActivity.findMany({ where: { organizationId: actor.orgId, projectId: pid }, select: { code: true, name: true }, orderBy: { code: 'asc' }, take: 500 });
+    return { entity, name: field, label, type: 'select', required, options: acts.map((a) => ({ value: a.code, label: `${a.code} — ${a.name}` })) };
+  }
   if ((field === 'wbsCode' || field === 'parentId') && pid) {
     const options = await wbsOptions(pid, actor, field === 'wbsCode' ? 'code' : 'id');
     if (options.length || field === 'wbsCode') return { entity, name: field, label, type: 'select', required, options };
@@ -988,28 +1026,42 @@ function activeSession(conversationId: string, userId: string, statuses: string[
   });
 }
 
-async function withWbsItem(values: Record<string, unknown>, actor: Actor, entity: string): Promise<Record<string, unknown>> {
-  if (!('wbsCode' in values)) return values;
-  const { wbsCode, ...rest } = values;
-  if (wbsCode === undefined || wbsCode === null || wbsCode === '') return rest;
-  if (!rest.projectId) throw new Error('Pick a project before choosing a WBS code.');
-  const item = await prisma.wbsItem.findFirst({
-    where: { organizationId: actor.orgId, projectId: String(rest.projectId ?? ''), code: String(wbsCode) },
-    select: { id: true },
-  });
-  if (!item) throw new Error(`No WBS item with code "${wbsCode}" in that project.`);
-  return { ...rest, wbsItemId: item.id };
+/** Fields the user picks by human code; the create pipeline needs the record id. */
+const CODE_REFS: Record<string, { target: string; model: 'wbsItem' | 'scheduleActivity'; what: string }> = {
+  wbsCode: { target: 'wbsItemId', model: 'wbsItem', what: 'WBS item' },
+  activityCode: { target: 'activityId', model: 'scheduleActivity', what: 'schedule activity' },
+  predecessorCode: { target: 'predecessorId', model: 'scheduleActivity', what: 'schedule activity' },
+};
+
+async function findByCode(model: 'wbsItem' | 'scheduleActivity', actor: Actor, projectId: string, code: string): Promise<{ id: string } | null> {
+  const delegate = prisma[model] as unknown as { findFirst: (a: unknown) => Promise<{ id: string } | null> };
+  return delegate.findFirst({ where: { organizationId: actor.orgId, projectId, code: String(code) }, select: { id: true } });
+}
+
+async function withWbsItem(values: Record<string, unknown>, actor: Actor, _entity: string): Promise<Record<string, unknown>> {
+  let out: Record<string, unknown> = values;
+  for (const [field, ref] of Object.entries(CODE_REFS)) {
+    if (!(field in out)) continue;
+    const { [field]: code, ...rest } = out;
+    out = rest;
+    if (code === undefined || code === null || code === '') continue;
+    if (!out.projectId) throw new Error(`Pick a project before choosing a ${ref.what}.`);
+    const item = await findByCode(ref.model, actor, String(out.projectId), String(code));
+    if (!item) throw new Error(`No ${ref.what} with code "${code}" in that project.`);
+    out = { ...out, [ref.target]: item.id };
+  }
+  return out;
 }
 
 async function advanceSession(sessionId: string, entity: string, values: Record<string, unknown>, skipped: string[], actor: Actor, leadText?: string): Promise<GuidedResult> {
-  if (values.wbsCode && values.projectId) {
-    const known = await prisma.wbsItem.findFirst({ where: { organizationId: actor.orgId, projectId: String(values.projectId), code: String(values.wbsCode) }, select: { id: true } });
-    if (!known) {
-      const bad = String(values.wbsCode);
-      delete values.wbsCode;
-      await prisma.aiPendingAction.update({ where: { id: sessionId }, data: { argsJson: toJson(values) } });
-      return { text: leadText, field: await buildFieldSpec(entity, 'wbsCode', actor, values), error: `There is no WBS item "${bad}" in that project — pick one from the list (or create the WBS item first).`, sessionActive: true };
-    }
+  for (const [field, ref] of Object.entries(CODE_REFS)) {
+    if (!values[field] || !values.projectId) continue;
+    const known = await findByCode(ref.model, actor, String(values.projectId), String(values[field]));
+    if (known) continue;
+    const bad = String(values[field]);
+    delete values[field];
+    await prisma.aiPendingAction.update({ where: { id: sessionId }, data: { argsJson: toJson(values) } });
+    return { text: leadText, field: await buildFieldSpec(entity, field, actor, values), error: `There is no ${ref.what} "${bad}" in that project — pick one from the list${field === 'wbsCode' ? ' (or create the WBS item first)' : ''}.`, sessionActive: true };
   }
   const nf = nextFieldName(entity, values, skipped);
   if (nf) return { text: leadText, field: await buildFieldSpec(entity, nf, actor, values), sessionActive: true };

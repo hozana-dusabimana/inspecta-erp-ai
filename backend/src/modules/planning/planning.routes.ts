@@ -56,7 +56,7 @@ async function sendXlsx(res: Response, sheetName: string, columns: Partial<Excel
 }
 
 // ── WBS (Work Breakdown Structure) ────────────────────────────
-const wbsCreate = z.object({
+export const wbsCreate = z.object({
   projectId: z.string(),
   parentId: z.string().nullable().optional(),
   code: z.string().min(1),
@@ -85,7 +85,7 @@ const wbsRouter = createCrudRouter({
 });
 
 // ── BOQ (Bill of Quantities) ──────────────────────────────────
-const boqCreate = z.object({
+export const boqCreate = z.object({
   projectId: z.string(),
   wbsItemId: z.string().optional(),
   code: z.string().min(1),

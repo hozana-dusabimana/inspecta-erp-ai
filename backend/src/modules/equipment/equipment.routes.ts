@@ -124,7 +124,7 @@ const fuelLogs = createCrudRouter({
 });
 
 // ── Equipment usage logs (daily hours, operator, WBS cost allocation) ──
-const usageSchema = z.object({
+export const usageSchema = z.object({
   equipmentId: z.string(),
   projectId: z.string().optional(),
   wbsItemId: z.string().optional(),

@@ -19,7 +19,7 @@ const stamp = (data: Record<string, unknown>, req: Request) => {
 };
 
 // ── Daily production entries (Submodule 1) ────────────────────
-const createSchema = z.object({
+export const createSchema = z.object({
   projectId: z.string(),
   dailyReportId: z.string().optional(),
   date: z.string().datetime().optional(),

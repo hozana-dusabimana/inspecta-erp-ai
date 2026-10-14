@@ -16,7 +16,7 @@ const boolish = z.preprocess(
   z.boolean(),
 );
 
-const activitySchema = z.object({
+export const activitySchema = z.object({
   projectId: z.string(),
   wbsItemId: z.string().optional(),
   code: z.string().min(1),

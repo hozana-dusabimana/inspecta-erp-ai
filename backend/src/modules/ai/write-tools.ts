@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { CrudOptions, runCreate } from '../../lib/crud';
+import { wbsCreate, boqCreate } from '../planning/planning.routes';
+import { activitySchema as activityCreate } from '../scheduling/scheduling.routes';
+import { createSchema as productionCreate } from '../production/production.routes';
+import { usageSchema as usageCreate } from '../equipment/equipment.routes';
 import { Permission, resolvePermissions } from '../../auth/permissions';
 import { actorCan } from '../../middleware/auth';
 import { ToolSpec } from './providers';
@@ -69,14 +73,19 @@ function normalizeDates(args: Record<string, unknown>): Record<string, unknown> 
  * the underlying `z.number()`/`z.boolean()` schemas would otherwise reject.
  */
 function coerceArgTypes(args: Record<string, unknown>, parameters: Record<string, unknown>): Record<string, unknown> {
-  const props = (parameters.properties ?? {}) as Record<string, { type?: string }>;
+  const props = (parameters.properties ?? {}) as Record<string, { type?: string; enum?: string[] }>;
+  const norm = (s: string) => s.trim().toUpperCase().replace(/[\s-]+/g, '_');
   const out: Record<string, unknown> = { ...args };
   for (const [k, v] of Object.entries(out)) {
     const t = props[k]?.type;
+    const allowed = props[k]?.enum;
     if ((t === 'number' || t === 'integer') && typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) {
       out[k] = Number(v);
     } else if (t === 'boolean' && typeof v === 'string') {
       out[k] = v === 'true';
+    } else if (allowed && typeof v === 'string') {
+      const match = allowed.find((e) => norm(e) === norm(v));
+      if (match) out[k] = match;
     }
   }
   return out;
@@ -137,6 +146,80 @@ const materialCrud: CrudOptions = {
   updateSchema: materialCreate.partial(),
   autoCode: { field: 'code', prefix: 'MAT' },
   refs: [{ field: 'supplierId', model: 'supplier' }],
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const wbsCrud: CrudOptions = {
+  model: 'wbsItem',
+  entity: 'wbs-item',
+  readPerm: 'planning:read',
+  writePerm: 'planning:write',
+  createSchema: wbsCreate,
+  updateSchema: wbsCreate.partial(),
+  requireProject: true,
+  refs: [{ field: 'parentId', model: 'wbsItem' }],
+};
+
+const boqCrud: CrudOptions = {
+  model: 'boqItem',
+  entity: 'boq-item',
+  readPerm: 'planning:read',
+  writePerm: 'planning:write',
+  createSchema: boqCreate,
+  updateSchema: boqCreate.partial(),
+  requireProject: true,
+  refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
+  transform: (d) => {
+    const cost = Number(d.quantity ?? 0) * Number(d.rate ?? 0);
+    d.amount = cost;
+    d.budget = cost + (cost * Number(d.markupPct ?? 0)) / 100 + (cost * Number(d.contingencyPct ?? 0)) / 100;
+    return d;
+  },
+};
+
+const scheduleCrud: CrudOptions = {
+  model: 'scheduleActivity',
+  entity: 'schedule-activity',
+  readPerm: 'scheduling:read',
+  writePerm: 'scheduling:write',
+  createSchema: activityCreate,
+  updateSchema: activityCreate.partial(),
+  requireProject: true,
+  refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
+  transform: (d) => {
+    const start = d.startDate as Date | undefined;
+    const duration = Number(d.durationDays ?? 0);
+    if (start instanceof Date && duration > 0) d.finishDate = new Date(start.getTime() + duration * DAY_MS);
+    return d;
+  },
+};
+
+const productionCrud: CrudOptions = {
+  model: 'productionEntry',
+  entity: 'production-entry',
+  readPerm: 'production:read',
+  writePerm: 'production:write',
+  createSchema: productionCreate,
+  updateSchema: productionCreate.partial(),
+  requireProject: true,
+  refs: [
+    { field: 'wbsItemId', model: 'wbsItem' },
+    { field: 'equipmentId', model: 'equipment' },
+  ],
+};
+
+const equipmentUsageCrud: CrudOptions = {
+  model: 'equipmentUsageLog',
+  entity: 'equipment-usage-log',
+  readPerm: 'equipment:read',
+  writePerm: 'equipment:write',
+  createSchema: usageCreate,
+  updateSchema: usageCreate.partial(),
+  refs: [
+    { field: 'equipmentId', model: 'equipment' },
+    { field: 'wbsItemId', model: 'wbsItem' },
+  ],
 };
 
 const DEFS: Record<string, WriteToolDef> = {
@@ -249,6 +332,119 @@ const DEFS: Record<string, WriteToolDef> = {
         description: { type: 'string' },
         amount: { type: 'number', minimum: 0 },
         date: { type: 'string', description: 'ISO 8601 date/datetime' },
+      },
+    },
+  },
+  wbs_item: {
+    entity: 'wbs_item',
+    title: 'WBS item',
+    description: 'Add a work breakdown structure item to a project.',
+    intake: 'which project, the WBS code and name, the parent item if nested, unit, quantity and budget amount',
+    crud: wbsCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'code', 'name'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        parentId: { type: 'string', description: 'Parent WBS item id, if nested' },
+        code: { type: 'string', description: 'WBS code, e.g. 1.2.3' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        unit: { type: 'string' },
+        quantity: { type: 'number', minimum: 0 },
+        budgetAmount: { type: 'number', minimum: 0 },
+      },
+    },
+  },
+  boq_item: {
+    entity: 'boq_item',
+    title: 'BOQ line',
+    description: 'Add a bill of quantities line to a project. Amount and budget are computed from quantity, rate, markup and contingency.',
+    intake: 'which project, the BOQ code and description, quantity, unit rate, unit, category, the WBS item it belongs to, and markup and contingency percentages',
+    crud: boqCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'wbsCode', 'code', 'description', 'quantity', 'rate'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        wbsCode: { type: 'string', description: 'WBS code this line belongs to, e.g. 1.2.3' },
+        code: { type: 'string' },
+        category: { type: 'string' },
+        description: { type: 'string' },
+        unit: { type: 'string' },
+        quantity: { type: 'number', minimum: 0 },
+        rate: { type: 'number', minimum: 0 },
+        markupPct: { type: 'number', minimum: 0, maximum: 100 },
+        contingencyPct: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
+  },
+  schedule_activity: {
+    entity: 'schedule_activity',
+    title: 'schedule activity',
+    description: 'Add an activity to a project schedule. The finish date is computed from start date and duration.',
+    intake: 'which project, the activity code and name, duration in days, start date, the WBS item it belongs to, and any predecessors',
+    crud: scheduleCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'wbsCode', 'code', 'name', 'durationDays'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        wbsCode: { type: 'string', description: 'WBS code this activity belongs to, e.g. 1.2.3' },
+        code: { type: 'string' },
+        name: { type: 'string' },
+        durationDays: { type: 'integer', minimum: 1 },
+        startDate: { type: 'string', description: 'ISO 8601 date/datetime' },
+        predecessors: { type: 'array', items: { type: 'string' }, description: 'Predecessor activity ids' },
+        progressPct: { type: 'number', minimum: 0, maximum: 100 },
+        milestone: { type: 'boolean' },
+      },
+    },
+  },
+  production_entry: {
+    entity: 'production_entry',
+    title: 'production entry',
+    description: 'Record a daily production entry against a project activity.',
+    intake: 'which project, the activity description, planned and actual quantities, the date, and labour and equipment hours',
+    crud: productionCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['projectId', 'wbsCode', 'wbsActivity', 'plannedQty', 'actualQty'],
+      properties: {
+        projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
+        wbsActivity: { type: 'string', description: 'Activity description, e.g. "Excavation, zone A"' },
+        wbsCode: { type: 'string', description: 'WBS code this production is recorded against, e.g. 1.2.3' },
+        date: { type: 'string', description: 'ISO 8601 date/datetime' },
+        plannedQty: { type: 'number', minimum: 0 },
+        actualQty: { type: 'number', minimum: 0 },
+        laborHours: { type: 'number', minimum: 0 },
+        equipmentHours: { type: 'number', minimum: 0 },
+        weatherCondition: { type: 'string' },
+        remarks: { type: 'string' },
+      },
+    },
+  },
+  equipment_usage: {
+    entity: 'equipment_usage',
+    title: 'equipment usage log',
+    description: 'Log hours of equipment use, optionally against a project and WBS item.',
+    intake: 'which equipment (id), hours used, the date, the project and WBS item if any',
+    crud: equipmentUsageCrud,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['equipmentId', 'projectId', 'wbsCode', 'hoursUsed'],
+      properties: {
+        equipmentId: { type: 'string', description: 'Existing equipment id' },
+        projectId: { type: 'string', description: 'Existing project id' },
+        wbsCode: { type: 'string', description: 'WBS code this usage is charged to, e.g. 1.2.3' },
+        date: { type: 'string', description: 'ISO 8601 date/datetime' },
+        hoursUsed: { type: 'number', minimum: 0 },
+        note: { type: 'string' },
       },
     },
   },
@@ -442,7 +638,7 @@ async function previewWrite(entity: string, args: Record<string, unknown>, actor
   const body = normalizeDates(coerceArgTypes(args, def.parameters));
   let data: Record<string, unknown>;
   try {
-    ({ data } = await runCreate(def.crud, actorReq(actor), body, false));
+    ({ data } = await runCreate(def.crud, actorReq(actor), await withWbsItem(body, actor, entity), false));
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Validation failed.' };
   }
@@ -486,7 +682,7 @@ async function commitWrite(entity: string, actor: Actor, ctx: ToolRunContext) {
   }
   let record: Record<string, unknown> | undefined;
   try {
-    ({ record } = await runCreate(def.crud, actorReq(actor), pending.argsJson as Record<string, unknown>, true));
+    ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(pending.argsJson as Record<string, unknown>, actor, pending.entity), true));
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Create failed.' };
   }
@@ -566,7 +762,7 @@ export async function tryConfirmPending(prompt: string, actor: Actor, conversati
   }
   let record: Record<string, unknown> | undefined;
   try {
-    ({ record } = await runCreate(def.crud, actorReq(actor), pending.argsJson as Record<string, unknown>, true));
+    ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(pending.argsJson as Record<string, unknown>, actor, pending.entity), true));
   } catch (e) {
     return `I couldn't save the ${def.title}: ${e instanceof Error ? e.message : 'validation failed'}.`;
   }
@@ -616,6 +812,11 @@ const FIELD_ORDER: Record<string, string[]> = {
   stock_movement: ['materialId', 'type', 'quantity', 'unitCost', 'projectId', 'reference', 'note', 'date'],
   material_requirement: ['projectId', 'materialId', 'plannedQuantity', 'requiredByDate', 'supplierId', 'leadTimeDays', 'note'],
   supplier: ['name', 'category', 'contactName', 'email', 'phone', 'tinNumber', 'paymentTerms', 'leadTimeDays'],
+  wbs_item: ['projectId', 'code', 'name', 'parentId', 'unit', 'quantity', 'budgetAmount', 'description'],
+  boq_item: ['projectId', 'code', 'description', 'quantity', 'rate', 'unit', 'category', 'wbsCode', 'markupPct', 'contingencyPct'],
+  schedule_activity: ['projectId', 'code', 'name', 'durationDays', 'wbsCode', 'startDate', 'predecessors', 'milestone'],
+  production_entry: ['projectId', 'wbsActivity', 'plannedQty', 'actualQty', 'date', 'wbsCode', 'laborHours', 'equipmentHours', 'remarks'],
+  equipment_usage: ['projectId', 'equipmentId', 'wbsCode', 'hoursUsed', 'date', 'note'],
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -630,6 +831,8 @@ const FIELD_LABELS: Record<string, string> = {
   materialId: 'Material', type: 'Movement type', quantity: 'Quantity', reference: 'Reference', note: 'Note',
   plannedQuantity: 'Planned quantity', requiredByDate: 'Required by', leadTimeDays: 'Lead time (days)',
   tinNumber: 'TIN (tax number)', paymentTerms: 'Payment terms',
+  wbsCode: 'WBS code', code: 'Code', durationDays: 'Duration (days)', wbsActivity: 'Activity',
+  plannedQty: 'Planned quantity', actualQty: 'Actual quantity', equipmentId: 'Equipment', hoursUsed: 'Hours used', rate: 'Unit rate',
 };
 
 type RefModel = 'client' | 'project' | 'user' | 'material' | 'supplier';
@@ -702,7 +905,7 @@ function collectedOf(session: SessionRow): { values: Record<string, unknown>; sk
 }
 
 function nextFieldName(entity: string, values: Record<string, unknown>, skipped: string[]): string | null {
-  for (const f of FIELD_ORDER[entity]) {
+  for (const f of FIELD_ORDER[entity] ?? []) {
     const v = values[f];
     if (v !== undefined && v !== null && v !== '') continue;
     if (skipped.includes(f)) continue;
@@ -718,13 +921,24 @@ function activeSession(conversationId: string, userId: string, statuses: string[
   });
 }
 
+async function withWbsItem(values: Record<string, unknown>, actor: Actor, entity: string): Promise<Record<string, unknown>> {
+  if (!('wbsCode' in values)) return values;
+  const { wbsCode, ...rest } = values;
+  const item = await prisma.wbsItem.findFirst({
+    where: { organizationId: actor.orgId, projectId: String(rest.projectId ?? ''), code: String(wbsCode) },
+    select: { id: true },
+  });
+  if (!item) throw new Error(`No WBS item with code "${wbsCode}" in that project.`);
+  return entity === 'production_entry' ? rest : { ...rest, wbsItemId: item.id };
+}
+
 async function advanceSession(sessionId: string, entity: string, values: Record<string, unknown>, skipped: string[], actor: Actor, leadText?: string): Promise<GuidedResult> {
   const nf = nextFieldName(entity, values, skipped);
   if (nf) return { text: leadText, field: await buildFieldSpec(entity, nf, actor), sessionActive: true };
   // All fields gathered → build a preview (dry-run through the real pipeline).
   let data: Record<string, unknown>;
   try {
-    ({ data } = await runCreate(DEFS[entity].crud, actorReq(actor), values, false));
+    ({ data } = await runCreate(DEFS[entity].crud, actorReq(actor), await withWbsItem(values, actor, entity), false));
   } catch (e) {
     return { text: leadText, error: e instanceof Error ? e.message : 'Some details are invalid.', sessionActive: true };
   }
@@ -737,7 +951,7 @@ export async function startCreateSession(entity: string, rawValues: Record<strin
   if (!def) return { error: `I can't create a "${entity}".` };
   if (!actorCan(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
   await prisma.aiPendingAction.updateMany({ where: { conversationId, userId: actor.id, status: { in: ['collecting', 'pending'] } }, data: { status: 'cancelled' } });
-  const allowed = new Set(FIELD_ORDER[entity]);
+  const allowed = new Set([...(FIELD_ORDER[entity] ?? []), ...Object.keys((def.parameters.properties ?? {}) as Record<string, unknown>)]);
   const coerced = coerceArgTypes(normalizeDates(rawValues || {}), def.parameters);
   const values: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(coerced)) {
@@ -824,7 +1038,7 @@ export async function commitCreateSession(conversationId: string, actor: Actor):
   if (!actorCan(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
   let record: Record<string, unknown> | undefined;
   try {
-    ({ record } = await runCreate(def.crud, actorReq(actor), session.argsJson as Record<string, unknown>, true));
+    ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(session.argsJson as Record<string, unknown>, actor, session.entity), true));
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Create failed.', sessionActive: true };
   }

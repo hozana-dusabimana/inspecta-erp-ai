@@ -224,7 +224,7 @@ export async function ask(
   }
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: SYSTEM_PROMPT + (opts.actor?.inspecting ? "\n\nINSPECT MODE: you are viewing another company's workspace READ-ONLY. You can analyse and answer questions but you CANNOT create records and have no create tool. If asked to create or add something, reply in plain words that creating records is disabled in inspect mode and they should exit inspect mode. Never output tool-call JSON." : '') },
     ...history,
     {
       role: 'user',
@@ -300,7 +300,11 @@ export async function ask(
   if (provider.supportsTools && opts.actor && opts.conversationId) {
     try {
       const ctx = { conversationId: opts.conversationId, sameTurnPendingIds: new Set<string>() };
-      const result = await runAgent(provider, messages, writeToolSpecs(), opts.actor, ctx);
+      const result = await runAgent(provider, messages, writeToolSpecs(Boolean(opts.actor.inspecting)), opts.actor, ctx);
+      // Inspect mode has no create tool; if the model still emits a raw tool call as text, explain instead.
+      if (opts.actor.inspecting && /"tool_calls"|start_create/.test(result.text ?? '')) {
+        result.text = "I can't create records while you're inspecting another company's workspace — inspect mode is read-only. Exit inspect mode to create records in your own workspace. I can still analyse this company's data for you.";
+      }
       if (result.text?.trim() || result.field || result.preview || result.navigateTo) {
         return {
           text: result.text || (result.field ? `Let's set up this ${result.field.entity}.` : ''),

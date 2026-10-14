@@ -35,6 +35,10 @@ export const ACTING_ORG_HEADER = 'x-platform-org';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** POSTs that only READ the inspected tenant (Copilot analysis + dictation). The Copilot's create
+ *  tools are disabled for inspecting actors in write-tools.ts, and credits are billed to the admin's home org. */
+const INSPECT_READONLY_POSTS = new Set(['/api/ai/chat', '/api/ai/chat/stream', '/api/ai/transcribe']);
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -116,7 +120,7 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
     orgId = target.id;
     inspecting = true;
   }
-  if (inspecting && !SAFE_METHODS.has(req.method)) {
+  if (inspecting && !SAFE_METHODS.has(req.method) && !INSPECT_READONLY_POSTS.has(req.originalUrl.split('?')[0])) {
     throw Forbidden('Inspect mode is read-only. Exit it to make changes.');
   }
 

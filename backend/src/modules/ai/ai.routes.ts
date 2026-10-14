@@ -72,6 +72,11 @@ function chatCost(answer: Parameters<typeof chatCreditCost>[0], body: ChatBody):
  * answer is generated so agentic create previews can be attached to it and
  * confirmed on a later turn. Returns a conversation id owned by this user+org.
  */
+/** When a platform admin inspects a tenant, the Copilot is billed to (and its chats stored under) the admin's own org, never the customer's. */
+function billingOrgOf(u: { orgId: string; homeOrgId?: string; inspecting?: boolean }): string {
+  return u.inspecting && u.homeOrgId ? u.homeOrgId : u.orgId;
+}
+
 async function resolveConversation(orgId: string, userId: string, conversationId: string | undefined, prompt: string): Promise<string> {
   if (conversationId) {
     const conv = await prisma.aiConversation.findFirst({ where: { id: conversationId, organizationId: orgId, userId } });
@@ -87,9 +92,10 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = chatSchema.parse(req.body);
     const orgId = req.user!.orgId;
-    await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
+    const billOrg = billingOrgOf(req.user!);
+    await assertCreditsAvailable(billOrg, CREDIT_COSTS.CHAT);
     const input = await prepareInput(body);
-    const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, input.prompt);
+    const conversationId = await resolveConversation(billOrg, req.user!.id, body.conversationId, input.prompt);
 
     const answer = await service.ask(orgId, input.prompt, {
       provider: body.provider,
@@ -100,7 +106,7 @@ router.post(
       attachments: input.attachments,
     });
     const cost = chatCost(answer, body);
-    await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
+    await deductCredits(billOrg, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
     // Persist the exchange (conversation memory).
     await prisma.aiMessage.createMany({ data: [
@@ -117,7 +123,8 @@ router.post(
 router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   const body = chatSchema.parse(req.body);
   const orgId = req.user!.orgId;
-  await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
+  const billOrg = billingOrgOf(req.user!);
+  await assertCreditsAvailable(billOrg, CREDIT_COSTS.CHAT);
   // Transcribe voice / validate files BEFORE opening the stream so errors are normal JSON 400s.
   const input = await prepareInput(body);
 
@@ -128,7 +135,7 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
   const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
   // Ensure the conversation exists before answering (agentic previews attach to it).
-  const conversationId = await resolveConversation(orgId, req.user!.id, body.conversationId, input.prompt);
+  const conversationId = await resolveConversation(billOrg, req.user!.id, body.conversationId, input.prompt);
 
   // Compute the grounded answer (tools + RAG + agentic writes + provider/offline), then stream it.
   const answer = await service.ask(orgId, input.prompt, {
@@ -136,7 +143,7 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
     conversationId, actor: req.user!, attachments: input.attachments,
   });
   const cost = chatCost(answer, body);
-  await deductCredits(orgId, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
+  await deductCredits(billOrg, cost, `AI chat${answer.preview ? ' (draft record)' : answer.sources?.length ? ' (tool-assisted)' : ''}`, req.user!.id);
 
   // Persist conversation memory.
   await prisma.aiMessage.createMany({ data: [
@@ -159,7 +166,7 @@ router.post('/chat/stream', requirePermission('ai:use'), asyncHandler(async (req
 const transcribeSchema = z.object({ audio: z.string().min(1).max(7_000_000), mime: z.string().max(100).optional(), filename: z.string().max(200).optional() });
 router.post('/transcribe', requirePermission('ai:use'), asyncHandler(async (req, res) => {
   const body = transcribeSchema.parse(req.body);
-  const orgId = req.user!.orgId;
+  const orgId = billingOrgOf(req.user!);
   await assertCreditsAvailable(orgId, CREDIT_COSTS.CHAT);
   let text: string;
   try { text = await transcribeAudio(body.audio, audioFormat(body.mime, body.filename)); }

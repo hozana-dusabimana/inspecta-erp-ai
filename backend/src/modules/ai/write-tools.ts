@@ -38,6 +38,8 @@ export interface Actor {
   /** Resolved permissions (tenant-defined role or the static matrix). Optional
    *  so older call sites still type-check; `actorCan` falls back to the matrix. */
   permissions?: Permission[];
+  /** True when a platform admin is viewing another tenant - strictly read-only, no creates. */
+  inspecting?: boolean;
 }
 
 /** A minimal Express-request shim so the shared crud pipeline (which expects a
@@ -54,6 +56,11 @@ function actorReq(actor: Actor): Request {
     params: {},
     body: {},
   } as unknown as Request;
+}
+
+/** Write gate: the normal permission check AND not inspecting another tenant. */
+function canWrite(actor: Actor, perm: Permission): boolean {
+  return !actor.inspecting && actorCan(actor, perm);
 }
 
 const toJson = (v: unknown) => JSON.parse(JSON.stringify(v ?? null));
@@ -616,8 +623,8 @@ const START_CREATE_SPEC: ToolSpec = {
 };
 
 /** Tool specs exposed to the model: start_create + read lookups. */
-export function writeToolSpecs(): ToolSpec[] {
-  return [START_CREATE_SPEC, ...LOOKUP_SPECS];
+export function writeToolSpecs(inspecting = false): ToolSpec[] {
+  return inspecting ? LOOKUP_SPECS : [START_CREATE_SPEC, ...LOOKUP_SPECS];
 }
 
 export function isWriteToolName(name: string): boolean {
@@ -636,7 +643,7 @@ export interface ToolRunContext {
 async function previewWrite(entity: string, args: Record<string, unknown>, actor: Actor, ctx: ToolRunContext) {
   const def = DEFS[entity];
   if (!def) return { error: `Unknown entity "${entity}".` };
-  if (!actorCan(actor, def.crud.writePerm)) {
+  if (!canWrite(actor, def.crud.writePerm)) {
     return { error: `You do not have permission to create a ${def.title}.` };
   }
   const body = normalizeDates(coerceArgTypes(args, def.parameters));
@@ -681,7 +688,7 @@ async function commitWrite(entity: string, actor: Actor, ctx: ToolRunContext) {
   if (ctx.sameTurnPendingIds.has(pending.id)) {
     return { error: `Do not confirm on the user's behalf. Show the preview and wait for the user to confirm in their next message.` };
   }
-  if (!actorCan(actor, def.crud.writePerm)) {
+  if (!canWrite(actor, def.crud.writePerm)) {
     return { error: `You do not have permission to create a ${def.title}.` };
   }
   let record: Record<string, unknown> | undefined;
@@ -800,7 +807,7 @@ export async function tryConfirmPending(prompt: string, actor: Actor, conversati
   if (!pending) return null;
   const def = DEFS[pending.entity];
   if (!def) return null;
-  if (!actorCan(actor, def.crud.writePerm)) {
+  if (!canWrite(actor, def.crud.writePerm)) {
     await prisma.aiPendingAction.update({ where: { id: pending.id }, data: { status: 'cancelled' } });
     return `You don't have permission to create a ${def.title}, so I didn't save it.`;
   }
@@ -1020,7 +1027,8 @@ async function advanceSession(sessionId: string, entity: string, values: Record<
 export async function startCreateSession(entity: string, rawValues: Record<string, unknown>, actor: Actor, conversationId: string): Promise<GuidedResult> {
   const def = DEFS[entity];
   if (!def) return { error: `I can't create a "${entity}".` };
-  if (!actorCan(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
+  if (actor.inspecting) return { error: "Creating records is disabled while inspecting another company's workspace (read-only)." };
+  if (!canWrite(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
   await prisma.aiPendingAction.updateMany({ where: { conversationId, userId: actor.id, status: { in: ['collecting', 'pending'] } }, data: { status: 'cancelled' } });
   const allowed = new Set([...(FIELD_ORDER[entity] ?? []), ...Object.keys((def.parameters.properties ?? {}) as Record<string, unknown>)]);
   const coerced = coerceArgTypes(normalizeDates(rawValues || {}), def.parameters);
@@ -1056,22 +1064,22 @@ async function createReference(model: RefModel, name: string, actor: Actor): Pro
   const clean = (name || '').trim();
   if (clean.length < 2) return { error: 'Please enter a name (at least 2 characters).' };
   if (model === 'client') {
-    if (!actorCan(actor, 'client:write')) return { error: `You don't have permission to add a client.` };
+    if (!canWrite(actor, 'client:write')) return { error: `You don't have permission to add a client.` };
     const { record } = await runCreate(clientCrud, actorReq(actor), { name: clean }, true);
     return { id: String(record?.id) };
   }
   if (model === 'project') {
-    if (!actorCan(actor, 'project:write')) return { error: `You don't have permission to add a project.` };
+    if (!canWrite(actor, 'project:write')) return { error: `You don't have permission to add a project.` };
     const { record } = await runCreate(projectCrud, actorReq(actor), { name: clean }, true);
     return { id: String(record?.id) };
   }
   if (model === 'material') {
-    if (!actorCan(actor, 'inventory:write')) return { error: `You don't have permission to add a material.` };
+    if (!canWrite(actor, 'inventory:write')) return { error: `You don't have permission to add a material.` };
     const { record } = await runCreate(materialCrud, actorReq(actor), { name: clean }, true);
     return { id: String(record?.id) };
   }
   if (model === 'supplier') {
-    if (!actorCan(actor, 'procurement:write')) return { error: `You don't have permission to add a supplier.` };
+    if (!canWrite(actor, 'procurement:write')) return { error: `You don't have permission to add a supplier.` };
     const { record } = await runCreate(supplierCrud, actorReq(actor), { name: clean }, true);
     return { id: String(record?.id) };
   }
@@ -1120,7 +1128,7 @@ export async function commitCreateSession(conversationId: string, actor: Actor):
   const session = await activeSession(conversationId, actor.id, ['pending']);
   if (!session) return { error: `There's nothing ready to create yet.`, sessionActive: false };
   const def = DEFS[session.entity];
-  if (!actorCan(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
+  if (!canWrite(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
   let record: Record<string, unknown> | undefined;
   try {
     ({ record } = await runCreate(def.crud, actorReq(actor), await withWbsItem(session.argsJson as Record<string, unknown>, actor, session.entity), true));

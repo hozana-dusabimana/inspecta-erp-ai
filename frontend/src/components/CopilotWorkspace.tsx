@@ -670,7 +670,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
       </main>
 
       {/* Floating Prompt Suggestion Chips & Bottom Chat Input */}
-      <footer className={`bg-brand-surface-container-lowest border-t border-brand-outline-variant/30 shrink-0 ${panel ? 'p-2.5' : 'p-4'}`}>
+      <footer className={`bg-brand-surface-container-lowest border-t border-brand-outline-variant/30 shrink-0 ${panel ? 'p-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]' : 'p-4'}`}>
         <div className={`mx-auto space-y-3 ${panel ? '' : 'max-w-2xl'}`}>
           
           {/* Quick chip triggers */}

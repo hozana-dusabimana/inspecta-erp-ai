@@ -40,6 +40,7 @@ export default function FloatingCopilot() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 40, opacity: 0 }}
             transition={{ duration: 0.2 }}
+            style={{ height: '100dvh' }}
             role="dialog"
             aria-label="Inspecta AI Copilot"
             className="fixed z-[55] top-0 bottom-0 right-0 w-full sm:w-[440px] max-w-full overflow-hidden border-l border-brand-outline-variant/30 shadow-2xl bg-brand-surface-container-low flex flex-col"

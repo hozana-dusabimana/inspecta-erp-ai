@@ -41,6 +41,48 @@ router.get(
   }),
 );
 
+// Projects the signed-in user is assigned to (drives the default project in the UI).
+router.get(
+  '/me/projects',
+  asyncHandler(async (req, res) => {
+    const rows = await prisma.projectAssignment.findMany({
+      where: { userId: req.user!.id, organizationId: req.user!.orgId },
+      select: { project: { select: { id: true, code: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return ok(res, rows.map((r) => r.project));
+  }),
+);
+
+router.get(
+  '/:id/projects',
+  requirePermission('user:read'),
+  asyncHandler(async (req, res) => {
+    const rows = await prisma.projectAssignment.findMany({ where: { userId: req.params.id, organizationId: req.user!.orgId }, select: { projectId: true } });
+    return ok(res, rows.map((r) => r.projectId));
+  }),
+);
+
+// REPLACE a user's project assignments (admin only)
+router.put(
+  '/:id/projects',
+  requirePermission('user:write'),
+  asyncHandler(async (req, res) => {
+    const { projectIds } = z.object({ projectIds: z.array(z.string()).max(200) }).parse(req.body);
+    const orgId = req.user!.orgId;
+    const user = await prisma.user.findFirst({ where: { id: req.params.id, organizationId: orgId }, select: { id: true } });
+    if (!user) throw NotFound('User not found');
+    const valid = await prisma.project.findMany({ where: { id: { in: projectIds }, organizationId: orgId }, select: { id: true } });
+    if (valid.length !== new Set(projectIds).size) throw BadRequest('One or more projects were not found');
+    await prisma.$transaction([
+      prisma.projectAssignment.deleteMany({ where: { userId: user.id } }),
+      prisma.projectAssignment.createMany({ data: valid.map((p) => ({ organizationId: orgId, userId: user.id, projectId: p.id })) }),
+    ]);
+    await auditFromRequest(req, 'UPDATE', 'user', user.id, { newValues: { projectIds: valid.map((p) => p.id) } });
+    return ok(res, valid.map((p) => p.id));
+  }),
+);
+
 /**
  * Roles a tenant admin may assign. PLATFORM_ADMIN is deliberately excluded:
  * this endpoint is reachable by any SYSTEM_ADMIN, so accepting it would let a

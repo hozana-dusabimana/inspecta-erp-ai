@@ -352,32 +352,48 @@ router.get('/cost-by-wbs', authenticate, requirePermission('finance:read'), asyn
 }));
 
 // ── Auto-post production labor/equipment cost to the cost ledger ──
-router.post('/post-production', authenticate, requirePermission('finance:write'), asyncHandler(async (req, res) => {
-  const orgId = req.user!.orgId;
-  const projectId = req.query.projectId as string | undefined;
-  if (!projectId) throw BadRequest('projectId is required');
-
-  const [entries, posted, equipment, wages] = await Promise.all([
+/**
+ * Posts labour and equipment cost for a project, once per source record.
+ * Casual attendance rows carry their own trade-rated cost, so a production entry
+ * that has attendance linked to it is NOT also costed from the average wage.
+ */
+export async function postProductionCosts(orgId: string, projectId: string, userId: string) {
+  const [entries, posted, equipment, wages, attendance] = await Promise.all([
     prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId } }),
-    prisma.costEntry.findMany({ where: { organizationId: orgId, projectId, source: 'PRODUCTION' }, select: { sourceRef: true } }),
+    prisma.costEntry.findMany({ where: { organizationId: orgId, projectId, source: { in: ['PRODUCTION', 'ATTENDANCE'] } }, select: { sourceRef: true, category: true } }),
     prisma.equipment.findMany({ where: { organizationId: orgId } }),
     prisma.wageRate.findMany({ where: { organizationId: orgId } }),
+    prisma.attendance.findMany({ where: { organizationId: orgId, projectId, employeeId: null, cost: { gt: 0 } } }),
   ]);
   const eqRate = new Map(equipment.map((e) => [e.id, num(e.hourlyRate) || num(e.dailyRate) / 8]));
   const hourly = wages.map((w) => (w.rateType === 'HOURLY' ? num(w.amount) : num(w.amount) / 8)).filter((x) => x > 0);
   const laborRate = hourly.length ? hourly.reduce((s, x) => s + x, 0) / hourly.length : 20;
-  const alreadyPosted = new Set(posted.map((p) => p.sourceRef));
+  const alreadyPosted = new Set(posted.map((p) => `${p.sourceRef}|${p.category}`));
+  const entriesWithAttendance = new Set(attendance.map((a) => a.productionEntryId).filter(Boolean) as string[]);
+  const wbsByEntry = new Map(entries.map((e) => [e.id, e.wbsItemId]));
+  const entryName = new Map(entries.map((e) => [e.id, e.wbsActivity]));
 
   const toCreate: any[] = [];
   for (const e of entries) {
-    if (alreadyPosted.has(e.id)) continue;
-    const labor = num(e.laborHours) * laborRate;
+    const labor = entriesWithAttendance.has(e.id) ? 0 : num(e.laborHours) * laborRate;
     const equip = num(e.equipmentHours) * (e.equipmentId ? eqRate.get(e.equipmentId) ?? 0 : 0);
-    if (labor > 0) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'LABOR', source: 'PRODUCTION', sourceRef: e.id, description: `Labor — ${e.wbsActivity}`, amount: labor, date: e.date, createdBy: req.user!.id });
-    if (equip > 0) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'EQUIPMENT', source: 'PRODUCTION', sourceRef: e.id, description: `Equipment — ${e.wbsActivity}`, amount: equip, date: e.date, createdBy: req.user!.id });
+    if (labor > 0 && !alreadyPosted.has(`${e.id}|LABOR`)) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'LABOR', source: 'PRODUCTION', sourceRef: e.id, description: `Labor — ${e.wbsActivity}`, amount: labor, date: e.date, createdBy: userId });
+    if (equip > 0 && !alreadyPosted.has(`${e.id}|EQUIPMENT`)) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'EQUIPMENT', source: 'PRODUCTION', sourceRef: e.id, description: `Equipment — ${e.wbsActivity}`, amount: equip, date: e.date, createdBy: userId });
+  }
+  for (const a of attendance) {
+    if (alreadyPosted.has(`${a.id}|LABOR`)) continue;
+    const wbsItemId = a.wbsItemId ?? (a.productionEntryId ? wbsByEntry.get(a.productionEntryId) ?? null : null);
+    const label = a.productionEntryId ? entryName.get(a.productionEntryId) : null;
+    toCreate.push({ organizationId: orgId, projectId, wbsItemId, category: 'LABOR', source: 'ATTENDANCE', sourceRef: a.id, description: `Casual labour — ${a.workerName}${label ? ` (${label})` : ''}`, amount: num(a.cost), date: a.date, createdBy: userId });
   }
   if (toCreate.length) await prisma.costEntry.createMany({ data: toCreate });
-  return ok(res, { posted: toCreate.length, entriesProcessed: entries.length, laborRate: Number(laborRate.toFixed(2)) }, 201);
+  return { posted: toCreate.length, entriesProcessed: entries.length, laborRate: Number(laborRate.toFixed(2)) };
+}
+
+router.post('/post-production', authenticate, requirePermission('finance:write'), asyncHandler(async (req, res) => {
+  const projectId = req.query.projectId as string | undefined;
+  if (!projectId) throw BadRequest('projectId is required');
+  return ok(res, await postProductionCosts(req.user!.orgId, projectId, req.user!.id), 201);
 }));
 
 export default router;

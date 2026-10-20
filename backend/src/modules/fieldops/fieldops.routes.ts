@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { labourRouter, attendanceOpts } from './labour';
 import { Request } from 'express';
 import { TaskStatus } from '@prisma/client';
 import { createCrudRouter } from '../../lib/crud';
@@ -58,39 +59,8 @@ router.use(
   }),
 );
 
-// ── Attendance ────────────────────────────────────────────────
-const attendanceCreate = z.object({
-  projectId: z.string(),
-  employeeId: z.string().optional(),
-  date: z.string().datetime().optional(),
-  workerName: z.string().min(1),
-  trade: z.string().optional(),
-  status: z.enum(['present', 'half_day', 'absent', 'leave']).optional(),
-  hoursWorked: z.number().nonnegative().optional(),
-  present: z.boolean().optional(),
-});
-router.use(
-  '/attendance',
-  createCrudRouter({
-    model: 'attendance',
-    entity: 'attendance',
-    readPerm: 'fieldops:read',
-    writePerm: 'fieldops:write',
-    createSchema: attendanceCreate,
-    updateSchema: attendanceCreate.partial(),
-    searchField: 'workerName',
-    dateField: 'date',
-    filterFields: ['status'],
-    sumFields: ['hoursWorked'],
-    requireProject: true,
-    orderBy: { date: 'desc' },
-    refs: [{ field: 'employeeId', model: 'employee' }],
-    // Keep present/status consistent so payroll proration and field views agree.
-    transform: (data) => {
-      if (typeof data.status === 'string') data.present = data.status === 'present' || data.status === 'half_day';
-      return data;
-    },
-  }),
-);
+// ── Attendance (headcount rows, casual roster, pay sheet) ─────
+router.use('/', labourRouter);
+router.use('/attendance', createCrudRouter(attendanceOpts));
 
 export default router;

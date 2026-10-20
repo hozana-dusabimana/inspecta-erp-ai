@@ -37,13 +37,14 @@ export async function runAgent(
   let field: FieldSpec | undefined;
   let preview: AgentResult['preview'];
   let navigateTo: string | undefined;
+  let batchError: string | undefined;
 
   for (let i = 0; i < maxIterations; i++) {
     const completion = await provider.complete(convo, { tools, toolChoice: 'auto' });
     model = completion.model;
     const calls = completion.toolCalls ?? [];
     if (!calls.length) {
-      return { text: completion.text, toolCallsMade, committed, provider: provider.name, model, field, preview, navigateTo };
+      return { text: completion.text?.trim() ? completion.text : batchError ?? completion.text, toolCallsMade, committed, provider: provider.name, model, field, preview, navigateTo };
     }
 
     // Record the assistant's tool-call turn, then run each call and feed results back.
@@ -59,6 +60,14 @@ export async function runAgent(
         if (gr.field) field = gr.field;
         if (gr.preview) preview = gr.preview;
         toolContent = JSON.stringify({ started: !gr.error, entity: (call.arguments as { entity?: string }).entity, error: gr.error ?? null });
+      }
+      if (call.name === 'start_batch_create') {
+        const gr = result as GuidedResult;
+        if (gr.preview) preview = gr.preview;
+        batchError = gr.error;
+        toolContent = JSON.stringify(gr.error
+          ? { started: false, error: gr.error, instruction: 'Show this problem list to the user exactly as written, then stop.' }
+          : { started: true, instruction: 'The plan card is shown to the user. Reply with ONE short sentence; do not repeat the plan or ask for confirmation.' });
       }
       if (call.name === 'open_page' && (result as { navigate?: string }).navigate) navigateTo = (result as { navigate: string }).navigate;
       if (result && typeof result === 'object' && (result as { created?: boolean }).created) committed = true;

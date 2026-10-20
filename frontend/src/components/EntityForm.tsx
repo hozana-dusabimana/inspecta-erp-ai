@@ -24,7 +24,7 @@ function DynamicSelect({ field, value, onChange, required, projectId }: { field:
     >
       <option value="">Select…</option>
       {rows.map((r) => (
-        <option key={r.id} value={r.id}>{field.optionLabel ? field.optionLabel(r) : r.name ?? r.id}</option>
+        <option key={r.id} value={String(r[field.optionValue ?? 'id'])}>{field.optionLabel ? field.optionLabel(r) : r.name ?? r.id}</option>
       ))}
     </select>
   );

@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth';
 import { ModuleDef } from './components/ModuleWorkspace';
 import GanttChart from './components/GanttChart';
 import ScheduleBaselines from './components/ScheduleBaselines';
+import CasualPaySheet from './components/CasualPaySheet';
 import WbsTree from './components/WbsTree';
 import DocumentRegister from './components/DocumentRegister';
 import BoqVersions from './components/BoqVersions';
@@ -454,11 +455,13 @@ export const MODULES: Record<string, ModuleDef> = {
       },
       {
         key: 'productivity', label: 'Productivity', endpoint: '/planning/productivity', entityLabel: 'Productivity Standard',
-        importer: { label: 'productivity rates', path: '/planning/io/productivity/import', templatePath: '/planning/io/productivity/template.xlsx', hint: 'One rate per activity + unit (units per crew-day). A row for an existing activity + unit updates its rate.' },
+        importer: { label: 'productivity rates', path: '/planning/io/productivity/import', templatePath: '/planning/io/productivity/template.xlsx', hint: 'One rate per activity + unit (units per crew-day) with an optional standardCrewSize or ratePerWorkerDay column. A row for an existing activity + unit updates its rate.' },
         readPerm: 'productivity:read', writePerm: 'productivity:write',
         columns: [
           { key: 'activity', label: 'Activity' }, { key: 'unit', label: 'Unit' },
           { key: 'productivityRate', label: 'Rate (units/crew-day)', align: 'right', render: (r) => num(r.productivityRate) },
+          { key: 'standardCrewSize', label: 'Std Crew', align: 'right', render: (r) => num(r.standardCrewSize ?? 1) },
+          { key: 'ratePerWorkerDay', label: 'Rate / worker-day', align: 'right', render: (r) => num(r.ratePerWorkerDay ?? Number(r.productivityRate) / Math.max(1, Number(r.standardCrewSize ?? 1))) },
           { key: 'companyStandard', label: 'Company Std', align: 'right', render: (r) => (r.companyStandard != null ? num(r.companyStandard) : '—') },
           { key: 'benchmarkSource', label: 'Source' },
         ],
@@ -466,6 +469,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'activity', label: 'Activity', required: true },
           unitField('unit', 'Unit', { required: true }),
           { name: 'productivityRate', label: 'Planned Productivity Rate (units/crew-day)', type: 'number', required: true },
+          { name: 'standardCrewSize', label: 'Standard Crew Size (workers)', type: 'number' },
+          { name: 'ratePerWorkerDay', label: 'Rate per Worker-day (optional, overrides crew-day ÷ crew size)', type: 'number' },
           { name: 'companyStandard', label: 'Company Standard', type: 'number' },
           { name: 'historicalStandard', label: 'Historical Standard', type: 'number' },
           { name: 'benchmarkSource', label: 'Benchmark Source' },
@@ -793,6 +798,8 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name, required: true },
+          { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'wbsItemId', label: 'WBS Item (optional, pick the project first)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'date', label: 'Date', type: 'date' },
           { name: 'liters', label: 'Liters', type: 'number', required: true },
           { name: 'costPerLiter', label: 'Cost per Liter', type: 'number' },
@@ -815,7 +822,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name, required: true },
           { name: 'projectId', label: 'Project', type: 'select', optionsEndpoint: '/projects', optionLabel: (r) => `${r.code} — ${r.name}` },
-          { name: 'wbsItemId', label: 'WBS Item (cost allocation)', type: 'text' },
+          { name: 'wbsItemId', label: 'WBS Item (cost allocation)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'operatorId', label: 'Operator', type: 'select', optionsEndpoint: '/hr/employees', optionLabel: (r) => r.fullName },
           { name: 'date', label: 'Date', type: 'date' },
           { name: 'hoursUsed', label: 'Hours Used', type: 'number', required: true },
@@ -870,7 +877,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'dailyReportId', label: 'Daily Report', type: 'select', optionsEndpoint: '/production/daily-reports', optionLabel: (r) => r.reportNumber },
           { name: 'wbsActivity', label: 'WBS Activity', required: true },
           { name: 'wbsItemId', label: 'WBS Item (link)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
-          { name: 'productivityStandardId', label: 'Productivity Standard', type: 'select', optionsEndpoint: '/planning/productivity', optionLabel: (r) => `${r.activity} (${r.productivityRate}/h)` },
+          { name: 'productivityStandardId', label: 'Productivity Standard', type: 'select', optionsEndpoint: '/planning/productivity', optionLabel: (r) => `${r.activity} (${num(r.ratePerWorkerDay ?? Number(r.productivityRate) / Math.max(1, Number(r.standardCrewSize ?? 1)))}/worker-day)` },
           { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name },
@@ -1651,19 +1658,44 @@ export const MODULES: Record<string, ModuleDef> = {
       {
         key: 'attendance', label: 'Attendance', endpoint: '/fieldops/attendance', entityLabel: 'Attendance', attachModule: 'attendance',
         dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['present', 'half_day', 'absent', 'leave']) }],
-        summaryCards: [{ key: 'hoursWorked', label: 'Total Hours' }, { key: '__count', label: 'Records' }],
+        summaryCards: [{ key: 'headcount', label: 'Total Headcount' }, { key: 'cost', label: 'Labour Cost', money: true }, { key: '__count', label: 'Records' }],
         projectScoped: true, readPerm: 'fieldops:read', writePerm: 'fieldops:write',
         columns: [
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
-          { key: 'workerName', label: 'Worker' }, { key: 'trade', label: 'Trade' },
-          { key: 'hoursWorked', label: 'Hours', align: 'right', render: (r) => num(r.hoursWorked) },
+          { key: 'workerName', label: 'Worker / Group' }, { key: 'trade', label: 'Trade' },
+          { key: 'headcount', label: 'Headcount', align: 'right', render: (r) => num(r.headcount) },
+          { key: 'hoursWorked', label: 'Hours each', align: 'right', render: (r) => num(r.hoursWorked) },
+          { key: 'cost', label: 'Labour cost', align: 'right', render: (r) => (Number(r.cost) > 0 ? money(r.cost) : '—') },
+          { key: 'verifiedAt', label: 'Verified', render: (r) => (r.verifiedAt ? 'Yes' : 'No') },
           { key: 'present', label: 'Present', render: (r) => (r.present ? 'Yes' : 'No') },
         ],
         fields: [
-          { name: 'workerName', label: 'Worker Name', required: true }, { name: 'trade', label: 'Trade' },
-          { name: 'hoursWorked', label: 'Hours Worked', type: 'number' },
+          { name: 'trade', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionValue: 'name', optionLabel: (r) => r.name },
+          { name: 'headcount', label: 'Headcount (number of workers)', type: 'number' },
+          { name: 'casualWorkerId', label: 'Casual worker (optional, leave empty for headcount only)', type: 'select', optionsEndpoint: '/fieldops/casual-workers', optionLabel: (r) => r.fullName },
+          { name: 'workerName', label: 'Label (optional)' },
+          { name: 'wbsItemId', label: 'WBS Item (optional)', type: 'select', optionsEndpoint: '/planning/wbs', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'hoursWorked', label: 'Hours Worked (each)', type: 'number' },
           { name: 'date', label: 'Date', type: 'date' },
+          { name: 'evidenceUrl', label: 'Photo of signed attendance sheet', type: 'file', accept: 'image/*' },
         ],
+      },
+      {
+        key: 'casual', label: 'Casual Workers', endpoint: '/fieldops/casual-workers', entityLabel: 'Casual Worker',
+        readPerm: 'fieldops:read', writePerm: 'fieldops:write',
+        columns: [
+          { key: 'fullName', label: 'Name' }, { key: 'trade', label: 'Trade' }, { key: 'phone', label: 'Phone' }, { key: 'nationalId', label: 'ID number' },
+          { key: 'dailyRate', label: 'Daily Rate', align: 'right', render: (r) => (r.dailyRate != null ? money(r.dailyRate) : 'trade rate') },
+        ],
+        fields: [
+          { name: 'fullName', label: 'Full Name', required: true }, { name: 'phone', label: 'Phone' }, { name: 'nationalId', label: 'ID Number' },
+          { name: 'trade', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionValue: 'name', optionLabel: (r) => r.name },
+          { name: 'dailyRate', label: 'Daily Rate (blank = use the trade wage rate)', type: 'number' },
+        ],
+      },
+      {
+        key: 'paysheet', label: 'Weekly Pay Sheet', endpoint: '/fieldops/casual-paysheet', entityLabel: 'Pay Sheet', component: CasualPaySheet, columns: [], fields: [],
+        projectScoped: true, readPerm: 'fieldops:read', writePerm: 'approval:write',
       },
     ],
   },

@@ -29,6 +29,26 @@ function Bars({ data }: { data: { name: string; productivity: number }[] }) {
   );
 }
 
+function CompareTable({ rows }: { rows: { name: string; workerDays: number; plannedWorkerDays?: number; actualPerWorkerDay: number; plannedPerWorkerDay: number; variancePct: number }[] }) {
+  if (!rows.length) return <p className="text-xs text-brand-on-surface-variant">No data yet.</p>;
+  return (
+    <div className="overflow-x-auto max-h-72">
+      <table className="w-full text-xs">
+        <thead><tr className="text-left text-[10px] uppercase text-brand-on-surface-variant"><th className="py-1">Name</th><th className="text-right">Worker-days</th><th className="text-right">Actual</th><th className="text-right">Planned</th><th className="text-right">Var %</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.name} className="border-t border-brand-outline-variant/20">
+              <td className="py-1.5 font-semibold">{r.name}</td><td className="text-right font-mono">{num(r.workerDays)}</td>
+              <td className="text-right font-mono">{num(r.actualPerWorkerDay)}</td><td className="text-right font-mono">{r.plannedPerWorkerDay ? num(r.plannedPerWorkerDay) : '—'}</td>
+              <td className={`text-right font-mono ${r.plannedPerWorkerDay && r.variancePct < 0 ? 'text-red-600' : ''}`}>{r.plannedPerWorkerDay ? `${r.variancePct}%` : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const TABS = [
   { key: 'productivity', label: 'Productivity', icon: Activity },
   { key: 'resources', label: 'Resource Efficiency', icon: Gauge },
@@ -111,9 +131,9 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
           {tab === 'productivity' && (
             <div className="space-y-5">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Kpi label="Labor Productivity" value={num(a.productivity.labor)} />
-                <Kpi label="Equipment Productivity" value={num(a.productivity.equipment)} />
-                <Kpi label="Planned Standard" value={num(a.productivity.plannedStandard)} />
+                <Kpi label="Actual / worker-day" value={num(a.productivity.perWorkerDay?.actual)} />
+                <Kpi label="Planned / worker-day" value={num(a.productivity.perWorkerDay?.planned)} />
+                <Kpi label="Worker-days used" value={num(a.productivity.perWorkerDay?.workerDays)} />
                 <Kpi label="Productivity Variance" value={`${a.productivity.variancePct}%`} tone={a.productivity.variancePct < 0 ? 'bad' : 'good'} />
               </div>
               <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm">
@@ -134,6 +154,10 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                   </ResponsiveContainer>
                 )}
               </div>
+              <div className="grid lg:grid-cols-2 gap-5">
+                <Card title="Planned vs actual per worker-day — by activity"><CompareTable rows={a.productivity.compareByActivity ?? []} /></Card>
+                <Card title="Planned vs actual per worker-day — by day"><CompareTable rows={a.productivity.compareByDay ?? []} /></Card>
+              </div>
               <div className="grid lg:grid-cols-3 gap-5">
                 <Card title="By Crew"><Bars data={a.productivity.byCrew} /></Card>
                 <Card title="By Trade"><Bars data={a.productivity.byTrade ?? []} /></Card>
@@ -151,6 +175,26 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
                 <Kpi label="Total Equipment Hours" value={num(a.totals.totalEquipmentHours)} />
                 <Kpi label="Entries" value={num(a.totals.entries)} />
               </div>
+              <Card title="Planned vs actual headcount (worker-days) by activity">
+                {(a.productivity.compareByActivity ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No data yet.</p> : (
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-left text-[10px] uppercase text-brand-on-surface-variant"><th className="py-1">Activity</th><th className="text-right">Planned</th><th className="text-right">Actual</th><th className="text-right">Over / under</th></tr></thead>
+                    <tbody>
+                      {a.productivity.compareByActivity.map((r: any) => {
+                        const diff = r.plannedWorkerDays ? r.workerDays - r.plannedWorkerDays : null;
+                        return (
+                          <tr key={r.name} className="border-t border-brand-outline-variant/20">
+                            <td className="py-1.5 font-semibold">{r.name}</td>
+                            <td className="text-right font-mono">{r.plannedWorkerDays ? num(r.plannedWorkerDays) : '—'}</td>
+                            <td className="text-right font-mono">{num(r.workerDays)}</td>
+                            <td className={`text-right font-mono ${diff != null && diff > 0 ? 'text-red-600' : ''}`}>{diff == null ? '—' : `${diff > 0 ? '+' : ''}${num(diff)}`}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
               <Card title="Labor Hours by Activity (histogram)">
                 {(a.histograms?.laborByActivity ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No data.</p> : (
                   <ResponsiveContainer width="100%" height={240}>

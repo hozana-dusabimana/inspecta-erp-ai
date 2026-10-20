@@ -85,3 +85,22 @@ export function extraHours(actualQty: number, actualHours: number, plannedProduc
   const standardHours = actualQty / plannedProductivity;
   return Math.max(0, actualHours - standardHours);
 }
+
+/** Worker-days = headcount × hours / 8 (one worker-day is an 8-hour day). */
+export function workerDays(headcount: number, hours: number): number {
+  return (headcount * hours) / 8;
+}
+
+/**
+ * Planned rate per worker-day. An explicit rate wins; otherwise the crew-day
+ * rate is divided by the standard crew size (a size below 1 counts as 1).
+ */
+export function ratePerWorkerDay(std: { productivityRate: number; standardCrewSize?: number | null; ratePerWorkerDay?: number | null }): number {
+  if (std.ratePerWorkerDay && std.ratePerWorkerDay > 0) return std.ratePerWorkerDay;
+  return std.productivityRate / Math.max(1, std.standardCrewSize ?? 1);
+}
+
+/** Casual labour cost = headcount × hours × (daily rate ÷ 8). */
+export function labourCost(headcount: number, hoursEach: number, ratePerDay: number): number {
+  return Number(((headcount * hoursEach * ratePerDay) / 8).toFixed(2));
+}

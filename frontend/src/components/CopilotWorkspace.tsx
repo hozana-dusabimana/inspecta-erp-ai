@@ -112,7 +112,7 @@ function CreatePreviewCard({ preview, disabled, onCreate, onCancel }: {
         {Object.entries(preview.fields).map(([k, v]) => (
           <div key={k} className="flex justify-between gap-3 text-[11px]">
             <span className="text-brand-on-surface-variant capitalize">{k.replace(/Id$/, '')}</span>
-            <span className="font-semibold text-brand-on-surface text-right break-all">{String(v)}</span>
+            <span className="font-semibold text-brand-on-surface text-right break-words whitespace-pre-line">{String(v)}</span>
           </div>
         ))}
       </div>
@@ -306,7 +306,9 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     try {
       const res = await api.post<GuidedResult>('/ai/create/commit', { conversationId });
       const d = res.data;
-      const text = d.created
+      const text = d.created?.entity === 'batch'
+        ? `✅ ${d.text ?? 'Saved.'}`
+        : d.created
         ? `✅ Created ${d.created.entity.replace('_', ' ')}${d.created.id ? ` (${d.created.id})` : ''}.\n` +
           Object.entries(d.created.fields).map(([k, v]) => `• ${k.replace(/Id$/, '')}: ${v}`).join('\n')
         : d.error ? `⚠️ ${d.error}` : 'Done.';

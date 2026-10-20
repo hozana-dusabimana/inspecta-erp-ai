@@ -7,9 +7,10 @@ import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
-import { productivity, variancePct } from '../../lib/formulas';
+import { productivity, variancePct, ratePerWorkerDay } from '../../lib/formulas';
 import { analyzeProduction, EngineEntry, EngineMaterial } from './engine';
 import { computeCpm } from '../scheduling/cpm';
+import { fieldReportRouter } from './field-report';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -156,6 +157,13 @@ const materialsCrud = createCrudRouter({
   transform: stamp,
 });
 
+/** Entries are saved as "1.1 - Block laying"; the standard is just "Block laying". */
+const baseName = (activity: string) => (activity.includes(' - ') ? activity.slice(activity.indexOf(' - ') + 3) : activity).trim().toLowerCase();
+const lookupStd = (m: Map<string, number>, activity: string) => m.get(activity.toLowerCase()) ?? m.get(baseName(activity));
+
+const hourlyStd = (s: { productivityRate: unknown; standardCrewSize: number; ratePerWorkerDay: unknown }) =>
+  ratePerWorkerDay({ productivityRate: num(s.productivityRate), standardCrewSize: s.standardCrewSize, ratePerWorkerDay: s.ratePerWorkerDay == null ? null : num(s.ratePerWorkerDay) }) / 8;
+
 async function resolveLaborRate(orgId: string): Promise<number> {
   const wages = await prisma.wageRate.findMany({ where: { organizationId: orgId } });
   const hourly = wages.map((w) => (w.rateType === 'HOURLY' ? num(w.amount) : num(w.amount) / 8)).filter((x) => x > 0);
@@ -189,8 +197,9 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
     resolveLaborRate(orgId),
   ]);
 
-  const stdById = new Map(standards.map((s) => [s.id, num(s.productivityRate)]));
-  const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), num(s.productivityRate)]));
+  // The engine works in units per labour-hour; standards are stored per worker-day (8 h).
+  const stdById = new Map(standards.map((s) => [s.id, hourlyStd(s)]));
+  const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), hourlyStd(s)]));
   const eqRate = new Map(equipment.map((e) => [e.id, num(e.hourlyRate) || num(e.dailyRate) / 8]));
   const crewName = new Map(crews.map((c) => [c.id, c.name]));
   const tradeName = new Map(trades.map((t) => [t.id, t.name]));
@@ -205,7 +214,7 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
     actualQty: num(e.actualQty),
     laborHours: num(e.laborHours),
     equipmentHours: num(e.equipmentHours),
-    plannedProductivity: (e.productivityStandardId ? stdById.get(e.productivityStandardId) : undefined) ?? stdByActivity.get(e.wbsActivity.toLowerCase()) ?? 0,
+    plannedProductivity: (e.productivityStandardId ? stdById.get(e.productivityStandardId) : undefined) ?? lookupStd(stdByActivity, e.wbsActivity) ?? 0,
     equipmentRatePerHour: e.equipmentId ? eqRate.get(e.equipmentId) ?? 0 : 0,
     availableEquipmentHours: 0,
   }));
@@ -295,7 +304,7 @@ analytics.get('/ai-summary', authenticate, requirePermission('production:read'),
     prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { name: true, health: true, progressPct: true } }),
     prisma.ncr.count({ where: { organizationId: orgId, projectId, status: { not: 'CLOSED' } } }),
   ]);
-  const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), num(s.productivityRate)]));
+  const stdByActivity = new Map(standards.map((s) => [s.activity.toLowerCase(), hourlyStd(s) * 8])); // per worker-day
   const crewName = new Map(crews.map((c) => [c.id, c.name]));
 
   const insights: { severity: string; title: string; detail: string; recommendation: string }[] = [];
@@ -307,13 +316,14 @@ analytics.get('/ai-summary', authenticate, requirePermission('production:read'),
     g.actual += num(e.actualQty); g.labor += num(e.laborHours); byAct.set(e.wbsActivity, g);
   }
   for (const [act, g] of byAct) {
-    const std = stdByActivity.get(act.toLowerCase());
+    const std = lookupStd(stdByActivity, act);
     if (std && g.labor > 0) {
-      const v = ((g.actual / g.labor - std) / std) * 100;
+      const perWd = g.actual / (g.labor / 8);
+      const v = ((perWd - std) / std) * 100;
       if (v <= -15) insights.push({
         severity: v <= -30 ? 'HIGH' : 'MEDIUM',
         title: `${act} productivity ${v.toFixed(0)}% below standard`,
-        detail: `Actual ${(g.actual / g.labor).toFixed(2)} vs standard ${std} units/hour.`,
+        detail: `Actual ${perWd.toFixed(2)} vs standard ${std.toFixed(2)} units per worker-day.`,
         recommendation: 'Review crew composition, methods and site constraints for this activity; consider re-sequencing or added supervision.',
       });
     }
@@ -345,7 +355,8 @@ analytics.get('/ai-summary', authenticate, requirePermission('production:read'),
   if (openNcr > 0) insights.push({ severity: openNcr >= 3 ? 'HIGH' : 'MEDIUM', title: `${openNcr} open NCR(s) — rework risk`, detail: 'Open non-conformances usually translate into rework hours and cost.', recommendation: 'Prioritise closure of open NCRs to limit rework cost erosion of margin.' });
   if (project?.health === 'CRITICAL') insights.push({ severity: 'HIGH', title: `Project "${project.name}" health is CRITICAL`, detail: `Reported progress ${project.progressPct}%.`, recommendation: 'Run a recovery plan: re-baseline critical-path activities and reallocate top crews.' });
 
-  if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Production tracking healthy', detail: 'No activities or crews significantly below standard.', recommendation: 'Maintain current pace; keep capturing daily reports for trend accuracy.' });
+  if (entries.length === 0 && insights.length === 0) insights.push({ severity: 'LOW', title: 'No data yet', detail: 'No activities or daily entries have been recorded for this project, so productivity cannot be assessed.', recommendation: 'Submit daily reports with quantities and headcount to start tracking productivity.' });
+  else if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Production tracking healthy', detail: 'No activities or crews significantly below standard.', recommendation: 'Maintain current pace; keep capturing daily reports for trend accuracy.' });
 
   return ok(res, { projectId, insights, generatedFrom: 'production-engine' });
 }));
@@ -371,6 +382,7 @@ analytics.get('/summary/metrics', authenticate, requirePermission('production:re
 
 const router = Router();
 router.use('/', analytics); // /production/analytics, /delays, /ai-summary, /summary/metrics
+router.use('/', fieldReportRouter); // /production/field-report (+ /today)
 router.use('/daily-reports', reportsRouter);
 router.use('/materials', materialsCrud);
 router.use('/', entriesCrud); // entry CRUD last (handles /:id)

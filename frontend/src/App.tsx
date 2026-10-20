@@ -113,7 +113,7 @@ function DailyEntryRoute() {
     addMessage({
       id: Math.random().toString(),
       sender: 'assistant',
-      text: `System Alert: A new daily entry for activity [${entry.wbsActivity}] has been synchronized to the ERP with a measured Productivity Index of ${entry.actualQty / entry.plannedQty > 1 ? '1.05' : '0.88'}. Let me know if you would like me to audit this entry.`,
+      text: `System Alert: A daily report starting with [${entry.wbsActivity}] has been saved to the ERP. Let me know if you would like me to audit it.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     });
   };

@@ -127,6 +127,8 @@ export const productivityCreate = z.object({
   activity: z.string().min(1),
   unit: z.string().min(1),
   productivityRate: z.number().positive(),
+  standardCrewSize: z.number().int().min(1).optional(),
+  ratePerWorkerDay: z.number().positive().optional(),
   benchmarkSource: z.string().optional(),
   companyStandard: z.number().nonnegative().optional(),
   historicalStandard: z.number().nonnegative().optional(),
@@ -300,7 +302,9 @@ ioRouter.get('/productivity/template.xlsx', requirePermission('productivity:writ
   await sendTemplate(res, 'Productivity', [
     { header: 'activity', example: 'Block laying', note: 'Required. Together with unit it identifies the rate.' },
     { header: 'unit', example: 'm2', note: 'Required. Output unit.' },
-    { header: 'productivityRate', example: 18, note: 'Required, > 0. Planned output units per crew-day.' },
+    { header: 'productivityRate', example: 18, note: 'Units per crew-day. Required unless ratePerWorkerDay is given.' },
+    { header: 'standardCrewSize', example: 6, note: 'Optional whole number ≥ 1 (default 1). Rate per worker-day = productivityRate ÷ this.' },
+    { header: 'ratePerWorkerDay', example: 3, note: 'Optional, > 0. Overrides the conversion from the crew-day rate.' },
     { header: 'companyStandard', example: 16, note: 'Optional number ≥ 0.' },
     { header: 'historicalStandard', example: 15, note: 'Optional number ≥ 0.' },
     { header: 'benchmarkSource', example: 'Site records 2025', note: 'Optional.' },
@@ -319,8 +323,13 @@ ioRouter.post('/productivity/import', requirePermission('productivity:write'), x
   for (const { rowNo, cells: r } of rows) {
     const activity = str(r.activity); const unit = str(r.unit);
     if (!activity || !unit) { report.fail(rowNo, 'activity and unit are required'); continue; }
-    const rate = numOrU(r.productivityrate);
-    if (rate === undefined || rate <= 0) { report.fail(rowNo, 'productivityRate must be a number > 0'); continue; }
+    const crewSize = numOrU(r.standardcrewsize);
+    if (hasValue(r.standardcrewsize) && (crewSize === undefined || !Number.isInteger(crewSize) || crewSize < 1)) { report.fail(rowNo, 'standardCrewSize must be a whole number ≥ 1'); continue; }
+    const perWorker = numOrU(r.rateperworkerday);
+    if (hasValue(r.rateperworkerday) && (perWorker === undefined || perWorker <= 0)) { report.fail(rowNo, 'ratePerWorkerDay must be a number > 0'); continue; }
+    // A worker-day rate alone is enough: the crew-day rate is derived from it.
+    const rate = hasValue(r.productivityrate) ? numOrU(r.productivityrate) : perWorker !== undefined ? perWorker * (crewSize ?? 1) : undefined;
+    if (rate === undefined || rate <= 0) { report.fail(rowNo, 'productivityRate (or ratePerWorkerDay) must be a number > 0'); continue; }
     const company = numOrU(r.companystandard); const historical = numOrU(r.historicalstandard);
     if ((hasValue(r.companystandard) && (company === undefined || company < 0)) || (hasValue(r.historicalstandard) && (historical === undefined || historical < 0))) {
       report.fail(rowNo, 'companyStandard / historicalStandard must be numbers ≥ 0'); continue;
@@ -328,10 +337,10 @@ ioRouter.post('/productivity/import', requirePermission('productivity:write'), x
     const key = `${activity.toLowerCase()}|${unit.toLowerCase()}`;
     if (seen.has(key)) { report.exists(rowNo, `"${activity}" (${unit}) appears more than once in the file`); continue; }
     seen.add(key);
-    const fields = { activity, unit, productivityRate: rate, companyStandard: company, historicalStandard: historical, benchmarkSource: str(r.benchmarksource) || undefined };
+    const fields = { activity, unit, productivityRate: rate, standardCrewSize: crewSize, ratePerWorkerDay: perWorker, companyStandard: company, historicalStandard: historical, benchmarkSource: str(r.benchmarksource) || undefined };
     const id = idByKey.get(key);
     // An existing rate keeps its name/unit spelling; only the numbers and source change.
-    if (id) updates.push({ id, data: { productivityRate: rate, companyStandard: company, historicalStandard: historical, benchmarkSource: fields.benchmarkSource, updatedBy: req.user!.id } });
+    if (id) updates.push({ id, data: { productivityRate: rate, standardCrewSize: crewSize, ratePerWorkerDay: perWorker, companyStandard: company, historicalStandard: historical, benchmarkSource: fields.benchmarkSource, updatedBy: req.user!.id } });
     else creates.push({ ...fields, organizationId: orgId, createdBy: req.user!.id, updatedBy: req.user!.id });
   }
   await prisma.$transaction([

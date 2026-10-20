@@ -27,3 +27,18 @@ describe('ERP formulas', () => {
     expect(costVariance(1000, 1200)).toBe(-200);
   });
 });
+
+import { workerDays, ratePerWorkerDay } from '../src/lib/formulas';
+describe('worker-day productivity', () => {
+  it('converts headcount × hours to worker-days', () => {
+    expect(workerDays(10, 8)).toBe(10);
+    expect(workerDays(6, 4)).toBe(3);
+  });
+  it('derives the worker-day rate from the crew-day rate and crew size', () => {
+    expect(ratePerWorkerDay({ productivityRate: 18, standardCrewSize: 6 })).toBe(3);
+  });
+  it('keeps old rows working (no crew size = crew of 1) and lets an explicit rate win', () => {
+    expect(ratePerWorkerDay({ productivityRate: 18 })).toBe(18);
+    expect(ratePerWorkerDay({ productivityRate: 18, standardCrewSize: 6, ratePerWorkerDay: 4 })).toBe(4);
+  });
+});

@@ -1,624 +1,319 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  ArrowLeft, 
-  Calendar, 
-  CloudSun, 
-  HardHat, 
-  Info, 
-  Upload, 
-  CheckCircle2, 
-  Clock, 
-  Camera,
-  Layers,
-  HelpCircle,
-  TrendingUp,
-  AlertTriangle,
-  FileText,
-  User,
-  Loader2
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Plus, Trash2, Camera, WifiOff, CloudUpload, CheckCircle2, Loader2, ClipboardCheck, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AppView, DailyProductionEntry } from '../types';
-import { api } from '../lib/api';
-import { useAuth } from '../lib/auth';
-import DocumentAttachments from './DocumentAttachments';
+import { api, errorMessage } from '../lib/api';
+import { useOnlineStatus } from '../lib/useOnlineStatus';
+import {
+  flushQueue, isNetworkError, listQueued, newClientRef, queueReport, removeQueued, sendReport, type QueuedReport, type SubmitResult,
+} from '../lib/offlineReports';
 
 interface DailyEntryProps {
   onNavigate: (view: AppView) => void;
   onSubmitSuccess: (entry: DailyProductionEntry) => void;
 }
 
-interface WbsActivityOption {
-  code: string;
-  name: string;
-  plannedQty: number;
-  unit: string;
-  baselineHours: number;
+interface LabourRow { trade: string; headcount: string; hours: string }
+interface ActivityRow {
+  key: string; wbsItemId?: string; name: string; code?: string; unit: string; plannedQty: number; ratePerWorkerDay: number | null;
+  actualQty: string; labour: LabourRow[];
+}
+interface MaterialRow { materialId: string; qty: string }
+interface EquipmentRow { equipmentId: string; hours: string }
+
+const WEATHER = ['Sunny', 'Partly cloudy', 'Cloudy', 'Light rain', 'Heavy rain', 'Windy'];
+const today = () => new Date().toISOString().slice(0, 10);
+const n = (v: string) => (v.trim() === '' || isNaN(Number(v)) ? 0 : Number(v));
+const field = 'w-full h-12 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-base outline-none focus:border-brand-primary';
+const card = 'bg-brand-surface-container-lowest p-4 rounded-2xl border border-brand-outline-variant/20 shadow-sm space-y-3';
+
+/** Server data is cached on the phone, so the form still opens with no signal. */
+async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  try {
+    const v = await load();
+    try { localStorage.setItem(`inspecta.cache.${key}`, JSON.stringify(v)); } catch { /* storage full */ }
+    return v;
+  } catch (e) {
+    const raw = localStorage.getItem(`inspecta.cache.${key}`);
+    if (raw) return JSON.parse(raw) as T;
+    throw e;
+  }
 }
 
-const wbsActivities: WbsActivityOption[] = [
-  { code: 'C.01.04', name: 'Reinforced Concrete Slab', plannedQty: 45.0, unit: 'm³', baselineHours: 72 },
-  { code: 'C.01.05', name: 'Vertical Formwork Installation', plannedQty: 120.0, unit: 'm²', baselineHours: 48 },
-  { code: 'C.02.01', name: 'Site Preparation & Excavation', plannedQty: 350.0, unit: 'm³', baselineHours: 96 },
-  { code: 'C.03.12', name: 'Steel Reinforcement Assembly', plannedQty: 12.5, unit: 'tons', baselineHours: 64 },
-];
-
 export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryProps) {
-  // Form States
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [selectedWbs, setSelectedWbs] = useState<WbsActivityOption>(wbsActivities[0]);
-  const [actualQty, setActualQty] = useState<string>('42');
-  const [laborHours, setLaborHours] = useState<string>('68');
-  const [weather, setWeather] = useState('Partly Cloudy');
-  const [equipmentHours, setEquipmentHours] = useState<string>('18');
-  const [remarks, setRemarks] = useState('');
-  
-  // Photo state
-  const [photoPreviews, setPhotoPreviews] = useState<string[]>([
-    'https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=600&q=80' // default premium construction photo
-  ]);
-  
-  // Status states
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [createdId, setCreatedId] = useState<string | null>(null); // real production-entry id for attaching evidence
-  const [productivityIndex, setProductivityIndex] = useState(1.05);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // Real projects for the entry (production records are project-scoped).
-  const { data: projectsResp } = useQuery({
-    queryKey: ['projects', 'picker'],
-    queryFn: () => api.get<{ id: string; name: string; code: string }[]>('/projects?pageSize=200'),
-  });
-  const projects = projectsResp?.data ?? [];
-  const { user } = useAuth();
+  const online = useOnlineStatus();
   const [projectId, setProjectId] = useState('');
+  const [date, setDate] = useState(today);
+  const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [materials, setMaterials] = useState<MaterialRow[]>([]);
+  const [equipment, setEquipment] = useState<EquipmentRow[]>([]);
+  const [weather, setWeather] = useState('Sunny');
+  const [note, setNote] = useState('');
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [sheet, setSheet] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ queued: boolean; data?: SubmitResult } | null>(null);
+  const [queued, setQueued] = useState<QueuedReport[]>([]);
+  const [clientRef, setClientRef] = useState(newClientRef);
+
+  const refreshQueue = () => listQueued().then(setQueued);
+  useEffect(() => { refreshQueue(); }, []);
+  // Send anything waiting as soon as the signal returns.
+  useEffect(() => { if (online) flushQueue().then(refreshQueue); }, [online]);
+
+  const { data: mine } = useQuery({ queryKey: ['users', 'me', 'projects'], queryFn: () => cached('my-projects', () => api.get<{ id: string; code: string; name: string }[]>('/users/me/projects').then((r) => r.data)) });
+  const { data: all } = useQuery({ queryKey: ['projects', 'picker'], queryFn: () => cached('projects', () => api.get<{ id: string; code: string; name: string }[]>('/projects?pageSize=200').then((r) => r.data)) });
+  const choices = mine && mine.length ? mine : all ?? [];
+  useEffect(() => { if (!projectId && choices.length) setProjectId(choices[0].id); }, [choices, projectId]);
+
+  const { data: plan, isFetching: planLoading } = useQuery({
+    queryKey: ['field-report', 'today', projectId, date], enabled: Boolean(projectId),
+    queryFn: () => cached(`plan.${projectId}.${date}`, () => api.get<any[]>(`/production/field-report/today?projectId=${projectId}&date=${date}`).then((r) => r.data)),
+  });
+  const { data: wbs } = useQuery({
+    queryKey: ['field-report', 'wbs', projectId], enabled: Boolean(projectId),
+    queryFn: () => cached(`wbs.${projectId}`, () => api.get<any[]>(`/planning/wbs?projectId=${projectId}&pageSize=500`).then((r) => r.data)),
+  });
+  const { data: trades } = useQuery({ queryKey: ['field-report', 'trades'], queryFn: () => cached('trades', () => api.get<any[]>('/hr/trades?pageSize=200').then((r) => r.data)) });
+  const { data: materialList } = useQuery({ queryKey: ['field-report', 'materials'], queryFn: () => cached('materials', () => api.get<any[]>('/inventory/materials?pageSize=500').then((r) => r.data)) });
+  const { data: equipmentList } = useQuery({ queryKey: ['field-report', 'equipment'], queryFn: () => cached('equipment', () => api.get<any[]>('/equipment/register?pageSize=500').then((r) => r.data)) });
+
+  // Today's planned activities become the form's rows; the site manager only types the numbers.
   useEffect(() => {
-    if (!projectId && projects.length) setProjectId(projects[0].id);
-  }, [projects, projectId]);
-  const selectedProject = projects.find((p) => p.id === projectId);
-  const roleLabel = (r?: string) => (r ? r.toLowerCase().split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') : 'User');
+    if (!plan) return;
+    setActivities(plan.map((p) => ({
+      key: p.activityId, wbsItemId: p.wbsItemId ?? undefined, name: p.name, code: p.wbsCode ?? p.code, unit: p.unit ?? '',
+      plannedQty: p.plannedQty ?? 0, ratePerWorkerDay: p.ratePerWorkerDay ?? null, actualQty: '', labour: [{ trade: '', headcount: '', hours: '8' }],
+    })));
+  }, [plan]);
 
-  // Dynamic Productivity Index Calculation
-  useEffect(() => {
-    const actual = parseFloat(actualQty);
-    const hours = parseFloat(laborHours);
-    
-    if (isNaN(actual) || isNaN(hours) || hours <= 0 || actual <= 0) {
-      setProductivityIndex(0);
-      return;
-    }
+  const patch = (i: number, p: Partial<ActivityRow>) => setActivities((a) => a.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const patchLabour = (i: number, k: number, p: Partial<LabourRow>) => setActivities((a) => a.map((x, j) => (j === i ? { ...x, labour: x.labour.map((l, m) => (m === k ? { ...l, ...p } : l)) } : x)));
 
-    // Efficiency computation:
-    // Productivity ratio = (Actual Volume / Planned Volume) / (Actual Hours / Baseline Hours)
-    const qtyRatio = actual / selectedWbs.plannedQty;
-    const hoursRatio = hours / selectedWbs.baselineHours;
-    
-    if (hoursRatio === 0) {
-      setProductivityIndex(0);
-      return;
-    }
-
-    const calculatedIndex = qtyRatio / hoursRatio;
-    setProductivityIndex(Math.round(calculatedIndex * 100) / 100);
-  }, [actualQty, laborHours, selectedWbs]);
-
-  // Handle selected WBS trigger updates
-  const handleWbsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = wbsActivities.find(item => item.code === e.target.value);
-    if (selected) {
-      setSelectedWbs(selected);
-      // set reasonable starting actual values
-      setActualQty(Math.round(selected.plannedQty * 0.93).toString());
-      setLaborHours(Math.round(selected.baselineHours * 0.95).toString());
-    }
+  const addExtra = (id: string) => {
+    const w = (wbs ?? []).find((x) => x.id === id);
+    if (!w || activities.some((a) => a.wbsItemId === id)) return;
+    setActivities((a) => [...a, { key: `x${id}`, wbsItemId: id, name: w.name, code: w.code, unit: w.unit ?? '', plannedQty: 0, ratePerWorkerDay: null, actualQty: '', labour: [{ trade: '', headcount: '', hours: '8' }] }]);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      const readers = Array.from(files).map((file: any) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-      });
+  const totals = useMemo(() => {
+    const workers = activities.reduce((s, a) => s + a.labour.reduce((t, l) => t + n(l.headcount), 0), 0);
+    return { workers };
+  }, [activities]);
 
-      Promise.all(readers).then(results => {
-        setPhotoPreviews(prev => [...prev, ...results]);
-      });
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const readers = Array.from(files).map((file: any) => {
-        return new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-      });
-
-      Promise.all(readers).then(results => {
-        setPhotoPreviews(prev => [...prev, ...results]);
-      });
-    }
-  };
-
-  const removePhoto = (index: number) => {
-    setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitError(null);
-    if (!projectId) {
-      setSubmitError('Please select a project before syncing.');
-      return;
-    }
-    setIsSyncing(true);
-
-    try {
-      // Real synchronization to the ERP production module.
-      const res = await api.post<{ id: string }>('/production', {
-        projectId,
-        date: new Date(entryDate).toISOString(),
-        wbsActivity: `${selectedWbs.code} - ${selectedWbs.name}`,
-        unit: 'unit',
-        plannedQty: selectedWbs.plannedQty,
-        actualQty: parseFloat(actualQty) || 0,
-        laborHours: parseFloat(laborHours) || 0,
-        equipmentHours: parseFloat(equipmentHours) || 0,
-        weatherCondition: weather,
-        remarks,
-        // Only persist remote URLs; large base64 previews are skipped.
-        photos: photoPreviews.filter((p) => p.startsWith('http')),
-      });
-
-      setCreatedId(res.data.id); // enables the evidence panel in the success modal
-      setShowSuccessModal(true);
-      onSubmitSuccess({
-        id: Math.random().toString(),
-        date: entryDate,
-        wbsActivity: `${selectedWbs.code} - ${selectedWbs.name}`,
-        plannedQty: selectedWbs.plannedQty,
-        actualQty: parseFloat(actualQty),
-        laborHours: parseFloat(laborHours),
-        weatherCondition: weather,
-        remarks,
-        photos: photoPreviews,
-        status: 'synced',
-        timestamp: new Date().toLocaleTimeString(),
-      });
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to sync entry');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Determine Productivity Index Status Styling
-  const getProductivityStatus = () => {
-    if (productivityIndex === 0) return { label: 'Incomplete', color: 'text-brand-on-surface-variant bg-brand-surface-container', barColor: 'bg-brand-outline-variant' };
-    if (productivityIndex >= 1.0) {
-      return { 
-        label: 'Optimal', 
-        color: 'text-brand-tertiary bg-brand-tertiary-fixed-dim/20 border border-brand-tertiary-fixed-dim/40', 
-        barColor: 'bg-brand-tertiary-fixed-dim' 
-      };
-    }
-    if (productivityIndex >= 0.85) {
-      return { 
-        label: 'Caution', 
-        color: 'text-brand-on-secondary-container bg-brand-secondary-container/10 border border-brand-secondary-container/20', 
-        barColor: 'bg-brand-secondary-container' 
-      };
-    }
-    return { 
-      label: 'Critical', 
-      color: 'text-brand-status-critical bg-red-50 border border-red-200', 
-      barColor: 'bg-brand-status-critical' 
+  const build = (): QueuedReport | string => {
+    const used = activities.filter((a) => n(a.actualQty) > 0 || a.labour.some((l) => n(l.headcount) > 0));
+    if (!projectId) return 'Choose your project.';
+    if (!used.length) return 'Enter the quantity done or the headcount for at least one activity.';
+    for (const a of used) for (const l of a.labour) if (n(l.headcount) > 0 && !l.trade) return `Choose a trade for the workers on "${a.name}".`;
+    const mats = materials.filter((m) => m.materialId && n(m.qty) > 0);
+    const eq = equipment.filter((e) => e.equipmentId && n(e.hours) > 0);
+    return {
+      id: clientRef, createdAt: Date.now(), photos, sheet,
+      payload: {
+        projectId, clientRef, date, weather, note: note || undefined,
+        activities: used.map((a) => ({
+          wbsItemId: a.wbsItemId, name: a.name, unit: a.unit || undefined, plannedQty: a.plannedQty, actualQty: n(a.actualQty),
+          labour: a.labour.filter((l) => n(l.headcount) > 0).map((l) => ({ trade: l.trade, headcount: Math.round(n(l.headcount)), hours: n(l.hours) })),
+        })),
+        materials: mats.map((m) => ({ materialId: m.materialId, qtyUsed: n(m.qty) })),
+        equipment: eq.map((e) => ({ equipmentId: e.equipmentId, hours: n(e.hours) })),
+      },
     };
   };
 
-  const prodStatus = getProductivityStatus();
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const r = build();
+    if (typeof r === 'string') { setError(r); return; }
+    setBusy(true);
+    try {
+      if (!online) throw new TypeError('offline');
+      const data = await sendReport(r);
+      setResult({ queued: false, data });
+      first(r);
+    } catch (err) {
+      if (isNetworkError(err)) {
+        // No signal: keep the whole day on the phone and send it when the signal returns.
+        await queueReport(r);
+        setResult({ queued: true });
+        refreshQueue();
+      } else setError(errorMessage(err));
+    } finally { setBusy(false); }
+  };
+
+  const first = (r: QueuedReport) => {
+    const a = (r.payload.activities as any[])[0];
+    onSubmitSuccess({
+      id: String(r.id), date, wbsActivity: a.name, plannedQty: a.plannedQty ?? 0, actualQty: a.actualQty,
+      laborHours: a.labour.reduce((s: number, l: any) => s + l.headcount * l.hours, 0), weatherCondition: weather, remarks: note, photos: [], status: 'synced',
+      timestamp: new Date().toLocaleTimeString(),
+    } as DailyProductionEntry);
+  };
+
+  const reset = () => {
+    setResult(null); setClientRef(newClientRef()); setPhotos([]); setSheet(null); setNote(''); setMaterials([]); setEquipment([]);
+    setActivities((a) => a.map((x) => ({ ...x, actualQty: '', labour: [{ trade: '', headcount: '', hours: '8' }] })));
+  };
+
+  const tradeOptions = (trades ?? []).map((t) => t.name as string);
 
   return (
-    <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans" id="daily-entry-root">
-      {/* Top Header */}
-      <header className="h-16 w-full sticky top-0 z-40 bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center px-6 md:px-8 border-b border-brand-outline-variant/10 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button 
-            id="btn-back-dashboard"
-            onClick={() => onNavigate(AppView.DASHBOARD)}
-            className="p-2 rounded-lg hover:bg-brand-surface transition-all text-brand-primary cursor-pointer flex items-center justify-center"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          
-          <div className="h-6 w-[1px] bg-brand-outline-variant/30"></div>
-          
-          <div>
-            <h2 className="font-display text-lg font-extrabold text-brand-primary">Daily Entry</h2>
-            <p className="text-[10px] text-brand-on-surface-variant font-bold uppercase tracking-wider">{selectedProject ? `${selectedProject.code} — ${selectedProject.name}` : 'Select a project'}</p>
-          </div>
+    <div className="min-h-screen bg-brand-surface text-brand-on-surface font-sans pb-32" id="daily-entry-root">
+      <header className="h-14 sticky top-0 z-40 bg-brand-surface-container-lowest/95 backdrop-blur-md flex items-center gap-3 px-4 border-b border-brand-outline-variant/10">
+        <button onClick={() => onNavigate(AppView.DASHBOARD)} aria-label="Back" className="p-2 -ml-2 text-brand-primary"><ArrowLeft className="w-5 h-5" /></button>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-base font-extrabold text-brand-primary leading-tight">Daily report</h2>
+          <p className="text-[10px] text-brand-on-surface-variant font-bold uppercase tracking-wider truncate">{choices.find((p) => p.id === projectId)?.name ?? 'Select a project'}</p>
         </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-brand-on-surface">{user?.fullName ?? 'User'}</p>
-              <p className="text-[9px] text-brand-on-surface-variant uppercase font-bold tracking-widest">{roleLabel(user?.role)}</p>
-            </div>
-            <div className="w-10 h-10 rounded-full border border-brand-primary-container/20 bg-brand-surface-container flex items-center justify-center text-brand-primary font-bold text-sm">
-              AT
-            </div>
-          </div>
-        </div>
+        {!online && <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700"><WifiOff className="w-4 h-4" /> Offline</span>}
+        {queued.length > 0 && <span className="flex items-center gap-1 text-[11px] font-bold text-brand-primary"><CloudUpload className="w-4 h-4" /> {queued.length} waiting</span>}
       </header>
 
-      {/* Form Canvas Container */}
-      <main className="max-w-4xl mx-auto p-6 md:p-8 space-y-6">
-        
-        {/* Dynamic Productivity Glass Panel Alert */}
-        <div className="glass-panel p-6 rounded-2xl shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-brand-surface-container-lowest relative overflow-hidden border-brand-primary/10">
-          <div className="ai-shimmer absolute inset-0 opacity-10 pointer-events-none"></div>
-          
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-brand-primary font-bold text-sm">
-              <TrendingUp className="w-5 h-5 text-brand-secondary-container" />
-              <span>Real-Time Productivity Auditor</span>
+      {result ? (
+        <main className="max-w-xl mx-auto p-4 space-y-4">
+          <div className={card}>
+            <div className="flex items-center gap-2 font-extrabold text-brand-primary">
+              {result.queued ? <CloudUpload className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6 text-emerald-600" />}
+              {result.queued ? 'Saved on this phone' : `Report ${result.data?.reportNumber} saved`}
             </div>
-            <p className="text-brand-on-surface-variant text-xs leading-relaxed max-w-md">
-              Calculated dynamically as actual volume divided by budgeted labor-unit benchmarks. Keeps your field reports synchronized with baseline estimates.
-            </p>
+            {result.queued ? (
+              <p className="text-sm text-brand-on-surface-variant">There is no signal. The whole day, photos included, will be sent automatically when the connection returns. Keep this page's browser installed; you can close it.</p>
+            ) : (
+              <p className="text-sm text-brand-on-surface-variant">
+                Read back from the database: {result.data?.entries} activity entries, {result.data?.attendance} headcount records, {result.data?.materials} material lines, {result.data?.equipmentLogs} machine logs.
+                {result.data?.duplicate && ' (This report had already been received.)'}
+              </p>
+            )}
+            <button onClick={reset} className="w-full h-12 rounded-xl bg-brand-primary text-white font-bold">Start another report</button>
+          </div>
+        </main>
+      ) : (
+        <form onSubmit={submit} className="max-w-xl mx-auto p-4 space-y-4">
+          <div className={card}>
+            <div className="grid grid-cols-2 gap-3">
+              {choices.length !== 1 ? (
+                <div className="col-span-2">
+                  <label className="text-[11px] font-bold text-brand-on-surface-variant">PROJECT</label>
+                  <select className={field} value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
+                    <option value="">Select project…</option>
+                    {choices.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+                  </select>
+                </div>
+              ) : null}
+              <div>
+                <label className="text-[11px] font-bold text-brand-on-surface-variant">DATE</label>
+                <input type="date" className={field} value={date} max={today()} onChange={(e) => e.target.value && setDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-brand-on-surface-variant">WEATHER</label>
+                <select className={field} value={weather} onChange={(e) => setWeather(e.target.value)}>{WEATHER.map((w) => <option key={w}>{w}</option>)}</select>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 bg-brand-surface px-5 py-4 rounded-xl border border-brand-outline-variant/20 shrink-0 w-full md:w-auto justify-between md:justify-start">
-            <div className="text-right">
-              <p className="text-[10px] text-brand-on-surface-variant font-bold uppercase tracking-wider">Productivity Index</p>
-              <div className="flex items-baseline gap-1.5 mt-1 justify-end">
-                <span className="font-mono text-3xl font-extrabold text-brand-primary">{productivityIndex === 0 ? '---' : productivityIndex}</span>
-                {productivityIndex > 0 && <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${prodStatus.color}`}>{prodStatus.label}</span>}
-              </div>
-            </div>
-            
-            <div className="h-10 w-[1px] bg-brand-outline-variant/35 hidden md:block"></div>
-            
-            <div className="w-24 h-2 bg-brand-surface-container rounded-full overflow-hidden hidden md:block">
-              <div className={`h-full ${prodStatus.barColor} transition-all duration-500`} style={{ width: `${Math.min(productivityIndex * 80, 100)}%` }}></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Daily Production Form */}
-        <form onSubmit={handleSubmit} className="bg-brand-surface-container-lowest p-6 md:p-8 rounded-2xl border border-brand-outline-variant/20 shadow-md space-y-6" id="daily-production-form">
-          {/* Field: Project (real, required) */}
-          <div className="space-y-1.5">
-            <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="project-select">
-              <Layers className="w-4 h-4 text-brand-primary" />
-              <span>PROJECT</span>
-            </label>
-            <select
-              id="project-select"
-              required
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary transition-all"
-            >
-              <option value="">Select project…</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-            {/* Field: Entry Date */}
-            <div className="space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="date-input">
-                <Calendar className="w-4 h-4 text-brand-primary" />
-                <span>ENTRY DATE</span>
-              </label>
-              <input 
-                id="date-input"
-                type="date"
-                required
-                value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)}
-                className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all"
-              />
-            </div>
-
-            {/* Field: Weather Condition */}
-            <div className="space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="weather-select">
-                <CloudSun className="w-4 h-4 text-brand-primary" />
-                <span>WEATHER CONDITION</span>
-              </label>
-              <select 
-                id="weather-select"
-                value={weather}
-                onChange={(e) => setWeather(e.target.value)}
-                className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary transition-all"
-              >
-                <option value="Sunny / Clear">Sunny / Clear</option>
-                <option value="Partly Cloudy">Partly Cloudy</option>
-                <option value="Light Rain">Light Rain</option>
-                <option value="Heavy Rain / Storm">Heavy Rain / Storm (Stops Operations)</option>
-                <option value="High Winds">High Winds (Stops Crane Operations)</option>
-              </select>
-            </div>
-
-            {/* Field: WBS Activity */}
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="wbs-select">
-                <Layers className="w-4 h-4 text-brand-primary" />
-                <span>WBS WORK ACTIVITY</span>
-              </label>
-              <select 
-                id="wbs-select"
-                value={selectedWbs.code}
-                onChange={handleWbsChange}
-                className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary transition-all"
-              >
-                {wbsActivities.map((act) => (
-                  <option key={act.code} value={act.code}>
-                    {act.code} - {act.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Field: Planned Quantity (Read-only reference) */}
-            <div className="space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant block">PLANNED QUANTITY (ESTIMATE)</label>
-              <div className="h-11 w-full bg-brand-surface-container border border-brand-outline-variant rounded-lg px-3 flex items-center justify-between text-xs font-bold text-brand-primary select-none">
-                <span>{selectedWbs.plannedQty}</span>
-                <span className="font-mono text-[10px] text-brand-on-surface-variant">{selectedWbs.unit}</span>
-              </div>
-            </div>
-
-            {/* Field: Actual Qty */}
-            <div className="space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant block" htmlFor="actual-qty-input">
-                ACTUAL QUANTITY COMPLETED
-              </label>
-              <div className="relative group">
-                <input 
-                  id="actual-qty-input"
-                  type="number"
-                  required
-                  min="0.1"
-                  step="0.1"
-                  value={actualQty}
-                  onChange={(e) => setActualQty(e.target.value)}
-                  placeholder="Enter volume completed"
-                  className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg pl-3 pr-10 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all text-brand-primary"
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-brand-on-surface-variant">
-                  {selectedWbs.unit}
-                </span>
-              </div>
-            </div>
-
-            {/* Field: Labor Hours */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <label className="font-sans text-xs font-bold text-brand-on-surface-variant block" htmlFor="labor-hours-input">
-                  LABOR HOURS UTILIZED
-                </label>
-                <span className="text-[9px] font-bold text-brand-secondary-container">Allocated: 12 Crew Members</span>
-              </div>
-              <div className="relative group">
-                <input 
-                  id="labor-hours-input"
-                  type="number"
-                  required
-                  min="1"
-                  value={laborHours}
-                  onChange={(e) => setLaborHours(e.target.value)}
-                  placeholder="Enter collective labor hours"
-                  className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg pl-3 pr-10 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all text-brand-primary"
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-brand-on-surface-variant">
-                  m-hrs
-                </span>
-              </div>
-            </div>
-
-            {/* Field: Equipment Hours */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <label className="font-sans text-xs font-bold text-brand-on-surface-variant block" htmlFor="equipment-hours-input">
-                  EQUIPMENT HOURS
-                </label>
-                <span className="text-[9px] font-bold text-brand-on-surface-variant">Active: 3 Excavators</span>
-              </div>
-              <div className="relative group">
-                <input 
-                  id="equipment-hours-input"
-                  type="number"
-                  min="0"
-                  value={equipmentHours}
-                  onChange={(e) => setEquipmentHours(e.target.value)}
-                  placeholder="Enter equipment hours"
-                  className="w-full h-11 bg-brand-surface border border-brand-outline-variant rounded-lg pl-3 pr-10 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all text-brand-primary"
-                />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-brand-on-surface-variant">
-                  eq-hrs
-                </span>
-              </div>
-            </div>
-
-            {/* Field: Remarks / Blockers */}
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1" htmlFor="remarks-textarea">
-                <FileText className="w-4 h-4 text-brand-primary" />
-                <span>REMARKS / SITE BLOCKERS</span>
-              </label>
-              <textarea 
-                id="remarks-textarea"
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="List geological hurdles, material delays, sub-contractor friction, or physical obstructions..."
-                className="w-full h-24 bg-brand-surface border border-brand-outline-variant rounded-lg p-3 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-all text-brand-primary resize-none"
-              />
-            </div>
-
-            {/* Field: Photo verification drag-and-drop */}
-            <div className="md:col-span-2 space-y-2">
-              <label className="font-sans text-xs font-bold text-brand-on-surface-variant flex items-center gap-1">
-                <Camera className="w-4 h-4 text-brand-primary" />
-                <span>PROGRESS VERIFICATION</span>
-              </label>
-              
-              <div 
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                className="border-2 border-dashed border-brand-outline-variant/60 rounded-xl p-5 text-center bg-brand-surface-container-lowest flex flex-col items-center justify-center cursor-pointer hover:border-brand-primary transition-colors relative group"
-              >
-                <input 
-                  type="file" 
-                  id="photo-uploader" 
-                  multiple 
-                  accept="image/*"
-                  onChange={handlePhotoUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                <Upload className="w-8 h-8 text-brand-outline group-hover:text-brand-primary transition-colors mb-2" />
-                <p className="text-xs font-bold text-brand-primary">Drag photos here or click to browse</p>
-                <p className="text-[10px] text-brand-on-surface-variant mt-1">Upload JPEG, PNG files up to 10MB to bind to ledger.</p>
-              </div>
-
-              {/* Photos Grid Previews */}
-              {photoPreviews.length > 0 && (
-                <div className="grid grid-cols-4 gap-3 pt-2">
-                  {photoPreviews.map((src, index) => (
-                    <div key={index} className="aspect-square rounded-lg overflow-hidden border border-brand-outline-variant/30 relative group">
-                      <img src={src} alt="site snapshot" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <button 
-                        type="button"
-                        onClick={() => removePhoto(index)}
-                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-on-surface/75 text-white flex items-center justify-center hover:bg-brand-status-critical transition-colors text-[10px] font-bold"
-                      >
-                        ×
-                      </button>
+          <h3 className="text-xs font-extrabold text-brand-primary uppercase tracking-wider px-1">Work done today {planLoading && <Loader2 className="inline w-3 h-3 animate-spin" />}</h3>
+          {!planLoading && activities.length === 0 && <p className="text-sm text-brand-on-surface-variant px-1">No activity is scheduled for this date. Add the work that was done below.</p>}
+          {activities.map((a, i) => {
+            const wd = a.labour.reduce((s, l) => s + (n(l.headcount) * n(l.hours)) / 8, 0);
+            const perWd = wd > 0 && n(a.actualQty) > 0 ? n(a.actualQty) / wd : 0;
+            return (
+              <div key={a.key} className={card}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-brand-primary leading-tight">{a.name}</p>
+                    <p className="text-[11px] text-brand-on-surface-variant">{a.code ? `${a.code} · ` : ''}{a.plannedQty > 0 ? `planned ${a.plannedQty} ${a.unit}` : a.unit}</p>
+                  </div>
+                  {a.key.startsWith('x') && <button type="button" aria-label="Remove" onClick={() => setActivities((x) => x.filter((_, j) => j !== i))} className="p-1 text-brand-on-surface-variant"><X className="w-4 h-4" /></button>}
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-brand-on-surface-variant">QUANTITY DONE {a.unit && `(${a.unit})`}</label>
+                  <input inputMode="decimal" className={field} value={a.actualQty} onChange={(e) => patch(i, { actualQty: e.target.value })} placeholder="0" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-brand-on-surface-variant">WORKERS (BY TRADE)</p>
+                  {a.labour.map((l, k) => (
+                    <div key={k} className="grid grid-cols-[1fr_72px_72px_36px] gap-2 items-center">
+                      <select className={field} value={l.trade} onChange={(e) => patchLabour(i, k, { trade: e.target.value })} aria-label="Trade">
+                        <option value="">Trade…</option>{tradeOptions.map((t) => <option key={t}>{t}</option>)}
+                      </select>
+                      <input inputMode="numeric" className={field} value={l.headcount} onChange={(e) => patchLabour(i, k, { headcount: e.target.value })} placeholder="No." aria-label="Headcount" />
+                      <input inputMode="decimal" className={field} value={l.hours} onChange={(e) => patchLabour(i, k, { hours: e.target.value })} placeholder="Hrs" aria-label="Hours" />
+                      <button type="button" aria-label="Remove trade" disabled={a.labour.length === 1} onClick={() => patch(i, { labour: a.labour.filter((_, m) => m !== k) })} className="text-brand-on-surface-variant disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   ))}
+                  <button type="button" onClick={() => patch(i, { labour: [...a.labour, { trade: '', headcount: '', hours: '8' }] })} className="text-xs font-bold text-brand-primary flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add trade</button>
                 </div>
-              )}
+                {perWd > 0 && (
+                  <p className="text-xs rounded-lg bg-brand-surface px-3 py-2">
+                    <b>{perWd.toFixed(2)}</b> {a.unit} per worker-day
+                    {a.ratePerWorkerDay ? <> vs planned <b>{a.ratePerWorkerDay.toFixed(2)}</b> ({Math.round((perWd / a.ratePerWorkerDay) * 100)}%)</> : ' (no planned rate set)'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <select className={field} value="" onChange={(e) => addExtra(e.target.value)} aria-label="Add other activity">
+            <option value="">+ Add other work done…</option>
+            {(wbs ?? []).filter((w) => !activities.some((a) => a.wbsItemId === w.id)).map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
+          </select>
+
+          <div className={card}>
+            <h3 className="text-xs font-extrabold text-brand-primary uppercase tracking-wider">Materials used</h3>
+            {materials.map((m, i) => (
+              <div key={i} className="grid grid-cols-[1fr_88px_36px] gap-2 items-center">
+                <select className={field} value={m.materialId} onChange={(e) => setMaterials((x) => x.map((r, j) => (j === i ? { ...r, materialId: e.target.value } : r)))}>
+                  <option value="">Material…</option>{(materialList ?? []).map((x) => <option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}
+                </select>
+                <input inputMode="decimal" className={field} value={m.qty} placeholder="Qty" onChange={(e) => setMaterials((x) => x.map((r, j) => (j === i ? { ...r, qty: e.target.value } : r)))} />
+                <button type="button" aria-label="Remove" onClick={() => setMaterials((x) => x.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4 text-brand-on-surface-variant" /></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setMaterials((x) => [...x, { materialId: '', qty: '' }])} className="text-xs font-bold text-brand-primary flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add material</button>
+          </div>
+
+          <div className={card}>
+            <h3 className="text-xs font-extrabold text-brand-primary uppercase tracking-wider">Machine hours (optional)</h3>
+            {equipment.map((m, i) => (
+              <div key={i} className="grid grid-cols-[1fr_88px_36px] gap-2 items-center">
+                <select className={field} value={m.equipmentId} onChange={(e) => setEquipment((x) => x.map((r, j) => (j === i ? { ...r, equipmentId: e.target.value } : r)))}>
+                  <option value="">Machine…</option>{(equipmentList ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                </select>
+                <input inputMode="decimal" className={field} value={m.hours} placeholder="Hrs" onChange={(e) => setEquipment((x) => x.map((r, j) => (j === i ? { ...r, hours: e.target.value } : r)))} />
+                <button type="button" aria-label="Remove" onClick={() => setEquipment((x) => x.filter((_, j) => j !== i))}><Trash2 className="w-4 h-4 text-brand-on-surface-variant" /></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setEquipment((x) => [...x, { equipmentId: '', hours: '' }])} className="text-xs font-bold text-brand-primary flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add machine</button>
+          </div>
+
+          <div className={card}>
+            <label className="text-[11px] font-bold text-brand-on-surface-variant" htmlFor="dr-note">NOTE</label>
+            <textarea id="dr-note" className="w-full bg-brand-surface border border-brand-outline-variant rounded-lg px-3 py-2 text-base min-h-[80px] outline-none focus:border-brand-primary" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Delays, issues, visitors…" />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="h-12 rounded-xl border border-dashed border-brand-primary/40 flex items-center justify-center gap-2 text-sm font-bold text-brand-primary cursor-pointer">
+                <Camera className="w-5 h-5" /> Site photos{photos.length > 0 && ` (${photos.length})`}
+                <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => setPhotos((p) => [...p, ...Array.from(e.target.files ?? [])])} />
+              </label>
+              <label className="h-12 rounded-xl border border-dashed border-brand-primary/40 flex items-center justify-center gap-2 text-sm font-bold text-brand-primary cursor-pointer">
+                <ClipboardCheck className="w-5 h-5" /> {sheet ? 'Sheet added' : 'Signed sheet'}
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setSheet(e.target.files?.[0] ?? null)} />
+              </label>
             </div>
           </div>
 
-          <div className="h-[1px] bg-brand-outline-variant/30 my-6" />
+          {error && <p role="alert" className="text-sm font-semibold text-red-600 px-1">{error}</p>}
+          {queued.some((q) => q.lastError) && <p className="text-xs text-red-600 px-1">A saved report was rejected by the server: {queued.find((q) => q.lastError)?.lastError}. <button type="button" className="underline" onClick={() => queued.forEach((q) => q.lastError && removeQueued(q.id).then(refreshQueue))}>Discard it</button></p>}
 
-          {submitError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700">
-              {submitError}
-            </div>
-          )}
-
-          {/* Form Actions footer */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-brand-secondary-container animate-pulse"></span>
-              <span className="text-xs font-semibold text-brand-on-surface-variant">Draft Saved Locally • Ready to Sync</span>
-            </div>
-            
-            <div className="flex gap-3 w-full sm:w-auto">
-              <button 
-                type="button"
-                onClick={() => onNavigate(AppView.DASHBOARD)}
-                className="flex-1 sm:flex-none px-6 py-3 bg-brand-surface-container-low border border-brand-outline-variant rounded-lg font-bold text-xs hover:bg-brand-surface-container-high transition-all"
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit"
-                id="btn-submit-erp"
-                disabled={isSyncing}
-                className="flex-1 sm:flex-none px-8 py-3 bg-brand-primary text-white font-bold text-xs rounded-lg shadow-lg hover:bg-brand-primary-container transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Pushing to ERP...</span>
-                  </>
-                ) : (
-                  <span>Submit to ERP</span>
-                )}
-              </button>
-            </div>
+          <div className="fixed bottom-0 inset-x-0 z-30 bg-brand-surface-container-lowest/95 backdrop-blur-md border-t border-brand-outline-variant/20 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <button type="submit" disabled={busy} className="max-w-xl mx-auto w-full h-14 rounded-xl bg-brand-primary text-white font-extrabold text-base flex items-center justify-center gap-2 disabled:opacity-60">
+              {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+              {busy ? 'Sending…' : online ? `Submit day · ${totals.workers} workers` : 'Save on phone (offline)'}
+            </button>
           </div>
         </form>
-      </main>
-
-      {/* Success Modal Overlay */}
-      <AnimatePresence>
-        {showSuccessModal && (
-          <div className="fixed inset-0 z-50 bg-brand-on-background/40 backdrop-blur-sm flex items-center justify-center px-4" id="success-sync-modal">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-brand-surface-container-lowest max-w-md w-full rounded-2xl p-6 text-center shadow-2xl relative max-h-[90vh] overflow-y-auto custom-scrollbar"
-            >
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-500 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-
-              <h3 className="font-display text-lg font-extrabold text-brand-primary mb-1">Ledger Sync Successful</h3>
-              <p className="text-brand-on-surface-variant text-xs leading-relaxed mb-4">
-                Entry recorded. Attach a <strong>progress photo</strong> of the work as proof of evidence.
-              </p>
-
-              {createdId && (
-                <div className="text-left mb-4">
-                  <DocumentAttachments module="daily_report" recordId={createdId} projectId={projectId} />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <button 
-                  id="btn-success-ok"
-                  onClick={() => {
-                    setShowSuccessModal(false);
-                    onNavigate(AppView.DASHBOARD);
-                  }}
-                  className="w-full py-3 bg-brand-primary text-white font-bold text-xs rounded-lg shadow hover:bg-brand-primary-container transition-all cursor-pointer"
-                >
-                  Return to Executive Dashboard
-                </button>
-                <button 
-                  id="btn-success-another"
-                  type="button"
-                  onClick={() => {
-                    setShowSuccessModal(false);
-                    setCreatedId(null);
-                    setRemarks('');
-                    setActualQty('0');
-                    setLaborHours('0');
-                  }}
-                  className="w-full py-3 bg-brand-surface border border-brand-outline-variant text-brand-primary font-bold text-xs rounded-lg hover:bg-brand-surface-container-low transition-all"
-                >
-                  Log Another Entry
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      )}
     </div>
   );
 }

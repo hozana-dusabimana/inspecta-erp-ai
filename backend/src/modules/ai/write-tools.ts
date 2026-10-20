@@ -20,6 +20,7 @@ import { ncrCrud } from '../qaqc/qaqc.routes';
 import { costEntryCrud } from '../finance/finance.routes';
 import { materialCreate, movementCrud, requirementCrud } from '../inventory/inventory.routes';
 import { supplierCrud } from '../procurement/procurement.routes';
+import { buildBatchPlan, commitBatchPlan, BatchPlan, BatchDeps } from './batch-create';
 
 /**
  * Agentic WRITE tools for the AI Copilot. The model can create records by
@@ -325,7 +326,7 @@ const DEFS: Record<string, WriteToolDef> = {
       required: ['projectId', 'code', 'name'],
       properties: {
         projectId: { type: 'string', description: 'Existing project id — call list_projects to resolve a name' },
-        parentId: { type: 'string', description: 'Parent WBS item id, if nested' },
+        parentCode: { type: 'string', description: 'Code of the parent WBS item, if nested, e.g. 1.2' },
         code: { type: 'string', description: 'WBS code, e.g. 1.2.3' },
         name: { type: 'string' },
         description: { type: 'string' },
@@ -432,6 +433,7 @@ const DEFS: Record<string, WriteToolDef> = {
         activity: { type: 'string', description: 'Activity, e.g. "Block laying"' },
         unit: { type: 'string', description: 'Output unit, e.g. m2, m3' },
         productivityRate: { type: 'number', exclusiveMinimum: 0, description: 'Planned output units per crew-day' },
+        standardCrewSize: { type: 'integer', minimum: 1, description: 'Workers in the standard crew (rate per worker-day = crew-day rate ÷ this)' },
         companyStandard: { type: 'number', minimum: 0 },
         historicalStandard: { type: 'number', minimum: 0 },
         benchmarkSource: { type: 'string' },
@@ -648,9 +650,38 @@ const START_CREATE_SPEC: ToolSpec = {
   },
 };
 
+const START_BATCH_SPEC: ToolSpec = {
+  name: 'start_batch_create',
+  description:
+    'Use INSTEAD of start_create when the user pastes or lists SEVERAL records at once: a project set-up list with WBS items (with parent codes), ' +
+    'BOQ lines, schedule activities (with predecessors) and/or productivity rates. Put EVERYTHING in one call. The system shows ONE plan and asks ONE confirmation, ' +
+    'then creates it all. Refer to parents, WBS items and predecessors by their CODES as the user wrote them, never by ids. ' +
+    'Fill project.clientName / project.managerName from the message when stated. Only for creating; never edits.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      projectRef: { type: 'string', description: 'An EXISTING project (code, name or id) the list belongs to. Omit when creating a new project.' },
+      project: {
+        type: 'object', additionalProperties: false,
+        description: 'A NEW project to create first (omit when projectRef is given).',
+        properties: {
+          name: { type: 'string' }, location: { type: 'string' }, budget: { type: 'number' },
+          startDate: { type: 'string', description: 'YYYY-MM-DD' }, endDate: { type: 'string', description: 'YYYY-MM-DD' },
+          clientName: { type: 'string', description: 'Client named in the message' }, managerName: { type: 'string', description: 'Project manager named in the message' },
+        },
+      },
+      wbs: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'name'], properties: { code: { type: 'string' }, name: { type: 'string' }, parentCode: { type: 'string', description: 'Code of the parent WBS item' }, unit: { type: 'string' }, quantity: { type: 'number' }, budgetAmount: { type: 'number' } } } },
+      boq: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'description', 'quantity', 'rate'], properties: { code: { type: 'string' }, wbsCode: { type: 'string' }, description: { type: 'string' }, unit: { type: 'string' }, quantity: { type: 'number' }, rate: { type: 'number' }, category: { type: 'string' } } } },
+      activities: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'name', 'durationDays'], properties: { code: { type: 'string' }, name: { type: 'string' }, wbsCode: { type: 'string' }, durationDays: { type: 'integer' }, startDate: { type: 'string', description: 'YYYY-MM-DD' }, predecessors: { type: 'array', items: { type: 'string' }, description: 'Activity codes' } } } },
+      productivity: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['activity', 'unit', 'productivityRate'], properties: { activity: { type: 'string' }, unit: { type: 'string' }, productivityRate: { type: 'number', description: 'Units per crew-day' }, standardCrewSize: { type: 'integer' } } } },
+    },
+  },
+};
+
 /** Tool specs exposed to the model: start_create + read lookups. */
 export function writeToolSpecs(inspecting = false): ToolSpec[] {
-  return inspecting ? LOOKUP_SPECS : [START_CREATE_SPEC, ...LOOKUP_SPECS];
+  return inspecting ? LOOKUP_SPECS : [START_CREATE_SPEC, START_BATCH_SPEC, ...LOOKUP_SPECS];
 }
 
 export function isWriteToolName(name: string): boolean {
@@ -751,6 +782,13 @@ async function listClients(actor: Actor) {
 }
 
 /** Strip internal/empty fields from a would-be record for a clean preview. */
+/** Field names as a person would say them ("Budget amount", not "budgetAmount"). */
+function plainLabel(k: string): string {
+  if (FIELD_LABELS[k]) return FIELD_LABELS[k].replace(/ \(.*\)$/, '');
+  const words = k.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function previewFields(data: Record<string, unknown>): Record<string, unknown> {
   const HIDE = new Set(['organizationId', 'createdBy', 'updatedBy', 'id', 'createdAt', 'updatedAt']);
   const out: Record<string, unknown> = {};
@@ -786,7 +824,7 @@ async function labelledPreview(fields: Record<string, unknown>, actor: Actor): P
     if (lk && typeof v === 'string') {
       const label = await lk[1](v).catch(() => null);
       out[lk[0]] = label ?? v;
-    } else out[k] = v;
+    } else out[plainLabel(k)] = v;
   }
   return out;
 }
@@ -833,6 +871,11 @@ export async function tryConfirmPending(prompt: string, actor: Actor, conversati
     orderBy: { createdAt: 'desc' },
   });
   if (!pending) return null;
+  if (pending.entity === 'batch') {
+    const r = await commitBatchSession(pending, actor);
+    if (r.ok) return `Done. I read these back from the database, so this is what is really saved:\n${batchSavedText(r.saved)}`;
+    return `${r.failure}${Object.keys(r.saved).length ? `\nSo far in the database:\n${batchSavedText(r.saved)}` : ''}`;
+  }
   const def = DEFS[pending.entity];
   if (!def) return null;
   if (!canWrite(actor, def.crud.writePerm)) {
@@ -892,12 +935,12 @@ const FIELD_ORDER: Record<string, string[]> = {
   stock_movement: ['materialId', 'type', 'quantity', 'unitCost', 'projectId', 'wbsCode', 'reference', 'note', 'date'],
   material_requirement: ['projectId', 'materialId', 'plannedQuantity', 'requiredByDate', 'supplierId', 'leadTimeDays', 'note'],
   supplier: ['name', 'category', 'contactName', 'email', 'phone', 'tinNumber', 'paymentTerms', 'leadTimeDays'],
-  wbs_item: ['projectId', 'code', 'name', 'parentId', 'unit', 'quantity', 'budgetAmount', 'description'],
+  wbs_item: ['projectId', 'code', 'name', 'parentCode', 'unit', 'quantity', 'budgetAmount', 'description'],
   boq_item: ['projectId', 'wbsCode', 'code', 'description', 'quantity', 'rate', 'unit', 'category', 'markupPct', 'contingencyPct'],
   schedule_activity: ['projectId', 'wbsCode', 'code', 'name', 'durationDays', 'startDate', 'predecessors', 'milestone'],
   schedule_dependency: ['projectId', 'activityCode', 'predecessorCode', 'type', 'lagDays'],
   schedule_baseline: ['projectId', 'name', 'note'],
-  productivity_standard: ['activity', 'unit', 'productivityRate', 'companyStandard', 'historicalStandard', 'benchmarkSource'],
+  productivity_standard: ['activity', 'unit', 'productivityRate', 'standardCrewSize', 'companyStandard', 'historicalStandard', 'benchmarkSource'],
   production_entry: ['projectId', 'wbsCode', 'wbsActivity', 'plannedQty', 'actualQty', 'date', 'laborHours', 'equipmentHours', 'remarks'],
   equipment_usage: ['projectId', 'wbsCode', 'equipmentId', 'hoursUsed', 'date', 'note'],
 };
@@ -914,7 +957,7 @@ const FIELD_LABELS: Record<string, string> = {
   materialId: 'Material', type: 'Movement type', quantity: 'Quantity', reference: 'Reference', note: 'Note',
   plannedQuantity: 'Planned quantity', requiredByDate: 'Required by', leadTimeDays: 'Lead time (days)',
   tinNumber: 'TIN (tax number)', paymentTerms: 'Payment terms',
-  wbsCode: 'WBS code', activityCode: 'Activity (depends on the predecessor)', predecessorCode: 'Predecessor activity', lagDays: 'Lag (days)', productivityRate: 'Planned rate (units per crew-day)', companyStandard: 'Company standard', historicalStandard: 'Historical standard', benchmarkSource: 'Benchmark source', predecessors: 'Predecessor activity codes (comma-separated, optional)', activity: 'Activity', code: 'Code', durationDays: 'Duration (days)', wbsActivity: 'Activity',
+  parentCode: 'Parent WBS code (leave empty for a top-level item)', budgetAmount: 'Budget amount (RWF)', wbsCode: 'WBS code', activityCode: 'Activity (depends on the predecessor)', predecessorCode: 'Predecessor activity', lagDays: 'Lag (days)', productivityRate: 'Planned rate (units per crew-day)', standardCrewSize: 'Standard crew size (workers)', companyStandard: 'Company standard', historicalStandard: 'Historical standard', benchmarkSource: 'Benchmark source', predecessors: 'Predecessor activity codes (comma-separated, optional)', activity: 'Activity', code: 'Code', durationDays: 'Duration (days)', wbsActivity: 'Activity',
   plannedQty: 'Planned quantity', actualQty: 'Actual quantity', equipmentId: 'Equipment', hoursUsed: 'Hours used', rate: 'Unit rate',
 };
 
@@ -981,8 +1024,8 @@ async function buildFieldSpec(entity: string, field: string, actor: Actor, value
     const acts = await prisma.scheduleActivity.findMany({ where: { organizationId: actor.orgId, projectId: pid }, select: { code: true, name: true }, orderBy: { code: 'asc' }, take: 500 });
     return { entity, name: field, label, type: 'select', required, options: acts.map((a) => ({ value: a.code, label: `${a.code} — ${a.name}` })) };
   }
-  if ((field === 'wbsCode' || field === 'parentId') && pid) {
-    const options = await wbsOptions(pid, actor, field === 'wbsCode' ? 'code' : 'id');
+  if ((field === 'wbsCode' || field === 'parentCode') && pid) {
+    const options = await wbsOptions(pid, actor, 'code');
     if (options.length || field === 'wbsCode') return { entity, name: field, label, type: 'select', required, options };
   }
   if (ref) {
@@ -1029,6 +1072,7 @@ function activeSession(conversationId: string, userId: string, statuses: string[
 /** Fields the user picks by human code; the create pipeline needs the record id. */
 const CODE_REFS: Record<string, { target: string; model: 'wbsItem' | 'scheduleActivity'; what: string }> = {
   wbsCode: { target: 'wbsItemId', model: 'wbsItem', what: 'WBS item' },
+  parentCode: { target: 'parentId', model: 'wbsItem', what: 'parent WBS item' },
   activityCode: { target: 'activityId', model: 'scheduleActivity', what: 'schedule activity' },
   predecessorCode: { target: 'predecessorId', model: 'scheduleActivity', what: 'schedule activity' },
 };
@@ -1145,8 +1189,14 @@ export async function answerCreateField(
   value: unknown,
   action: 'value' | 'skip' | 'addNew',
 ): Promise<GuidedResult> {
-  const session = await activeSession(conversationId, actor.id, ['collecting']);
-  if (!session) return { error: `That form is no longer active — tell me what you'd like to create.`, sessionActive: false };
+  let session = await activeSession(conversationId, actor.id, ['collecting']);
+  if (!session) {
+    // The form expired while the user was away: restart it with what was already entered, then apply this answer.
+    const restarted = await restartExpired(conversationId, actor, ['collecting']);
+    if (!restarted) return { error: `That form is no longer active — tell me what you'd like to create.`, sessionActive: false };
+    session = await activeSession(conversationId, actor.id, ['collecting']);
+    if (!session) return { ...restarted, text: 'That form had expired, so I reopened it with the details you already gave.' };
+  }
   const entity = session.entity;
   const def = DEFS[entity];
   const { values, skipped } = collectedOf(session);
@@ -1176,9 +1226,42 @@ export async function answerCreateField(
   return advanceSession(session.id, entity, values, skipped, actor);
 }
 
+/**
+ * Re-open the most recent EXPIRED form or review of this conversation with the data
+ * the user had already entered (a field widget, or the preview if everything is in).
+ */
+async function restartExpired(conversationId: string, actor: Actor, statuses: string[]): Promise<GuidedResult | null> {
+  const old = await prisma.aiPendingAction.findFirst({
+    where: { conversationId, userId: actor.id, status: { in: statuses }, expiresAt: { lte: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!old) return null;
+  await prisma.aiPendingAction.update({ where: { id: old.id }, data: { status: 'cancelled' } });
+  if (old.entity === 'batch') {
+    await prisma.aiPendingAction.create({
+      data: {
+        conversationId, organizationId: actor.orgId, userId: actor.id, tool: 'create_batch', entity: 'batch',
+        argsJson: toJson(old.argsJson), previewJson: toJson(old.previewJson), status: 'pending', expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      },
+    });
+    return { preview: { entity: 'batch', title: 'set-up from your list', fields: old.previewJson as Record<string, unknown> }, sessionActive: true };
+  }
+  return startCreateSession(old.entity, (old.argsJson as Record<string, unknown>) ?? {}, actor, conversationId);
+}
+
 export async function commitCreateSession(conversationId: string, actor: Actor): Promise<GuidedResult> {
   const session = await activeSession(conversationId, actor.id, ['pending']);
-  if (!session) return { error: `There's nothing ready to create yet.`, sessionActive: false };
+  if (!session) {
+    // The review sat too long and expired: rebuild it from the same data instead of making the user start over.
+    const restarted = await restartExpired(conversationId, actor, ['pending']);
+    if (restarted) return { ...restarted, text: 'That review had expired, so I set it up again with the same details. Please check it and confirm.' };
+    return { error: `There's nothing ready to create yet.`, sessionActive: false };
+  }
+  if (session.entity === 'batch') {
+    const r = await commitBatchSession(session, actor);
+    if (r.ok) return { created: { entity: 'batch', id: r.projectId, fields: r.saved }, done: true, text: `Saved. I read these back from the database:\n${batchSavedText(r.saved)}` };
+    return { error: `${r.failure}${Object.keys(r.saved).length ? `\nSo far in the database:\n${batchSavedText(r.saved)}` : ''}`, sessionActive: true };
+  }
   const def = DEFS[session.entity];
   if (!canWrite(actor, def.crud.writePerm)) return { error: `You don't have permission to create a ${def.title}.` };
   let record: Record<string, unknown> | undefined;
@@ -1197,6 +1280,44 @@ export async function cancelCreateSession(conversationId: string, actor: Actor):
   return { done: true, text: 'Okay, cancelled — nothing was created.' };
 }
 
+// ──────────────── Batch create (one plan, one confirmation) ────────────────
+
+const batchDeps = (): BatchDeps => ({
+  crud: { project: projectCrud, wbs: wbsCrud, boq: boqCrud, activity: scheduleCrud, productivity: productivityCrud },
+  actorReq: (a) => actorReq(a as Actor),
+  canWrite: (a, perm) => canWrite(a as Actor, perm),
+});
+
+export async function startBatchSession(args: Record<string, unknown>, actor: Actor, conversationId: string): Promise<GuidedResult> {
+  if (actor.inspecting) return { error: "Creating records is disabled while inspecting another company's workspace (read-only)." };
+  const built = await buildBatchPlan(args, actor, batchDeps());
+  if (!built.ok) {
+    return { error: `I can't create this yet:\n${built.problems.map((p) => `• ${p}`).join('\n')}\nFix these in your list and send it again. Nothing was created.` };
+  }
+  await prisma.aiPendingAction.updateMany({ where: { conversationId, userId: actor.id, status: { in: ['collecting', 'pending'] } }, data: { status: 'cancelled' } });
+  await prisma.aiPendingAction.create({
+    data: {
+      conversationId, organizationId: actor.orgId, userId: actor.id, tool: 'create_batch', entity: 'batch',
+      argsJson: toJson(built.plan), previewJson: toJson(built.preview), status: 'pending', expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+  return {
+    text: built.warnings.length ? 'Here is the whole plan. Please check the warnings, then confirm once to create everything.' : 'Here is the whole plan. Confirm once to create everything.',
+    preview: { entity: 'batch', title: 'set-up from your list', fields: built.preview },
+    sessionActive: true,
+  };
+}
+
+/** Commit a pending batch plan and report only what was read back from the database. */
+async function commitBatchSession(session: SessionRow, actor: Actor): Promise<{ ok: boolean; saved: Record<string, string>; failure?: string; projectId?: string }> {
+  const result = await commitBatchPlan(session.argsJson as BatchPlan, actor, batchDeps());
+  // Keep the plan (with the project now known) so a retry continues instead of duplicating.
+  await prisma.aiPendingAction.update({ where: { id: session.id }, data: result.ok ? { status: 'committed', argsJson: toJson(result.plan) } : { argsJson: toJson(result.plan) } });
+  return result;
+}
+
+const batchSavedText = (saved: Record<string, string>) => Object.entries(saved).map(([k, v]) => `- ${k}: ${v}`).join('\n');
+
 /** Execute one tool call from the agent loop. Never throws — returns a result
  * object (including `{ error }`) that is fed back to the model as a tool message. */
 export async function executeWriteTool(
@@ -1210,6 +1331,7 @@ export async function executeWriteTool(
     const values = args.values && typeof args.values === 'object' ? (args.values as Record<string, unknown>) : {};
     return startCreateSession(entity, values, actor, ctx.conversationId);
   }
+  if (name === 'start_batch_create') return startBatchSession(args, actor, ctx.conversationId);
   if (name === 'list_projects') return listProjects(actor);
   if (name === 'list_clients') return listClients(actor);
   if (name === 'open_page') {

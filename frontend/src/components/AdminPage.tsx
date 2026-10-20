@@ -309,8 +309,16 @@ function EditModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
   const isSelf = user.id === me?.id;
   const [fullName, setFullName] = useState(user.fullName);
   const [roleId, setRoleId] = useState<string>(user.roleId ?? '');
+  const { data: allProjects } = useQuery({ queryKey: ['projects', 'picker'], queryFn: () => api.get<{ id: string; name: string; code: string }[]>('/projects?pageSize=200') });
+  const { data: assigned } = useQuery({ queryKey: ['user-projects', user.id], queryFn: () => api.get<string[]>(`/users/${user.id}/projects`) });
+  const [projectIds, setProjectIds] = useState<string[] | null>(null);
+  const chosen = projectIds ?? assigned?.data ?? [];
+  const toggleProject = (id: string) => setProjectIds(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id]);
   const mutation = useMutation({
-    mutationFn: () => api.put(`/users/${user.id}`, { fullName, ...(roleId ? { roleId } : {}) }),
+    mutationFn: async () => {
+      await api.put(`/users/${user.id}`, { fullName, ...(roleId ? { roleId } : {}) });
+      if (projectIds) await api.put(`/users/${user.id}/projects`, { projectIds });
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-users'] }); qc.invalidateQueries({ queryKey: ['admin-org'] }); onClose(); },
   });
   const err = mutation.error instanceof ApiError ? mutation.error.message : mutation.isError ? 'Failed to update user' : null;
@@ -323,6 +331,16 @@ function EditModal({ user, onClose }: { user: AdminUser; onClose: () => void }) 
           <label className={labelCls}>ROLE</label>
           <RoleSelect value={roleId} onChange={setRoleId} disabled={isSelf} />
           {isSelf && <p className="text-brand-on-surface-variant text-[10px] mt-1">You cannot change your own role.</p>}
+        </div>
+        <div>
+          <label className={labelCls}>ASSIGNED PROJECTS</label>
+          <div className="max-h-36 overflow-y-auto border border-brand-outline-variant rounded-lg p-2 space-y-1">
+            {(allProjects?.data ?? []).map((p) => (
+              <label key={p.id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={chosen.includes(p.id)} onChange={() => toggleProject(p.id)} />{p.code} — {p.name}</label>
+            ))}
+            {!(allProjects?.data ?? []).length && <p className="text-[11px] text-brand-on-surface-variant">No projects yet.</p>}
+          </div>
+          <p className="text-brand-on-surface-variant text-[10px] mt-1">A user assigned to exactly one project opens it by default.</p>
         </div>
         {err && <p className="text-red-600 text-[11px] font-semibold">{err}</p>}
         <button type="submit" disabled={mutation.isPending} className="w-full h-11 bg-brand-primary text-white font-bold text-xs rounded-lg hover:bg-brand-primary-container transition-all disabled:opacity-60">

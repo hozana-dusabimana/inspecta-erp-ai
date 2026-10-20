@@ -13,7 +13,7 @@ export interface EngineEntry {
   actualQty: number;
   laborHours: number;
   equipmentHours: number;
-  /** Planned productivity standard (units per resource-hour); 0 if none. */
+  /** Planned productivity standard (units per labour-hour = rate per worker-day ÷ 8); 0 if none. */
   plannedProductivity: number;
   /** Equipment cost rate per hour (0 if unknown). */
   equipmentRatePerHour: number;
@@ -147,6 +147,25 @@ export function analyzeProduction(input: EngineInput) {
     }));
   };
 
+  // Planned vs actual per worker-day (labour hours / 8), per activity and per day.
+  // Planned is weighted by labour hours so mixed-standard groups stay fair.
+  const compare = (pick: (e: EngineEntry) => string) => {
+    const m = new Map<string, { actual: number; labor: number; wStd: number; wLabor: number; plannedWd: number }>();
+    for (const e of entries) {
+      const k = pick(e) || 'Unassigned';
+      const g = m.get(k) ?? { actual: 0, labor: 0, wStd: 0, wLabor: 0, plannedWd: 0 };
+      g.actual += e.actualQty; g.labor += e.laborHours;
+      // Workers the plan needed for the quantity planned: planned qty / rate per worker-day.
+      if (e.plannedProductivity > 0) { g.wStd += e.plannedProductivity * e.laborHours; g.wLabor += e.laborHours; g.plannedWd += e.plannedQty / (e.plannedProductivity * 8); }
+      m.set(k, g);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, g]) => {
+      const actual = productivity(g.actual, g.labor / 8);
+      const planned = g.wLabor > 0 ? (g.wStd / g.wLabor) * 8 : 0;
+      return { name, workerDays: round(g.labor / 8), plannedWorkerDays: round(g.plannedWd), actualQty: round(g.actual), actualPerWorkerDay: round(actual, 3), plannedPerWorkerDay: round(planned, 3), variancePct: round(productivityVariancePct(actual, planned)) };
+    });
+  };
+
   // Labor-hours histogram by activity.
   const laborHist = new Map<string, number>();
   for (const e of entries) laborHist.set(e.activity, (laborHist.get(e.activity) ?? 0) + e.laborHours);
@@ -160,6 +179,9 @@ export function analyzeProduction(input: EngineInput) {
       labor: round(laborProductivity, 3),
       equipment: round(equipmentProductivity, 3),
       plannedStandard: round(plannedProductivity, 3),
+      perWorkerDay: { actual: round(productivity(totalActual, totalLabor / 8), 3), planned: round(plannedProductivity * 8, 3), workerDays: round(totalLabor / 8) },
+      compareByActivity: compare((e) => e.activity),
+      compareByDay: compare((e) => e.date.slice(0, 10)),
       variancePct: round(productivityVariancePct(laborProductivity, plannedProductivity)),
       byCrew: groupBy((e) => e.crew || 'Unassigned'),
       byActivity: groupBy((e) => e.activity),

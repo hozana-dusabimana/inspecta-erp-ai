@@ -17,6 +17,8 @@ export interface Field {
   /** Append the current projectId to optionsEndpoint so the picker only lists this project's records. */
   scopeToProject?: boolean;
   optionLabel?: (row: Record<string, any>) => string;
+  /** Row property stored as the value (default `id`), e.g. `name` for fields that keep a label. */
+  optionValue?: string;
   required?: boolean;
   placeholder?: string;
   /** Read-only display (e.g. an auto-generated code shown on the edit screen). */

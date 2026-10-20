@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
+import { assertWbsInProject } from '../../lib/wbs-link';
 import { createCrudRouter } from '../../lib/crud';
 
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -97,6 +98,8 @@ const maintenance = createCrudRouter({
 // ── Fuel logs (consumption & cost control) ────────────────────
 const fuelSchema = z.object({
   equipmentId: z.string(),
+  projectId: z.string().optional(),
+  wbsItemId: z.string().optional(),
   date: z.string().datetime().optional(),
   liters: z.number().positive(),
   costPerLiter: z.number().nonnegative().optional(),
@@ -113,7 +116,8 @@ const fuelLogs = createCrudRouter({
   sumFields: ['liters', 'totalCost'],
   orderBy: { date: 'desc' },
   include: { equipment: { select: { id: true, code: true, name: true } } },
-  refs: [{ field: 'equipmentId', model: 'equipment' }],
+  refs: [{ field: 'equipmentId', model: 'equipment' }, { field: 'wbsItemId', model: 'wbsItem' }],
+  validate: assertWbsInProject,
   transform: (data, req) => {
     // total_cost = liters × cost_per_liter
     const liters = Number(data.liters ?? 0);
@@ -141,7 +145,8 @@ const usageLogs = createCrudRouter({
   sumFields: ['hoursUsed'],
   orderBy: { date: 'desc' },
   include: { equipment: { select: { id: true, code: true, name: true } } },
-  refs: [{ field: 'equipmentId', model: 'equipment' }],
+  refs: [{ field: 'equipmentId', model: 'equipment' }, { field: 'wbsItemId', model: 'wbsItem' }],
+  validate: assertWbsInProject,
   transform: stamp,
 });
 

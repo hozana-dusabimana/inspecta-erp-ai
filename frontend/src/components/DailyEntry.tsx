@@ -307,7 +307,7 @@ export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryPr
           {queued.some((q) => q.lastError) && <p className="text-xs text-red-600 px-1">A saved report was rejected by the server: {queued.find((q) => q.lastError)?.lastError}. <button type="button" className="underline" onClick={() => queued.forEach((q) => q.lastError && removeQueued(q.id).then(refreshQueue))}>Discard it</button></p>}
 
           <div className="fixed bottom-0 inset-x-0 z-30 bg-brand-surface-container-lowest/95 backdrop-blur-md border-t border-brand-outline-variant/20 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <button type="submit" disabled={busy} className="max-w-xl mx-auto w-full h-14 rounded-xl bg-brand-primary text-white font-extrabold text-base flex items-center justify-center gap-2 disabled:opacity-60">
+            <button type="submit" disabled={busy} className="max-w-xl mx-auto w-[calc(100%-4.5rem)] sm:w-full block mr-auto h-14 rounded-xl bg-brand-primary text-white font-extrabold text-base flex items-center justify-center gap-2 disabled:opacity-60">
               {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
               {busy ? 'Sending…' : online ? `Submit day · ${totals.workers} workers` : 'Save on phone (offline)'}
             </button>

@@ -34,13 +34,13 @@ function CompareTable({ rows }: { rows: { name: string; workerDays: number; plan
   return (
     <div className="overflow-x-auto max-h-72">
       <table className="w-full text-xs">
-        <thead><tr className="text-left text-[10px] uppercase text-brand-on-surface-variant"><th className="py-1">Name</th><th className="text-right">Worker-days</th><th className="text-right">Actual</th><th className="text-right">Planned</th><th className="text-right">Var %</th></tr></thead>
+        <thead><tr className="text-left text-[10px] uppercase text-brand-on-surface-variant"><th className="py-1 pr-2">Name</th><th className="text-right pl-2">Worker-days</th><th className="text-right pl-2">Actual</th><th className="text-right pl-2">Planned</th><th className="text-right pl-2">Var %</th></tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.name} className="border-t border-brand-outline-variant/20">
-              <td className="py-1.5 font-semibold">{r.name}</td><td className="text-right font-mono">{num(r.workerDays)}</td>
-              <td className="text-right font-mono">{num(r.actualPerWorkerDay)}</td><td className="text-right font-mono">{r.plannedPerWorkerDay ? num(r.plannedPerWorkerDay) : '—'}</td>
-              <td className={`text-right font-mono ${r.plannedPerWorkerDay && r.variancePct < 0 ? 'text-red-600' : ''}`}>{r.plannedPerWorkerDay ? `${r.variancePct}%` : '—'}</td>
+              <td className="py-1.5 font-semibold">{r.name}</td><td className="text-right font-mono pl-2">{num(r.workerDays)}</td>
+              <td className="text-right font-mono pl-2">{num(r.actualPerWorkerDay)}</td><td className="text-right font-mono pl-2">{r.plannedPerWorkerDay ? num(r.plannedPerWorkerDay) : '—'}</td>
+              <td className={`text-right font-mono pl-2 ${r.plannedPerWorkerDay && r.variancePct < 0 ? 'text-red-600' : ''}`}>{r.plannedPerWorkerDay ? `${r.variancePct}%` : '—'}</td>
             </tr>
           ))}
         </tbody>

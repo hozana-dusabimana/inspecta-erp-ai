@@ -5,6 +5,10 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
+import { Link } from 'react-router-dom';
+
+const TYPES: [string, string][] = [['PURCHASE_ORDER', 'Purchase order'], ['INVOICE', 'Invoice'], ['VARIATION', 'Variation'], ['PURCHASE_REQUEST', 'Purchase request'], ['REQUISITION', 'Material requisition'], ['PAYROLL', 'Payroll'], ['OTHER', 'Other']];
+const typeLabel = (t: string) => ({ DAILY_REPORT: 'Daily report', ...Object.fromEntries(TYPES) } as Record<string, string>)[t] ?? t;
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -16,19 +20,22 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('approval:write');
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', amount: '', entityType: 'general' });
+  const [form, setForm] = useState({ title: '', amount: '', entityType: 'OTHER' });
   const [error, setError] = useState<string | null>(null);
 
   const { data } = useQuery({ queryKey: ['approvals'], queryFn: () => api.get<any[]>('/approvals') });
   const rows = data?.data ?? [];
+  const { data: inboxResp } = useQuery({ queryKey: ['approvals-inbox'], queryFn: () => api.get<any>('/approvals/inbox') });
+  const inbox = inboxResp?.data;
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['approvals'] });
+    qc.invalidateQueries({ queryKey: ['approvals-inbox'] });
     qc.invalidateQueries({ queryKey: ['notifications-unread'] });
   };
 
   const create = useMutation({
     mutationFn: () => api.post('/approvals', { title: form.title, entityType: form.entityType, amount: form.amount ? Number(form.amount) : undefined }),
-    onSuccess: () => { invalidate(); setOpen(false); setForm({ title: '', amount: '', entityType: 'general' }); setError(null); },
+    onSuccess: () => { invalidate(); setOpen(false); setForm({ title: '', amount: '', entityType: 'OTHER' }); setError(null); },
     onError: (e) => setError(e instanceof Error ? e.message : 'Failed'),
   });
   const decide = useMutation({
@@ -47,6 +54,31 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
       ) : undefined}
     >
       <div className="space-y-3 max-w-4xl">
+        <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm">
+          <div className="px-4 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between">
+            <h3 className="font-bold text-sm text-brand-primary">Awaiting approval ({inbox?.total ?? 0})</h3>
+            <span className="text-[10px] text-brand-on-surface-variant">{Object.entries(inbox?.byType ?? {}).map(([t, n]) => `${typeLabel(t)}: ${n}`).join(' · ')}</span>
+          </div>
+          {(inbox?.items ?? []).length === 0 ? (
+            <p className="px-4 py-6 text-xs text-brand-on-surface-variant text-center">Nothing is waiting for approval.</p>
+          ) : (inbox.items as any[]).map((i) => (
+            <div key={`${i.type}-${i.id}`} className="px-4 py-3 flex items-center justify-between gap-4 border-b last:border-0 border-brand-outline-variant/10">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-brand-primary truncate">{i.title} <span className="text-[10px] font-semibold text-brand-on-surface-variant">{i.reference}</span></p>
+                <p className="text-[11px] text-brand-on-surface-variant">
+                  {typeLabel(i.type)}{i.project ? ` · ${i.project}` : ''}{i.requestedBy ? ` · raised by ${i.requestedBy}` : ''}{i.amount > 0 ? ` · ${money(i.amount)}` : ''} · Level {i.level}: {i.approverRole}
+                </p>
+              </div>
+              {i.decideVia === 'approval' && canWrite
+                ? <div className="flex gap-2 shrink-0">
+                    <button onClick={() => decide.mutate({ id: i.id, action: 'approve' })} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold">Approve</button>
+                    <button onClick={() => decide.mutate({ id: i.id, action: 'reject' })} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold">Reject</button>
+                  </div>
+                : <Link to={i.link} className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold shrink-0">Review</Link>}
+            </div>
+          ))}
+        </div>
+        <h3 className="font-bold text-sm text-brand-primary pt-2">Approval requests</h3>
         {rows.length === 0 && <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 p-10 text-center text-brand-on-surface-variant text-sm">No approval requests.</div>}
         {rows.map((r) => (
           <div key={r.id} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-4 flex items-center justify-between gap-4">
@@ -86,7 +118,7 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-brand-on-surface-variant uppercase">Type</label>
-                <input value={form.entityType} onChange={(e) => setForm((s) => ({ ...s, entityType: e.target.value }))} placeholder="purchase-order / invoice / variation" className="w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary" />
+                <select value={form.entityType} onChange={(e) => setForm((s) => ({ ...s, entityType: e.target.value }))} className="w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs outline-none focus:border-brand-primary">{TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-brand-on-surface-variant uppercase">Amount (optional)</label>

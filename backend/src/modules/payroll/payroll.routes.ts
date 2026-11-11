@@ -46,6 +46,15 @@ router.use('/runs', createCrudRouter({
   model: 'payrollRun', entity: 'payroll-run',
   readPerm: 'payroll:read', writePerm: 'payroll:write',
   createSchema: runSchema, updateSchema: runSchema.partial(),
+  // One payroll run per calendar month: block duplicates.
+  validate: async (data, req) => {
+    if (data.id || !data.periodMonth) return;
+    const d = new Date(String(data.periodMonth));
+    const from = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    const to = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+    const dup = await prisma.payrollRun.findFirst({ where: { organizationId: req.user!.orgId, periodMonth: { gte: from, lt: to }, deletedAt: null } });
+    if (dup) throw BadRequest(`A payroll run for ${from.toISOString().slice(0, 7)} already exists (${dup.status}). Open it instead of creating another.`);
+  },
   dateField: 'periodMonth',
   filterFields: ['status'],
   sumFields: ['totalGross', 'totalPaye', 'totalNet'],

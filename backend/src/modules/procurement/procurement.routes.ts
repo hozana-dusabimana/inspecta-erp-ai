@@ -111,16 +111,16 @@ const prItem = z.object({
   description: z.string().min(1),
   unit: z.string().optional(),
   quantity: z.number().nonnegative(),
-  estimatedRate: z.number().nonnegative().optional(),
+  estimatedRate: z.number().positive('Enter the estimated rate for every line'),
 });
 const prCreate = z.object({
   projectId: z.string().optional(),
   number: z.string().min(1),
-  title: z.string().optional(),
+  title: z.string().min(1, 'Title is required'),
   dateRequested: z.string().datetime().optional(),
   neededByDate: z.string().datetime().optional(),
   notes: z.string().optional(),
-  items: z.array(prItem).default([]),
+  items: z.array(prItem).min(1, 'Add at least one item with a quantity and rate (the request amount is calculated from them)'),
 });
 const prUpdate = z.object({
   title: z.string().optional(),

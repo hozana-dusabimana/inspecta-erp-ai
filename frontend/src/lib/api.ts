@@ -118,6 +118,10 @@ async function request<T>(
     const ok = await tryRefresh();
     if (ok) return request<T>(method, path, body, false);
     tokenStore.clear();
+    // Session is gone: send the user to sign in instead of showing an empty app.
+    window.dispatchEvent(new Event('inspecta:session-expired'));
+  } else if (res.status === 401 && !tokenStore.refresh && tokenStore.access === null && path !== '/auth/login') {
+    window.dispatchEvent(new Event('inspecta:session-expired'));
   }
 
   const json = (await res.json().catch(() => ({}))) as ApiEnvelope<T>;

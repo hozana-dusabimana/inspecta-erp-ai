@@ -609,6 +609,8 @@ model Project {
   budget         Decimal       @default(0) @db.Decimal(18, 2)
   currency       String        @default("RWF")
   progressPct    Float         @default(0)
+  // Demo/test projects never count in client totals.
+  isDemo         Boolean       @default(false)
   startDate      DateTime?
   endDate        DateTime?
   // Updated by the schedule engine / AI Copilot forecast (Excel: forecast_finish_date)
@@ -1105,6 +1107,8 @@ model Ncr {
   organizationId   String
   projectId        String
   inspectionId     String?   // often raised directly from a failed inspection
+  sourceType       String?   // MATERIAL_TEST | INSPECTION - the failure that raised this NCR
+  sourceId         String?
   number           String
   description      String
   wbsItemId        String?
@@ -2479,6 +2483,8 @@ model EquipmentUsageLog {
   operatorId     String?
   date           DateTime @default(now())
   hoursUsed      Decimal  @default(0) @db.Decimal(10, 2)
+  ratePerHour    Decimal? @db.Decimal(18, 2) // rate applied when the cost was posted
+  cost           Decimal  @default(0) @db.Decimal(18, 2) // hours × rate, posted to project finance
   note           String?
   sourceRef      String?  // daily report that produced this log
   createdBy String?

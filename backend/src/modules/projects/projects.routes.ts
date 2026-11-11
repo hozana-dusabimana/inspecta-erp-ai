@@ -4,6 +4,7 @@ import { ProjectStatus, ProjectHealth } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
 import { NotFound, BadRequest } from '../../lib/errors';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { assertProjectQuotaAvailable } from '../platform/plans';
@@ -36,6 +37,7 @@ export const createSchema = z.object({
   budget: z.number().nonnegative().optional(),
   currency: z.string().length(3).optional(),
   progressPct: z.number().min(0).max(100).optional(),
+  isDemo: z.boolean().optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   forecastFinishDate: z.string().datetime().optional(),
@@ -76,27 +78,27 @@ router.get(
   requirePermission('project:read'),
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
-    const projects = await prisma.project.findMany({ where: { organizationId: orgId } });
+    // Demo/test projects never count in client totals; progress comes from the shared calculation.
+    const pm = await loadProjectMetrics(orgId);
+    const projects = await prisma.project.findMany({ where: { organizationId: orgId, isDemo: false } });
+    const t = pm.totals;
 
     const total = projects.length;
     const active = projects.filter((p) => p.status === 'ACTIVE').length;
     const completed = projects.filter((p) => p.status === 'COMPLETED').length;
     const totalBudget = projects.reduce((s, p) => s + Number(p.budget), 0);
-    const avgProgress =
-      total === 0 ? 0 : projects.reduce((s, p) => s + p.progressPct, 0) / total;
+    const avgProgress = t.avgProgressPct;
 
-    const healthBreakdown = {
-      OPTIMAL: projects.filter((p) => p.health === 'OPTIMAL').length,
-      WARNING: projects.filter((p) => p.health === 'WARNING').length,
-      CRITICAL: projects.filter((p) => p.health === 'CRITICAL').length,
-    };
+    const healthBreakdown = { OPTIMAL: t.onTrack, WARNING: t.atRisk, CRITICAL: t.critical, NO_DATA: t.noData };
 
     return ok(res, {
       totalProjects: total,
       activeProjects: active,
       completedProjects: completed,
       totalBudget,
-      avgProgressPct: Number(avgProgress.toFixed(1)),
+      avgProgressPct: avgProgress,
+      health: t.health,
+      spi: t.spi,
       healthBreakdown,
     });
   }),
@@ -132,7 +134,16 @@ router.get(
       prisma.project.count({ where }),
     ]);
 
-    return paginated(res, data, { page, pageSize, total });
+    // Overlay the single shared calculation so the list never disagrees with Production/Finance.
+    const pm = await loadProjectMetrics(req.user!.orgId, { includeDemo: true });
+    const byId = new Map(pm.projects.map((m) => [m.projectId, m]));
+    const rows = data.map((p) => {
+      const m = byId.get(p.id);
+      if (!m) return p;
+      const health = m.health === 'CRITICAL' ? 'CRITICAL' : m.health === 'AT_RISK' ? 'WARNING' : 'OPTIMAL';
+      return { ...p, progressPct: m.progressPct ?? 0, hasProgress: m.progressPct != null, health, healthStatus: m.health, spi: m.spi, cpi: m.cpi, forecastProfit: m.forecastProfit, contractValue: m.contractValue };
+    });
+    return paginated(res, rows, { page, pageSize, total });
   }),
 );
 
@@ -289,6 +300,7 @@ router.post(
         budget: body.budget ?? 0,
         currency: body.currency,
         progressPct: body.progressPct ?? 0,
+        isDemo: body.isDemo ?? false,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
         forecastFinishDate: body.forecastFinishDate ? new Date(body.forecastFinishDate) : undefined,

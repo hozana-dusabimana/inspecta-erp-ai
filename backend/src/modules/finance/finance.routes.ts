@@ -7,7 +7,8 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
-import { spi, cpi, eac, etc, vac } from '../../lib/formulas';
+import { etc, vac } from '../../lib/formulas';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -227,10 +228,14 @@ router.get(
       prisma.costEntry.groupBy({ by: ['category'], where: scope, _sum: { amount: true } }),
     ]);
 
-    const budget = Number(budgetAgg._sum.amount ?? 0);
-    const actual = Number(costAgg._sum.amount ?? 0);
-    const billed = Number(invoiceAgg._sum.amount ?? 0);
-    const received = Number(paymentAgg._sum.amount ?? 0);
+    const pm = await loadProjectMetrics(orgId, { projectId });
+    const t = pm.totals;
+    const one = projectId ? pm.projects[0] : null;
+    void budgetAgg; void costAgg; void invoiceAgg; void paymentAgg;
+    const budget = one ? one.budget ?? 0 : t.budget;
+    const actual = one ? one.actualCost : t.actualCost;
+    const billed = one ? one.billed : t.billed;
+    const received = one ? one.received : t.received;
 
     return ok(res, {
       budget,
@@ -240,7 +245,12 @@ router.get(
       billed,
       received,
       outstanding: billed - received,
-      forecastProfit: billed - actual,
+      contractValue: one ? one.contractValue : t.contractValue,
+      hasBudget: budget > 0,
+      estCostAtCompletion: budget > 0 ? (one ? one.eac : t.eac) : null,
+      forecastProfit: one ? one.forecastProfit : t.forecastProfit,
+      forecastMarginPct: one ? one.forecastMarginPct : t.forecastMarginPct,
+      progressPct: one ? one.progressPct : t.avgProgressPct,
       costByCategory: costByCat.map((c) => ({
         category: c.category,
         amount: Number(c._sum.amount ?? 0),
@@ -293,39 +303,21 @@ router.get('/evm', authenticate, requirePermission('finance:read'), asyncHandler
   const orgId = req.user!.orgId;
   const projectId = req.query.projectId as string | undefined;
   if (!projectId) throw BadRequest('projectId is required');
-  const scope = { organizationId: orgId, projectId };
-
-  const [budgetAgg, costAgg, prod, project] = await Promise.all([
-    prisma.budgetLine.aggregate({ where: scope, _sum: { amount: true } }),
-    prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
-    prisma.productionEntry.aggregate({ where: scope, _sum: { plannedQty: true, actualQty: true } }),
-    prisma.project.findFirst({ where: { id: projectId, organizationId: orgId } }),
-  ]);
-
-  const bac = num(budgetAgg._sum.amount) || num(project?.budget);
-  const ac = num(costAgg._sum.amount);
-  const planned = num(prod._sum.plannedQty);
-  const actual = num(prod._sum.actualQty);
-  const actualProgress = planned > 0 ? Math.min(1, actual / planned) : num(project?.progressPct) / 100;
-
-  // Planned progress from elapsed schedule time, else equal to actual (SPI=1).
-  const start = project?.startDate?.getTime();
-  const end = project?.endDate?.getTime();
-  const nowT = Date.now();
-  const plannedProgress = start && end && end > start ? Math.min(1, Math.max(0, (nowT - start) / (end - start))) : actualProgress;
-
-  const ev = actualProgress * bac;
-  const pv = plannedProgress * bac;
-  const cpiV = cpi(ev, ac);
-  const eacV = eac(bac, cpiV);
+  const m = (await loadProjectMetrics(orgId, { projectId })).projects[0];
+  if (!m) throw BadRequest('Project not found');
+  const bac = m.budget ?? 0;
+  const ac = m.actualCost;
+  const eacV = m.eac ?? 0;
 
   return ok(res, {
+    hasData: m.budget != null,
     bac: Number(bac.toFixed(2)), ac: Number(ac.toFixed(2)),
-    plannedValue: Number(pv.toFixed(2)), earnedValue: Number(ev.toFixed(2)),
-    cpi: Number(cpiV.toFixed(3)), spi: Number(spi(ev, pv).toFixed(3)),
+    plannedValue: m.plannedValue ?? 0, earnedValue: m.earnedValue ?? 0,
+    cpi: m.cpi, spi: m.spi, spiStatus: m.spiStatus, cpiStatus: m.cpiStatus,
     eac: Number(eacV.toFixed(2)), etc: Number(etc(eacV, ac).toFixed(2)), vac: Number(vac(bac, eacV).toFixed(2)),
-    actualProgressPct: Number((actualProgress * 100).toFixed(1)),
-    plannedProgressPct: Number((plannedProgress * 100).toFixed(1)),
+    forecastProfit: m.forecastProfit, contractValue: m.contractValue,
+    actualProgressPct: m.progressPct ?? 0,
+    plannedProgressPct: m.plannedProgressPct ?? 0,
   });
 }));
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
+import { loadProjectMetrics, indexStatus } from '../../lib/project-metrics';
 
 const router = Router();
 router.use(authenticate);
@@ -41,27 +42,29 @@ router.get(
       prisma.payment.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.productionEntry.aggregate({ where: scope, _sum: { plannedQty: true, actualQty: true } }),
       prisma.productionEntry.aggregate({ where: scope, _sum: { laborHours: true } }),
-      prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' } } }),
+      prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' }, project: { isDemo: false } } }),
       prisma.incident.count({ where: scope }),
       prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' } } }),
       prisma.material.findMany({ where: scope, select: { id: true, reorderLevel: true } }),
       prisma.notification.count({ where: { ...scope, isRead: false } }),
     ]);
 
-    const totalBudget = Number(budgetAgg._sum.amount ?? 0) || projects.reduce((s, p) => s + Number(p.budget), 0);
-    const actualCost = Number(costAgg._sum.amount ?? 0);
-    const billed = Number(invoiceAgg._sum.amount ?? 0);
-    const received = Number(paymentAgg._sum.amount ?? 0);
-    const planned = Number(prodAgg._sum.plannedQty ?? 0);
-    const actual = Number(prodAgg._sum.actualQty ?? 0);
+    // One calculation for every screen: progress, EVM and forecast profit come from the shared metrics.
+    const pm = await loadProjectMetrics(orgId);
+    const t = pm.totals;
+    const demoIds = new Set(projects.filter((p) => p.isDemo).map((p) => p.id));
+    const liveProjects = projects.filter((p) => !p.isDemo);
+    const totalBudget = t.budget;
+    const actualCost = t.actualCost;
+    const billed = t.billed;
+    const received = t.received;
     const labor = Number(laborAgg._sum.laborHours ?? 0);
-
-    // KPI metrics (CPI/SPI-style + indices).
-    const cpi = actualCost > 0 ? (billed || totalBudget) / actualCost : 1; // cost performance proxy
-    const spi = planned > 0 ? actual / planned : 1; // schedule/output performance
+    const actual = Number(prodAgg._sum.actualQty ?? 0);
+    void budgetAgg; void costAgg; void invoiceAgg; void paymentAgg; void demoIds;
+    const cpi = t.cpi; // null = no data
+    const spi = t.spi;
     const productivityIndex = labor > 0 ? actual / labor : 0;
-    const avgProgress =
-      projects.length === 0 ? 0 : projects.reduce((s, p) => s + p.progressPct, 0) / projects.length;
+    const avgProgress = t.avgProgressPct;
 
     // Low-stock count requires per-material netting.
     let reorderCount = 0;
@@ -83,32 +86,39 @@ router.get(
 
     return ok(res, {
       portfolio: {
-        totalProjects: projects.length,
-        activeProjects: projects.filter((p) => p.status === 'ACTIVE').length,
-        completedProjects: projects.filter((p) => p.status === 'COMPLETED').length,
-        avgProgressPct: Number(avgProgress.toFixed(1)),
+        totalProjects: liveProjects.length,
+        activeProjects: liveProjects.filter((p) => p.status === 'ACTIVE').length,
+        completedProjects: liveProjects.filter((p) => p.status === 'COMPLETED').length,
+        avgProgressPct: avgProgress,
+        demoProjects: projects.length - liveProjects.length,
         health: {
-          OPTIMAL: projects.filter((p) => p.health === 'OPTIMAL').length,
-          WARNING: projects.filter((p) => p.health === 'WARNING').length,
-          CRITICAL: projects.filter((p) => p.health === 'CRITICAL').length,
+          OPTIMAL: t.onTrack,
+          WARNING: t.atRisk,
+          CRITICAL: t.critical,
+          NO_DATA: t.noData,
         },
+        status: t.health,
       },
       finance: {
         totalBudget,
         actualCost,
-        costVariance: totalBudget - actualCost,
+        contractValue: t.contractValue,
+        costVariance: totalBudget > 0 ? totalBudget - actualCost : null,
         billed,
         received,
         outstanding: billed - received,
-        forecastProfit: (billed || totalBudget) - actualCost,
+        estCostAtCompletion: totalBudget > 0 ? t.eac : null,
+        forecastProfit: t.forecastProfit,
+        forecastMarginPct: t.forecastMarginPct,
       },
       kpis: {
-        cpi: Number(cpi.toFixed(2)),
-        cpiLight: trafficLight(cpi, 1, 0.9),
-        spi: Number(spi.toFixed(2)),
-        spiLight: trafficLight(spi, 1, 0.9),
+        cpi,
+        cpiStatus: indexStatus(cpi),
+        spi,
+        spiStatus: indexStatus(spi),
         productivityIndex: Number(productivityIndex.toFixed(3)),
-        budgetUtilizationPct: totalBudget > 0 ? Number(((actualCost / totalBudget) * 100).toFixed(1)) : 0,
+        budgetUtilizationPct: totalBudget > 0 ? Number(((actualCost / totalBudget) * 100).toFixed(1)) : null,
+        budgetStatus: t.burnStatus,
       },
       compliance: {
         openNcrs,
@@ -269,7 +279,8 @@ router.get(
     const boqBudget = boq.reduce((s, b) => s + num(b.budget), 0);
     const plannedCost = boqBudget || Number(budgetAgg._sum.amount ?? 0);
     const actualCost = Number(costAgg._sum.amount ?? 0);
-    const contractValue = project ? num(project.budget) : 0;
+    const pmB = projectId ? (await loadProjectMetrics(orgId, { projectId })).projects[0] : null;
+    const contractValue = pmB?.contractValue ?? 0;
     const utilizationPct = plannedCost > 0 ? (actualCost / plannedCost) * 100 : 0;
 
     return ok(res, {
@@ -282,8 +293,10 @@ router.get(
       actualCost,
       costVariance: plannedCost - actualCost,
       budgetUtilizationPct: Number(utilizationPct.toFixed(1)),
-      budgetLight: trafficLight(100 - utilizationPct, 20, 0), // healthy when under budget
-      forecastProfit: contractValue > 0 ? contractValue - (actualCost || plannedCost) : boqBudget - boqCost,
+      budgetLight: plannedCost > 0 ? trafficLight(100 - utilizationPct, 20, 0) : null,
+      budgetedProfit: pmB?.budgetedProfit ?? (boqBudget - boqCost),
+      estCostAtCompletion: pmB?.eac ?? null,
+      forecastProfit: pmB ? pmB.forecastProfit : boqBudget - boqCost,
     });
   }),
 );

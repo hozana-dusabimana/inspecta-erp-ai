@@ -11,6 +11,7 @@ import { productivity, variancePct, ratePerWorkerDay } from '../../lib/formulas'
 import { analyzeProduction, EngineEntry, EngineMaterial } from './engine';
 import { computeCpm } from '../scheduling/cpm';
 import { fieldReportRouter } from './field-report';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -252,6 +253,25 @@ analytics.get('/analytics', authenticate, requirePermission('production:read'), 
     openNcrCount: openNcr,
     reworkHoursPerNcr: 8, // heuristic: ~1 crew-day of rework per open NCR
   });
+
+  // Progress, EVM and profit are overridden with the shared calculation so this screen
+  // agrees with Dashboard, Finance and Profitability.
+  const m = (await loadProjectMetrics(orgId, { projectId })).projects[0];
+  if (m) {
+    Object.assign(result.progress, {
+      actualProgressPct: m.progressPct ?? 0, plannedProgressPct: m.plannedProgressPct ?? 0,
+      earnedValue: m.earnedValue ?? 0, plannedValue: m.plannedValue ?? 0, actualCost: m.actualCost,
+      spi: m.spi, cpi: m.cpi, spiStatus: m.spiStatus, cpiStatus: m.cpiStatus,
+      hasBudget: m.budget != null,
+    });
+    Object.assign(result.profitabilityImpact, {
+      budgetedProfit: m.budgetedProfit ?? 0,
+      forecastProfit: m.forecastProfit ?? 0,
+      forecastMarginPct: m.forecastMarginPct ?? 0,
+      hasForecast: m.forecastProfit != null,
+      contractValue: m.contractValue,
+    });
+  }
 
   const avail = num(equipUtil._sum.availableHours);
   if (avail > 0) result.utilization.equipmentUtilizationPct = Number(((num(equipUtil._sum.plannedHours) / avail) * 100).toFixed(2));

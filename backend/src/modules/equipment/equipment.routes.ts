@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import { z } from 'zod';
 import { assertWbsInProject } from '../../lib/wbs-link';
 import { createCrudRouter } from '../../lib/crud';
+import { prisma } from '../../lib/prisma';
 
 const stamp = (data: Record<string, unknown>, req: Request) => {
   if (!('id' in data)) data.createdBy = req.user!.id;
@@ -130,7 +131,7 @@ const fuelLogs = createCrudRouter({
 // ── Equipment usage logs (daily hours, operator, WBS cost allocation) ──
 export const usageSchema = z.object({
   equipmentId: z.string(),
-  projectId: z.string().optional(),
+  projectId: z.string().min(1, 'Select the project the equipment worked on'),
   wbsItemId: z.string().optional(),
   operatorId: z.string().optional(),
   date: z.string().datetime().optional(),
@@ -147,7 +148,32 @@ const usageLogs = createCrudRouter({
   include: { equipment: { select: { id: true, code: true, name: true } } },
   refs: [{ field: 'equipmentId', model: 'equipment' }, { field: 'wbsItemId', model: 'wbsItem' }],
   validate: assertWbsInProject,
-  transform: stamp,
+  requireProject: true,
+  // Cost = hours x the equipment's rate, posted to the project's finance ledger.
+  transform: async (data, req) => {
+    const eq = await prisma.equipment.findFirst({ where: { id: String(data.equipmentId), organizationId: req.user!.orgId }, select: { hourlyRate: true, dailyRate: true } });
+    const rate = Number(eq?.hourlyRate ?? 0) || Number(eq?.dailyRate ?? 0) / 8;
+    data.ratePerHour = rate || null;
+    data.cost = Number((Number(data.hoursUsed ?? 0) * rate).toFixed(2));
+    return stamp(data, req);
+  },
+  afterChange: async (action, record, req) => {
+    const orgId = req.user!.orgId;
+    const existing = await prisma.costEntry.findFirst({ where: { organizationId: orgId, source: 'EQUIPMENT_USAGE', sourceRef: String(record.id) } });
+    if (action === 'DELETE') { if (existing) await prisma.costEntry.delete({ where: { id: existing.id } }); return; }
+    const amount = Number(record.cost ?? 0);
+    const eq = await prisma.equipment.findUnique({ where: { id: String(record.equipmentId) }, select: { name: true } });
+    const data = {
+      projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, amount, date: (record.date as Date) ?? new Date(),
+      description: `Equipment - ${eq?.name ?? 'usage'} x ${Number(record.hoursUsed)} h`,
+    };
+    if (existing) {
+      if (amount > 0) await prisma.costEntry.update({ where: { id: existing.id }, data });
+      else await prisma.costEntry.delete({ where: { id: existing.id } });
+    } else if (amount > 0) {
+      await prisma.costEntry.create({ data: { ...data, organizationId: orgId, category: 'EQUIPMENT', source: 'EQUIPMENT_USAGE', sourceRef: String(record.id), createdBy: req.user!.id } });
+    }
+  },
 });
 
 const router = Router();

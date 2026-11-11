@@ -22,3 +22,40 @@ export async function stockForMaterial(orgId: string, materialId: string): Promi
   }
   return stock;
 }
+
+/** Weighted-average unit cost from receipts/opening/adjustments; falls back to the material's list cost. */
+export async function weightedAverageCost(orgId: string, materialId: string): Promise<number> {
+  const [moves, mat] = await Promise.all([
+    prisma.stockMovement.findMany({
+      where: { organizationId: orgId, materialId, type: { in: ['OPENING', 'RECEIPT', 'ADJUSTMENT', 'RETURN'] }, unitCost: { gt: 0 } },
+      select: { quantity: true, unitCost: true },
+    }),
+    prisma.material.findUnique({ where: { id: materialId }, select: { unitCost: true } }),
+  ]);
+  let qty = 0; let value = 0;
+  for (const m of moves) { qty += Number(m.quantity); value += Number(m.quantity) * Number(m.unitCost); }
+  const avg = qty > 0 ? value / qty : Number(mat?.unitCost ?? 0);
+  return Number(avg.toFixed(2));
+}
+
+/** Post quantity x average cost of a material issue to project finance (idempotent per issue). */
+export async function postMaterialIssueCost(
+  orgId: string,
+  issue: Record<string, unknown>,
+  unitCost: number,
+  materialName: string,
+  userId: string,
+): Promise<void> {
+  const amount = Number((Number(issue.quantityIssued) * unitCost).toFixed(2));
+  if (amount <= 0) return;
+  const exists = await prisma.costEntry.findFirst({ where: { organizationId: orgId, source: 'MATERIAL_ISSUE', sourceRef: String(issue.id) } });
+  if (exists) return;
+  await prisma.costEntry.create({
+    data: {
+      organizationId: orgId, projectId: String(issue.projectId), wbsItemId: (issue.wbsItemId as string) ?? null,
+      category: 'MATERIAL', source: 'MATERIAL_ISSUE', sourceRef: String(issue.id),
+      description: `Material issue ${issue.issueNumber ?? ''} - ${materialName} x ${Number(issue.quantityIssued)}`.trim(),
+      amount, date: (issue.dateIssued as Date) ?? new Date(), createdBy: userId,
+    },
+  });
+}

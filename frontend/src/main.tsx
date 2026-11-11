@@ -1,13 +1,26 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+import {QueryClient, QueryClientProvider, MutationCache} from '@tanstack/react-query';
+import {Toaster} from './components/Toaster';
+import {toast} from './lib/toast';
+import {errorMessage, ApiError} from './lib/api';
 import {BrowserRouter} from 'react-router-dom';
 import App from './App.tsx';
 import {AuthProvider} from './lib/auth';
 import {ThemeProvider} from './lib/theme';
 import './index.css';
 
-const queryClient = new QueryClient({
+const queryClient: QueryClient = new QueryClient({
+  // Every successful save refreshes everything on screen (finance cards, approvals, stock...),
+  // and a refused action always shows the server's rule message instead of failing silently.
+  mutationCache: new MutationCache({
+    onSuccess: () => { void queryClient.invalidateQueries(); },
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.options.onError) return; // the caller shows its own message
+      if (error instanceof ApiError && error.status === 401) return; // handled by the session-expired flow
+      toast(errorMessage(error), 'error');
+    },
+  }),
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30_000 },
   },
@@ -20,6 +33,7 @@ createRoot(document.getElementById('root')!).render(
         <AuthProvider>
           <BrowserRouter>
             <App />
+            <Toaster />
           </BrowserRouter>
         </AuthProvider>
       </ThemeProvider>

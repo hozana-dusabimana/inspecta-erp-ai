@@ -1,3 +1,4 @@
+import { toast } from './toast';
 import React, { createContext, useContext, useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { api, tokenStore } from './api';
 import { getInspectedOrg, subscribeInspect, exitInspect } from './inspectStore';
@@ -67,6 +68,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
     })();
+  }, []);
+
+  // A refresh failure anywhere in the app signs the user out and returns them to the login page.
+  useEffect(() => {
+    const onExpired = () => {
+      setUser((cur) => {
+        if (cur) toast('Your session expired. Please sign in again.', 'info');
+        return null;
+      });
+    };
+    window.addEventListener('inspecta:session-expired', onExpired);
+    return () => window.removeEventListener('inspecta:session-expired', onExpired);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

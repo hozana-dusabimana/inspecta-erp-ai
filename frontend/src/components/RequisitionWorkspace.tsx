@@ -1,3 +1,4 @@
+import { toast } from '../lib/toast';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, X, AlertTriangle, Check } from 'lucide-react';
@@ -42,6 +43,7 @@ interface Requisition {
   location: string | null;
   status: string;
   projectId: string;
+  requestedById?: string | null;
   requiredByDate: string | null;
   dateRequested: string;
   decisionNote: string | null;
@@ -72,7 +74,7 @@ const day = (d: string | null) => (d ? String(d).slice(0, 10) : '—');
 
 export default function RequisitionWorkspace({ projectId, canWrite }: { projectId?: string; canWrite: boolean }) {
   const qc = useQueryClient();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canApprove = hasPermission('requisition:approve');
   const canIssue = hasPermission('inventory:write');
 
@@ -107,7 +109,7 @@ export default function RequisitionWorkspace({ projectId, canWrite }: { projectI
       // Issuing moves stock, so the ledger views are stale too.
       qc.invalidateQueries({ queryKey: ['/inventory/stock'] });
     },
-    onError: (e) => alert(e instanceof ApiError ? e.message : 'Action failed'),
+    onError: (e) => toast(e instanceof ApiError ? e.message : 'Action failed', 'error'),
   });
 
   return (
@@ -145,6 +147,7 @@ export default function RequisitionWorkspace({ projectId, canWrite }: { projectI
             busy={act.isPending}
             canWrite={canWrite}
             canApprove={canApprove}
+            myId={user?.id}
             canIssue={canIssue}
             onSubmit={() => act.mutate({ id: r.id, action: 'submit' })}
             onCancel={() => { if (confirm(`Cancel ${r.number}?`)) act.mutate({ id: r.id, action: 'cancel' }); }}
@@ -203,12 +206,13 @@ function StatusChip({ status }: { status: string }) {
 }
 
 function RequisitionCard({
-  req, busy, canWrite, canApprove, canIssue, onSubmit, onCancel, onDecide, onIssue, onClose,
+  req, busy, canWrite, canApprove, canIssue, onSubmit, onCancel, onDecide, onIssue, onClose, myId,
 }: {
   req: Requisition; busy: boolean; canWrite: boolean; canApprove: boolean; canIssue: boolean;
   onSubmit: () => void; onCancel: () => void; onDecide: (m: 'approve' | 'reject') => void;
-  onIssue: () => void; onClose: () => void;
+  onIssue: () => void; onClose: () => void; myId?: string;
 }) {
+  const isOwn = Boolean(req.requestedById && req.requestedById === myId);
   const shortfalls = req.items.filter((i) => (i.shortfall ?? 0) > 0);
   return (
     <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
@@ -234,7 +238,7 @@ function RequisitionCard({
               <button disabled={busy} onClick={onCancel} className={`${btnCls} bg-brand-surface !text-brand-on-surface-variant hover:bg-brand-surface`}>Cancel</button>
             </>
           )}
-          {req.status === 'SUBMITTED' && canApprove && (
+          {req.status === 'SUBMITTED' && canApprove && !isOwn && (
             <>
               <button disabled={busy} onClick={() => onDecide('approve')} className={btnCls}>Approve</button>
               <button disabled={busy} onClick={() => onDecide('reject')} className={`${btnCls} bg-red-600 hover:bg-red-700`}>Reject</button>

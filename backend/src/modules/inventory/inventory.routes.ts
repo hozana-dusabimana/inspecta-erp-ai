@@ -7,7 +7,7 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
-import { stockForMaterial } from './stock';
+import { stockForMaterial, weightedAverageCost, postMaterialIssueCost } from './stock';
 
 const router = Router();
 
@@ -239,7 +239,7 @@ router.use('/grn', createCrudRouter({
 const issueCreate = z.object({
   materialId: z.string(),
   projectId: z.string(),
-  wbsItemId: z.string().optional(),
+  wbsItemId: z.string().min(1, 'Select the WBS item this material is used on'),
   quantityIssued: z.number().positive(),
   dateIssued: z.string().datetime().optional(),
   issuedTo: z.string().optional(),
@@ -251,6 +251,7 @@ router.use('/material-issues', createCrudRouter({
   model: 'materialIssue', entity: 'material-issue',
   readPerm: 'inventory:read', writePerm: 'inventory:write',
   createSchema: issueCreate, updateSchema: issueCreate.partial(),
+  autoCode: { field: 'issueNumber', prefix: 'ISS' },
   searchField: 'issueNumber',
   dateField: 'dateIssued',
   sumFields: ['quantityIssued'],
@@ -258,6 +259,13 @@ router.use('/material-issues', createCrudRouter({
   refs: [{ field: 'materialId', model: 'material' }, { field: 'wbsItemId', model: 'wbsItem' }],
   // Evidence gate: a material issue can't be confirmed without a signed issue slip.
   validate: async (data, req) => {
+    // Never issue more than is on hand.
+    if (!data.id && data.materialId) {
+      const onHand = await stockForMaterial(req.user!.orgId, String(data.materialId));
+      if (Number(data.quantityIssued) > onHand) {
+        throw BadRequest(`Cannot issue ${data.quantityIssued}: only ${Number(onHand.toFixed(3))} on hand.`);
+      }
+    }
     if (!data.confirmed) return;
     if (!data.id) throw BadRequest('Create the issue, attach the signed issue slip, then confirm.');
     const docs = await prisma.projectDocument.findMany({
@@ -274,6 +282,8 @@ router.use('/material-issues', createCrudRouter({
   },
   afterChange: async (action, record, req) => {
     if (action !== 'CREATE') return;
+    // Cost the issue at the material's weighted-average cost so it becomes project cost.
+    const unitCost = await weightedAverageCost(req.user!.orgId, String(record.materialId));
     await prisma.stockMovement.create({
       data: {
         organizationId: req.user!.orgId,
@@ -282,12 +292,15 @@ router.use('/material-issues', createCrudRouter({
         wbsItemId: (record.wbsItemId as string) ?? null,
         type: 'ISSUE',
         quantity: Number(record.quantityIssued),
+        unitCost,
         reference: (record.issueNumber as string) ?? 'ISS',
         referenceId: String(record.id),
         date: (record.dateIssued as Date) ?? new Date(),
         note: `Issue ${record.issueNumber ?? ''}`.trim(),
       },
     });
+    const mat = await prisma.material.findUnique({ where: { id: String(record.materialId) }, select: { name: true } });
+    await postMaterialIssueCost(req.user!.orgId, record, unitCost, mat?.name ?? 'Material', req.user!.id);
   },
 }));
 

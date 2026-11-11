@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const router = Router();
 router.use(authenticate);
@@ -32,8 +33,11 @@ router.get(
     const topRiskMap = new Map<string, number>();
     for (const r of openRisks) topRiskMap.set(r.projectId, Math.max(topRiskMap.get(r.projectId) ?? 0, r.score));
 
+    const pm = await loadProjectMetrics(orgId, { includeDemo: true });
+    const metricsById = new Map(pm.projects.map((m) => [m.projectId, m]));
     const rows = projects.map((p) => {
-        const budget = Number(p.budget);
+        const m = metricsById.get(p.id)!;
+        const budget = m.budget ?? 0;
         const actualCost = costMap.get(p.id) ?? 0;
         const billed = invMap.get(p.id) ?? 0;
         return {
@@ -43,26 +47,36 @@ router.get(
           client: p.client?.name ?? null,
           status: p.status,
           health: p.health,
-          progressPct: p.progressPct,
+          isDemo: p.isDemo,
+          progressPct: m.progressPct ?? 0,
+          hasProgress: m.progressPct != null,
+          contractValue: m.contractValue,
           budget,
           actualCost,
           billed,
+          spi: m.spi, cpi: m.cpi, eac: m.eac,
+          forecastProfit: m.forecastProfit, forecastMarginPct: m.forecastMarginPct,
+          healthStatus: m.health,
           costVariance: budget - actualCost,
-          budgetUtilizationPct: budget > 0 ? Number(((actualCost / budget) * 100).toFixed(1)) : 0,
-          openNcrs: ncrMap.get(p.id) ?? 0,
+          budgetUtilizationPct: budget > 0 ? Number(((actualCost / budget) * 100).toFixed(1)) : null,
+          openNcrs: m.openNcrs,
           incidents: incMap.get(p.id) ?? 0,
           topRiskScore: topRiskMap.get(p.id) ?? 0,
         };
       });
 
+    const live = rows.filter((r) => !r.isDemo);
+    const t = pm.totals; // excludes demo projects
     const company = {
-      totalProjects: rows.length,
-      totalBudget: rows.reduce((s, r) => s + r.budget, 0),
-      totalActualCost: rows.reduce((s, r) => s + r.actualCost, 0),
-      totalBilled: rows.reduce((s, r) => s + r.billed, 0),
-      avgProgressPct:
-        rows.length === 0 ? 0 : Number((rows.reduce((s, r) => s + r.progressPct, 0) / rows.length).toFixed(1)),
-      atRiskProjects: rows.filter((r) => r.health === 'CRITICAL' || r.costVariance < 0).length,
+      totalProjects: live.length,
+      totalBudget: t.budget,
+      totalActualCost: t.actualCost,
+      totalBilled: t.billed,
+      avgProgressPct: t.avgProgressPct,
+      spi: t.spi, cpi: t.cpi,
+      forecastProfit: t.forecastProfit, forecastMarginPct: t.forecastMarginPct,
+      atRiskProjects: t.atRisk + t.critical,
+      health: t.health,
     };
 
     return ok(res, { projects: rows, company });

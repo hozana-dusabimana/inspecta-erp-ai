@@ -152,10 +152,10 @@ function BudgetTab({ projectId }: { projectId: string }) {
         <Kpi label="Planned Cost" value={money(d.plannedCost)} />
         <Kpi label="Actual Cost" value={money(d.actualCost)} />
         <Kpi label="Cost Variance" value={money(d.costVariance)} tone={d.costVariance < 0 ? 'bad' : 'good'} />
-        <Kpi label="Budget Utilization" value={`${d.budgetUtilizationPct}%`} light={d.budgetLight} />
+        <Kpi label="Budget Utilization" value={d.plannedCost > 0 ? `${d.budgetUtilizationPct}%` : 'No budget'} light={d.budgetLight ?? undefined} />
         <Kpi label="Markup + Contingency" value={money(d.markupAndContingency)} />
         <Kpi label="Profit Margin %" value={d.plannedProfitMargin != null ? `${d.plannedProfitMargin}%` : '—'} />
-        <Kpi label="Forecast Profit" value={money(d.forecastProfit)} tone={d.forecastProfit < 0 ? 'bad' : 'good'} />
+        <Kpi label="Forecast Profit" value={d.forecastProfit != null ? money(d.forecastProfit) : 'No data'} tone={d.forecastProfit == null ? undefined : d.forecastProfit < 0 ? 'bad' : 'good'} />
       </div>
       <Panel title="Planned vs Actual Cost">
         <ResponsiveContainer width="100%" height={240}>

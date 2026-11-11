@@ -1,3 +1,4 @@
+import { StatusBadge } from './StatusBadge';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import EntityForm from './EntityForm';
@@ -77,7 +78,8 @@ interface PortfolioSummary {
   completedProjects: number;
   totalBudget: number;
   avgProgressPct: number;
-  healthBreakdown: { OPTIMAL: number; WARNING: number; CRITICAL: number };
+  healthBreakdown: { OPTIMAL: number; WARNING: number; CRITICAL: number; NO_DATA?: number };
+  health?: 'NO_DATA' | 'ON_TRACK' | 'AT_RISK' | 'CRITICAL';
 }
 
 function initials(name: string): string {
@@ -323,12 +325,10 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 relative overflow-hidden shadow-sm hover:shadow-md transition-all min-w-0">
                 <div className="flex justify-between items-start gap-2 mb-4 min-w-0">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Project Progress</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> GREEN
-                  </span>
+                  <StatusBadge status={summary?.health ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{scopedAvgProgress.toFixed(1)}%</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{displayedProjects.some((p: any) => p.hasProgress !== false) ? `${scopedAvgProgress.toFixed(1)}%` : 'No data'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-bold flex items-center">
                     {progressSubtext}
                   </span>
@@ -342,9 +342,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Productivity Index</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-amber-50 text-amber-700 text-[9px] font-bold border border-amber-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> YELLOW
-                  </span>
+                  {kpis && Number(kpis.productivityIndex) > 0 ? null : <StatusBadge status="NO_DATA" />}
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
                   <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
@@ -357,12 +355,10 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Schedule SPI</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ON TRACK
-                  </span>
+                  <StatusBadge status={kpis?.spiStatus ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? Number(kpis.spi).toFixed(2) : '—'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.spi != null ? Number(kpis.spi).toFixed(2) : 'No data'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">Target: 1.00</span>
                 </div>
                 <div className="mt-4 flex gap-1">
@@ -377,14 +373,12 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-lowest p-5 rounded-xl border border-brand-outline-variant/20 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden">
                 <div className="flex justify-between items-start gap-2 mb-4">
                   <span className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider min-w-0 truncate">Budget Util.</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap bg-red-50 text-red-700 text-[9px] font-bold border border-red-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-status-critical"></span> CRITICAL
-                  </span>
+                  <StatusBadge status={kpis?.budgetStatus ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : '—'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.budgetUtilizationPct != null ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : 'No budget'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">
-                    {execFinance ? `RWF ${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
+                    {execFinance?.costVariance != null ? `RWF ${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
                   </span>
                 </div>
                 <p className="text-[10px] text-brand-on-surface-variant mt-3 font-bold">Actual cost vs total budget across the portfolio.</p>
@@ -396,7 +390,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Forecast Profit</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance ? compactMoney(execFinance.forecastProfit) : '—'}</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance?.forecastProfit != null ? compactMoney(execFinance.forecastProfit) : 'No data'}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <TrendingUp className="w-4.5 h-4.5" />

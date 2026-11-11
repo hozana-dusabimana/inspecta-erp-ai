@@ -74,10 +74,12 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
       {tab === 'cost' && s && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Kpi label="Budget" value={money(s.budget)} />
+            <Kpi label="Budget" value={s.hasBudget ? money(s.budget) : 'No budget'} />
             <Kpi label="Actual Cost" value={money(s.actualCost)} tone={s.actualCost > s.budget ? 'bad' : 'good'} />
             <Kpi label="Cost Variance" value={money(s.costVariance)} tone={s.costVariance < 0 ? 'bad' : 'good'} />
-            <Kpi label="Forecast Profit" value={money(s.forecastProfit)} tone={s.forecastProfit < 0 ? 'bad' : 'good'} />
+            <Kpi label="Contract Value" value={s.contractValue != null ? money(s.contractValue) : 'No data'} />
+            <Kpi label="Est. Cost at Completion" value={s.estCostAtCompletion != null ? money(s.estCostAtCompletion) : 'No data'} />
+            <Kpi label="Forecast Profit" value={s.forecastProfit != null ? money(s.forecastProfit) : 'No data'} tone={s.forecastProfit == null ? undefined : s.forecastProfit < 0 ? 'bad' : 'good'} />
           </div>
           <Card title="Cost by Category">
             {(s.costByCategory ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No costs yet.</p> : (

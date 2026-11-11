@@ -39,15 +39,19 @@ export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate
           <div key={p.projectId} className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
               <h3 className="font-bold text-sm text-brand-primary">{p.code} — {p.name}</h3>
+              {p.hasBudget ? (
               <span className={`text-xs font-bold font-mono px-2.5 py-1 rounded-full ${p.forecastMarginPct < 5 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
                 Margin {p.forecastMarginPct}%
               </span>
+              ) : (
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-brand-surface-container text-brand-on-surface-variant">No data — add a budget</span>
+              )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               {[
                 ['Revenue', money(p.revenue)], ['Actual Cost', money(p.actualCost)],
-                ['Est. Cost @ Completion', money(p.estCostAtCompletion)],
-                ['Earned Value', money(p.earnedValue)], ['Forecast Margin', money(p.forecastMargin)],
+                ['Est. Cost @ Completion', p.hasBudget ? money(p.estCostAtCompletion) : 'No data'],
+                ['Earned Value', p.hasBudget ? money(p.earnedValue) : 'No data'], ['Forecast Margin', p.hasBudget ? money(p.forecastMargin) : 'No data'],
               ].map(([label, val]) => (
                 <div key={label}>
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase">{label}</p>

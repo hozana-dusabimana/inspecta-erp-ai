@@ -242,7 +242,7 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <Kpi label="Budgeted Profit" value={money(a.profitabilityImpact.budgetedProfit)} />
                 <Kpi label="Profit Reduction" value={money(a.profitabilityImpact.profitReduction)} tone={a.profitabilityImpact.profitReduction > 0 ? 'bad' : 'good'} />
-                <Kpi label="Forecast Profit" value={money(a.profitabilityImpact.forecastProfit)} tone={a.profitabilityImpact.forecastProfit < 0 ? 'bad' : 'good'} />
+                <Kpi label="Forecast Profit" value={a.profitabilityImpact.hasForecast ? money(a.profitabilityImpact.forecastProfit) : 'No data'} tone={!a.profitabilityImpact.hasForecast ? undefined : a.profitabilityImpact.forecastProfit < 0 ? 'bad' : 'good'} />
                 <Kpi label="Forecast Margin" value={`${a.profitabilityImpact.forecastMarginPct}%`} tone={a.profitabilityImpact.forecastMarginPct < 5 ? 'bad' : 'good'} />
                 <Kpi label="Extra Labor Hours" value={num(a.profitabilityImpact.extraLaborHours)} tone={a.profitabilityImpact.extraLaborHours > 0 ? 'warn' : 'good'} />
                 <Kpi label="Add. Labor Cost" value={money(a.profitabilityImpact.additionalLaborCost)} tone={a.profitabilityImpact.additionalLaborCost > 0 ? 'bad' : 'good'} />

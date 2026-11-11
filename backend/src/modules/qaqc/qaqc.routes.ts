@@ -7,6 +7,7 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
+import { raiseNcrFromFailure } from './quality-chain';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -37,6 +38,15 @@ router.use('/inspections', createCrudRouter({
   searchField: 'title', dateField: 'date', filterFields: ['result'],
   requireProject: true, orderBy: { date: 'desc' },
   refs: [{ field: 'wbsItemId', model: 'wbsItem' }], transform: stamp,
+  afterChange: async (action, record, req) => {
+    if (action !== 'DELETE' && record.result === 'FAIL') {
+      await raiseNcrFromFailure(req.user!.orgId, req.user!.id, {
+        projectId: String(record.projectId), sourceType: 'INSPECTION', sourceId: String(record.id),
+        description: `Inspection failed: ${record.title}.`, severity: 'MEDIUM', wbsItemId: (record.wbsItemId as string) ?? undefined,
+        inspectionId: String(record.id),
+      });
+    }
+  },
 }));
 
 // ── Material tests ────────────────────────────────────────────
@@ -61,6 +71,11 @@ router.use('/material-tests', createCrudRouter({
   transform: stamp,
   afterChange: async (action, record, req) => {
     if (action !== 'DELETE' && record.result === 'FAIL') {
+      await raiseNcrFromFailure(req.user!.orgId, req.user!.id, {
+        projectId: String(record.projectId), sourceType: 'MATERIAL_TEST', sourceId: String(record.id),
+        description: `${record.testType} test failed (batch ${record.batchNumber ?? '-'}${record.labName ? `, lab ${record.labName}` : ''}).`,
+        severity: 'HIGH',
+      });
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: 'HIGH', title: 'Material test FAILED', message: `${record.testType} test (batch ${record.batchNumber ?? '—'}) failed.`, link: '/qaqc' });
     }
   },

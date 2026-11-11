@@ -83,7 +83,7 @@ export interface CrudOptions {
    * Derive/normalize fields just before persisting (compute amounts, scores,
    * coerce dates...). Receives the validated body and the request.
    */
-  transform?: (data: Record<string, unknown>, req: Request) => Record<string, unknown>;
+  transform?: (data: Record<string, unknown>, req: Request) => Record<string, unknown> | Promise<Record<string, unknown>>;
   /** Side-effect after a successful create/update/delete (notifications, realtime). */
   afterChange?: (
     action: 'CREATE' | 'UPDATE' | 'DELETE',
@@ -279,7 +279,7 @@ export async function runCreate(
   await assertRefsInOrg(orgId, parsed, opts.refs);
   if (opts.validate) await opts.validate(parsed, req);
   let data = coerceDates(parsed);
-  if (opts.transform) data = opts.transform(data, req);
+  if (opts.transform) data = await opts.transform(data, req);
   data.organizationId = orgId;
 
   if (!commit) return { data };
@@ -398,7 +398,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
       await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
       if (opts.validate) await opts.validate({ ...existing, ...parsed }, req);
       let data = coerceDates(parsed);
-      if (opts.transform) data = opts.transform({ ...existing, ...data }, req);
+      if (opts.transform) data = await opts.transform({ ...existing, ...data }, req);
       delete data.organizationId;
 
       const record = await delegate().update({ where: { id: req.params.id }, data });

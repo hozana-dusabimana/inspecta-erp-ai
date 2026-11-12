@@ -44,7 +44,13 @@ export interface SatelliteChatResult {
 /** Plain chat-completions call. `messages` is already in wire shape (content may be parts). */
 export async function satelliteChat(messages: unknown[], opts: { maxTokens?: number; model?: string } = {}): Promise<SatelliteChatResult> {
   const model = opts.model ?? env.ai.satellite.model;
-  const res = await satelliteFetch('/chat/completions', { model, messages, max_tokens: opts.maxTokens ?? 4096 });
+  // Rate limits (429) and temporary upstream errors (502/503/504) are retried with backoff, honouring Retry-After.
+  let res = await satelliteFetch('/chat/completions', { model, messages, max_tokens: opts.maxTokens ?? 4096 });
+  for (let attempt = 1; attempt < 4 && [429, 502, 503, 504].includes(res.status); attempt++) {
+    const wait = Number(res.headers.get('retry-after')) * 1000 || 1000 * 2 ** attempt;
+    await new Promise((r) => setTimeout(r, Math.min(wait, 8000)));
+    res = await satelliteFetch('/chat/completions', { model, messages, max_tokens: opts.maxTokens ?? 4096 });
+  }
   if (!res.ok) throw await failure('chat', res);
   const json = (await res.json()) as {
     choices?: { message?: { content?: string | null }; finish_reason?: string }[];

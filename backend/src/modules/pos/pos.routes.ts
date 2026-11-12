@@ -36,7 +36,6 @@ router.use('/products', createCrudRouter({
   createSchema: productSchema, updateSchema: productSchema.partial(),
   searchField: 'name', orderBy: { name: 'asc' },
   filterFields: ['productType'],
-  include: { material: { select: { id: true, code: true, name: true } } },
   refs: [{ field: 'materialId', model: 'material' }],
   transform: stamp,
 }));

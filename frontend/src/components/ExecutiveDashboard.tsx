@@ -11,7 +11,7 @@ interface Props {
 }
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-const numf = (n: unknown) => Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const numf = (n: unknown) => (n == null ? 'No data' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
 function light(ok: boolean, warn = false) { return warn ? 'bg-amber-500' : ok ? 'bg-emerald-500' : 'bg-red-500'; }
 
@@ -67,15 +67,15 @@ export default function ExecutiveDashboard({ onNavigate, onLogout }: Props) {
           <Section title="Project Performance" icon={Building2}>
             <Kpi label="Projects" value={numf(d.portfolio.totalProjects)} />
             <Kpi label="Active" value={numf(d.portfolio.active)} />
-            <Kpi label="Avg Progress" value={`${d.portfolio.avgProgressPct}%`} dot={light(d.portfolio.avgProgressPct >= 50, d.portfolio.avgProgressPct < 50 && d.portfolio.avgProgressPct >= 25)} />
+            <Kpi label="Avg Progress" value={d.portfolio.avgProgressPct == null ? 'No data' : `${d.portfolio.avgProgressPct}%`} dot={d.portfolio.avgProgressPct == null ? undefined : light(d.portfolio.avgProgressPct >= 50, d.portfolio.avgProgressPct < 50 && d.portfolio.avgProgressPct >= 25)} />
             <Kpi label="Critical Health" value={numf(d.portfolio.health?.CRITICAL)} dot={light((d.portfolio.health?.CRITICAL ?? 0) === 0)} />
           </Section>
 
           <Section title="Financial Performance" icon={Wallet}>
-            <Kpi label="Budget" value={money(d.finance.budget)} />
-            <Kpi label="Actual Cost" value={money(d.finance.actualCost)} dot={light(d.finance.actualCost <= d.finance.budget)} />
-            <Kpi label="CPI" value={numf(d.finance.evm?.cpi)} dot={light((d.finance.evm?.cpi ?? 0) >= 1, (d.finance.evm?.cpi ?? 0) >= 0.9)} />
-            <Kpi label="EAC" value={money(d.finance.evm?.eac)} dot={light((d.finance.evm?.eac ?? 0) <= d.finance.budget)} />
+            <Kpi label="Budget" value={d.finance.budget ? money(d.finance.budget) : 'No data'} />
+            <Kpi label="Actual Cost" value={money(d.finance.actualCost)} dot={d.finance.budget ? light(d.finance.actualCost <= d.finance.budget) : undefined} />
+            <Kpi label="CPI" value={numf(d.finance.evm?.cpi)} dot={d.finance.evm?.cpi == null ? undefined : light(d.finance.evm.cpi >= 0.95, d.finance.evm.cpi >= 0.85)} />
+            <Kpi label="EAC" value={d.finance.evm?.eac == null ? 'No data' : money(d.finance.evm.eac)} dot={d.finance.evm?.eac == null || !d.finance.budget ? undefined : light(d.finance.evm.eac <= d.finance.budget)} />
           </Section>
 
           <Section title="Inventory Performance" icon={Boxes}>

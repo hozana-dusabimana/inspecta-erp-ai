@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
-import { productivity, productivityVariancePct, spi, cpi, eac, etc, vac } from '../../lib/formulas';
+import { productivity, productivityVariancePct, etc, vac } from '../../lib/formulas';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const num = (v: unknown) => Number(v ?? 0);
 const round = (n: number, d = 2) => Number(n.toFixed(d));
@@ -25,20 +26,23 @@ async function resolveLaborRate(orgId: string): Promise<number> {
 
 // ── get_project_summary ───────────────────────────────────────
 async function getProjectSummary(orgId: string, projectId?: string) {
+  const pm = await loadProjectMetrics(orgId, { projectId });
   if (projectId) {
+    const m = pm.projects[0];
+    if (!m) return { error: 'project not found' };
     const p = await prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, include: { client: { select: { name: true } } } });
-    if (!p) return { error: 'project not found' };
-    return { code: p.code, name: p.name, client: p.client?.name, status: p.status, health: p.health, progressPct: p.progressPct, budget: num(p.budget), location: p.location, plannedProfitMargin: num(p.plannedProfitMargin) };
+    return { code: m.code, name: m.name, client: p?.client?.name, status: m.status, healthStatus: m.health, progressPct: m.progressPct, spi: m.spi, cpi: m.cpi, contractValue: m.contractValue, budget: m.budget, forecastProfit: m.forecastProfit, location: p?.location, plannedProfitMargin: num(p?.plannedProfitMargin) };
   }
-  const projects = await prisma.project.findMany({ where: { organizationId: orgId } });
+  const t = pm.totals;
   return {
-    totalProjects: projects.length,
-    active: projects.filter((p) => p.status === 'ACTIVE').length,
-    completed: projects.filter((p) => p.status === 'COMPLETED').length,
-    avgProgressPct: projects.length ? round(projects.reduce((s, p) => s + p.progressPct, 0) / projects.length, 1) : 0,
-    totalBudget: projects.reduce((s, p) => s + num(p.budget), 0),
-    health: { OPTIMAL: projects.filter((p) => p.health === 'OPTIMAL').length, WARNING: projects.filter((p) => p.health === 'WARNING').length, CRITICAL: projects.filter((p) => p.health === 'CRITICAL').length },
-    projects: projects.slice(0, 20).map((p) => ({ code: p.code, name: p.name, status: p.status, health: p.health, progressPct: p.progressPct, budget: num(p.budget) })),
+    totalProjects: t.projectCount,
+    active: pm.projects.filter((p) => p.status === 'ACTIVE').length,
+    completed: pm.projects.filter((p) => p.status === 'COMPLETED').length,
+    avgProgressPct: t.avgProgressPct, spi: t.spi, cpi: t.cpi,
+    totalContractValue: t.contractValue, totalBudget: t.budget || null,
+    health: { ON_TRACK: t.onTrack, AT_RISK: t.atRisk, CRITICAL: t.critical, NO_DATA: t.noData },
+    projects: pm.projects.slice(0, 20).map((p) => ({ code: p.code, name: p.name, status: p.status, healthStatus: p.health, progressPct: p.progressPct, spi: p.spi, budget: p.budget })),
+    note: 'Demo/test projects are excluded. null means no data (for example no budget or no production recorded): say "no data", never 0.',
   };
 }
 
@@ -67,81 +71,49 @@ async function getProductivityAnalysis(orgId: string, projectId?: string) {
   };
 }
 
-/**
- * Physical % complete for one project: production quantity ratio when tracked,
- * else the project's maintained progress field. Capped at 1 (100%).
- */
-function projectProgress(plannedQty: number, actualQty: number, progressPct: number): number {
-  return plannedQty > 0 ? Math.min(1, actualQty / plannedQty) : progressPct / 100;
-}
-
-/**
- * Portfolio earned value = Σ (project progress × project budget). Rolling EV up
- * per project is essential: a single blended progress fraction applied to the
- * whole portfolio budget inflates EV (and thus CPI) because untracked/0%
- * projects still carry their full budget. See getCostAnalysis org-level branch.
- */
-async function portfolioEarnedValue(orgId: string): Promise<number> {
-  const [projects, prodByProject, budgetByProject] = await Promise.all([
-    prisma.project.findMany({ where: { organizationId: orgId }, select: { id: true, budget: true, progressPct: true } }),
-    prisma.productionEntry.groupBy({ by: ['projectId'], where: { organizationId: orgId }, _sum: { plannedQty: true, actualQty: true } }),
-    prisma.budgetLine.groupBy({ by: ['projectId'], where: { organizationId: orgId }, _sum: { amount: true } }),
-  ]);
-  const prodBy = new Map(prodByProject.map((p) => [p.projectId, p._sum]));
-  const budgetBy = new Map(budgetByProject.map((b) => [b.projectId, num(b._sum.amount)]));
-  return projects.reduce((ev, p) => {
-    const s = prodBy.get(p.id);
-    const progress = projectProgress(num(s?.plannedQty), num(s?.actualQty), p.progressPct);
-    const projBac = budgetBy.get(p.id) || num(p.budget);
-    return ev + progress * projBac;
-  }, 0);
-}
-
-// ── get_cost_analysis (+ EVM) ─────────────────────────────────
+// ── get_cost_analysis (+ EVM): numbers come from the single shared calculation ──
 async function getCostAnalysis(orgId: string, projectId?: string) {
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
-  const [budgetAgg, costAgg, byCat, prod, project] = await Promise.all([
-    prisma.budgetLine.aggregate({ where: scope, _sum: { amount: true } }),
-    prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
+  const [byCat, pm] = await Promise.all([
     prisma.costEntry.groupBy({ by: ['category'], where: scope, _sum: { amount: true } }),
-    prisma.productionEntry.aggregate({ where: scope, _sum: { plannedQty: true, actualQty: true } }),
-    projectId ? prisma.project.findFirst({ where: { id: projectId, organizationId: orgId } }) : null,
+    loadProjectMetrics(orgId, { projectId }),
   ]);
-  const bac = num(budgetAgg._sum.amount) || num(project?.budget);
-  const ac = num(costAgg._sum.amount);
-  // Single project: EV from its own progress × its budget. Portfolio: sum EV per
-  // project so a few tracked projects don't earn value against the whole budget.
-  const ev = projectId
-    ? projectProgress(num(prod._sum.plannedQty), num(prod._sum.actualQty), num(project?.progressPct)) * bac
-    : await portfolioEarnedValue(orgId);
-  const pv = bac; const cpiV = cpi(ev, ac); const eacV = eac(bac, cpiV);
+  const t = pm.totals;
+  const m = projectId ? pm.projects[0] : null;
+  const budget = m ? m.budget : t.budget || null;
+  const ac = m ? m.actualCost : t.actualCost;
+  const eacV = m ? m.eac : budget ? t.eac : null;
+  const cpiV = m ? m.cpi : t.cpi;
+  const spiV = m ? m.spi : t.spi;
   return {
-    budget: bac, actualCost: ac, costVariance: bac - ac,
+    budget, actualCost: ac, costVariance: budget != null ? budget - ac : null,
     costByCategory: byCat.map((c) => ({ category: c.category, amount: num(c._sum.amount) })).sort((a, b) => b.amount - a.amount),
-    topCostDriver: byCat.length ? byCat.sort((a, b) => num(b._sum.amount) - num(a._sum.amount))[0].category : null,
-    evm: { cpi: round(cpiV, 3), spi: round(spi(ev, pv), 3), eac: round(eacV), etc: round(etc(eacV, ac)), vac: round(vac(bac, eacV)) },
+    topCostDriver: byCat.length ? [...byCat].sort((a, b) => num(b._sum.amount) - num(a._sum.amount))[0].category : null,
+    evm: {
+      cpi: cpiV, spi: spiV,
+      eac: eacV, etc: eacV != null ? round(etc(eacV, ac)) : null, vac: eacV != null && budget != null ? round(vac(budget, eacV)) : null,
+    },
+    note: budget == null ? 'No cost budget exists yet, so CPI/EAC/forecast cannot be calculated (no data).' : undefined,
   };
 }
 
 // ── get_profit_forecast ───────────────────────────────────────
 async function getProfitForecast(orgId: string, projectId?: string) {
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
-  const [costAgg, invoiceAgg, project, reworkAgg] = await Promise.all([
-    prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
-    prisma.invoice.aggregate({ where: scope, _sum: { amount: true } }),
-    projectId ? prisma.project.findFirst({ where: { id: projectId, organizationId: orgId } }) : null,
+  const [reworkAgg, pm] = await Promise.all([
     prisma.rework.aggregate({ where: scope, _sum: { reworkCost: true } }),
+    loadProjectMetrics(orgId, { projectId }),
   ]);
-  const contractValue = num(project?.budget);
-  const ac = num(costAgg._sum.amount);
-  const budgetedProfit = (contractValue * num(project?.plannedProfitMargin)) / 100;
-  const reworkCost = num(reworkAgg._sum.reworkCost);
-  const forecastProfit = budgetedProfit - reworkCost;
+  const t = pm.totals;
+  const m = projectId ? pm.projects[0] : null;
+  const forecastProfit = m ? m.forecastProfit : t.forecastProfit;
   return {
-    contractValue, billed: num(invoiceAgg._sum.amount), actualCost: ac,
-    budgetedProfit: round(budgetedProfit), reworkCostErosion: round(reworkCost),
-    forecastProfit: round(forecastProfit),
-    forecastMarginPct: contractValue > 0 ? round((forecastProfit / contractValue) * 100) : 0,
+    contractValue: m ? m.contractValue : t.contractValue, billed: m ? m.billed : t.billed, actualCost: m ? m.actualCost : t.actualCost,
+    budgetedProfit: m ? m.budgetedProfit : null,
+    estCostAtCompletion: m ? m.eac : null,
+    reworkCostErosion: round(num(reworkAgg._sum.reworkCost)),
+    forecastProfit, forecastMarginPct: m ? m.forecastMarginPct : t.forecastMarginPct,
+    note: forecastProfit == null ? 'No data: needs a contract value and a cost budget.' : undefined,
   };
 }
 

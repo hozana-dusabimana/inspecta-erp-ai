@@ -25,7 +25,8 @@ export const createSchema = z.object({
   projectId: z.string(),
   dailyReportId: z.string().optional(),
   date: z.string().datetime().optional(),
-  wbsActivity: z.string().min(1),
+  // The activity name is taken from the linked WBS item (plan); free text only as a fallback.
+  wbsActivity: z.string().optional(),
   wbsItemId: z.string().optional(),
   equipmentId: z.string().optional(),
   crewId: z.string().optional(),
@@ -63,8 +64,13 @@ const entriesCrud = createCrudRouter({
     { field: 'tradeId', model: 'trade' },
     { field: 'productivityStandardId', model: 'productivityStandard' },
   ],
-  transform: (data, req: Request) => {
+  transform: async (data, req: Request) => {
     if (!('id' in data) && req.user) data.createdById = req.user.id;
+    if (data.wbsItemId) {
+      const w = await prisma.wbsItem.findFirst({ where: { id: String(data.wbsItemId), organizationId: req.user!.orgId }, select: { code: true, name: true } });
+      if (w && !data.wbsActivity) data.wbsActivity = `${w.code} - ${w.name}`;
+    }
+    if (!data.wbsActivity) throw BadRequest('Select the WBS activity this production belongs to');
     return stamp(data, req);
   },
   afterChange: async (action, record, req) => {
@@ -375,8 +381,22 @@ analytics.get('/ai-summary', authenticate, requirePermission('production:read'),
   if (openNcr > 0) insights.push({ severity: openNcr >= 3 ? 'HIGH' : 'MEDIUM', title: `${openNcr} open NCR(s) — rework risk`, detail: 'Open non-conformances usually translate into rework hours and cost.', recommendation: 'Prioritise closure of open NCRs to limit rework cost erosion of margin.' });
   if (project?.health === 'CRITICAL') insights.push({ severity: 'HIGH', title: `Project "${project.name}" health is CRITICAL`, detail: `Reported progress ${project.progressPct}%.`, recommendation: 'Run a recovery plan: re-baseline critical-path activities and reallocate top crews.' });
 
+  // 4. Schedule/output performance from the shared metrics: a low SPI is never "healthy".
+  const mm = (await loadProjectMetrics(orgId, { projectId })).projects[0];
+  if (mm?.spi != null && mm.spi < 0.95) insights.push({
+    severity: mm.spi < 0.85 ? 'HIGH' : 'MEDIUM',
+    title: `Output is at ${(mm.spi * 100).toFixed(0)}% of plan (SPI ${mm.spi})`,
+    detail: `Actual quantity is ${mm.progressPct}% of what the plan expected to date.`,
+    recommendation: 'Find the activities behind the gap, add crews or hours where the work front allows, and re-forecast the finish date.',
+  });
+  if (mm?.cpi != null && mm.cpi < 0.95) insights.push({
+    severity: mm.cpi < 0.85 ? 'HIGH' : 'MEDIUM', title: `Cost performance is weak (CPI ${mm.cpi})`,
+    detail: 'Earned value is lower than the cost spent so far.', recommendation: 'Review cost drivers and unit rates before more work is committed.',
+  });
+
   if (entries.length === 0 && insights.length === 0) insights.push({ severity: 'LOW', title: 'No data yet', detail: 'No activities or daily entries have been recorded for this project, so productivity cannot be assessed.', recommendation: 'Submit daily reports with quantities and headcount to start tracking productivity.' });
-  else if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Production tracking healthy', detail: 'No activities or crews significantly below standard.', recommendation: 'Maintain current pace; keep capturing daily reports for trend accuracy.' });
+  else if (insights.length === 0 && mm?.spi != null) insights.push({ severity: 'LOW', title: 'Production on plan', detail: `Output is at plan (SPI ${mm.spi}) with no activity or crew significantly below standard.`, recommendation: 'Maintain the pace and keep capturing daily reports.' });
+  else if (insights.length === 0) insights.push({ severity: 'LOW', title: 'Not enough data to judge', detail: 'There are entries, but no plan quantities or standards to compare them with, so health cannot be judged.', recommendation: 'Enter planned quantities and productivity standards.' });
 
   return ok(res, { projectId, insights, generatedFrom: 'production-engine' });
 }));

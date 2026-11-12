@@ -487,13 +487,13 @@ export const MODULES: Record<string, ModuleDef> = {
       {
         key: 'employees', label: 'Employees', endpoint: '/hr/employees', entityLabel: 'Employee', attachModule: 'employee',
         filters: [{ field: 'status', label: 'Status', options: opt(['active', 'on_leave', 'terminated']) }],
-        summaryCards: [{ key: '__count', label: 'Employees' }, { key: 'grossMonthlySalary', label: 'Monthly Wage Bill', money: true }],
+        summaryCards: [{ key: '__count', label: 'Employees (all statuses)' }, { key: 'grossMonthlySalary', label: 'Monthly gross salaries (all listed)', money: true }],
         readPerm: 'hr:read', writePerm: 'hr:write',
         columns: [
           { key: 'employeeNo', label: 'No.' }, { key: 'fullName', label: 'Name' },
           { key: 'trade', label: 'Trade', render: (r) => r.trade?.name ?? '—' },
           { key: 'status', label: 'Status' },
-          { key: 'dailyWage', label: 'Daily Wage', align: 'right', render: (r) => (r.dailyWage != null ? money(r.dailyWage) : '—') },
+          { key: 'dailyWage', label: 'Daily Wage', align: 'right', render: (r) => (r.dailyWage != null ? money(r.dailyWage) : r.grossMonthlySalary ? `${money(Number(r.grossMonthlySalary) / 26)} (from salary ÷ 26)` : 'Not set') },
         ],
         fields: [
           { name: 'fullName', label: 'Full Name', required: true, section: 'Personal' },
@@ -875,8 +875,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'date', label: 'Date', type: 'date' },
           { name: 'dailyReportId', label: 'Daily Report', type: 'select', optionsEndpoint: '/production/daily-reports', optionLabel: (r) => r.reportNumber },
-          { name: 'wbsActivity', label: 'WBS Activity', required: true },
-          { name: 'wbsItemId', label: 'WBS Item (link)', type: 'select', optionsEndpoint: '/planning/wbs', optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'wbsItemId', label: 'WBS Activity (from the project plan)', type: 'select', required: true, optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'productivityStandardId', label: 'Productivity Standard', type: 'select', optionsEndpoint: '/planning/productivity', optionLabel: (r) => `${r.activity} (${num(r.ratePerWorkerDay ?? Number(r.productivityRate) / Math.max(1, Number(r.standardCrewSize ?? 1)))}/worker-day)` },
           { name: 'crewId', label: 'Crew', type: 'select', optionsEndpoint: '/hr/crews', optionLabel: (r) => r.name },
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
@@ -1154,9 +1153,9 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
-          { name: 'issueNumber', label: 'Issue Number' },
-          { name: 'quantityIssued', label: 'Quantity Issued', type: 'number', required: true },
-          { name: 'wbsItemId', label: 'WBS Item (cost allocation)' },
+          { name: 'issueNumber', label: 'Issue Number (auto)', hideOnCreate: true, readOnly: true },
+          { name: 'quantityIssued', label: 'Quantity Issued (cannot exceed stock on hand)', type: 'number', required: true },
+          { name: 'wbsItemId', label: 'WBS Item (cost allocation)', type: 'select', required: true, optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'dateIssued', label: 'Date Issued', type: 'date' },
           { name: 'issuedTo', label: 'Issued To' },
           { name: 'confirmed', label: 'Confirmed (needs signed issue slip attached)', type: 'select', options: [{ value: 'false', label: 'No — pending evidence' }, { value: 'true', label: 'Yes — confirm' }] },

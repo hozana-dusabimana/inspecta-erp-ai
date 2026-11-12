@@ -198,9 +198,16 @@ router.use('/grn', createCrudRouter({
   sumFields: ['quantityReceived'],
   orderBy: { dateReceived: 'desc' },
   refs: [{ field: 'materialId', model: 'material' }],
-  transform: (data, req) => {
+  // Receipts against a purchase order take the supplier from the PO and are checked against it.
+  transform: async (data, req) => {
     if (!('id' in data)) data.createdBy = req.user!.id;
     data.updatedBy = req.user!.id;
+    if (data.purchaseOrderId) {
+      const po = await prisma.purchaseOrder.findFirst({ where: { id: String(data.purchaseOrderId), organizationId: req.user!.orgId }, include: { supplier: { select: { name: true } } } });
+      if (!po) throw BadRequest('Purchase order not found');
+      if (!data.supplierName) data.supplierName = po.supplier.name;
+      if (!data.projectId && po.projectId) data.projectId = po.projectId;
+    }
     return data;
   },
   // Post the receipt into the stock ledger so balances/valuation stay consistent.

@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 import { getProvider, anyConfiguredProvider, ChatMessage, Attachment } from './providers';
 import { inlineAttachments } from './file-reader';
 import { satelliteConfigured } from './satellite';
@@ -56,12 +57,16 @@ export interface CopilotContext {
  * module. The AI is only ever allowed to reason over this object — never
  * invented numbers.
  */
+function pm0Budget(lines: unknown, projects: Array<{ budget: unknown }>): number {
+  return Number(lines ?? 0) || projects.reduce((s, p) => s + Number(p.budget), 0);
+}
+
 export async function buildContext(orgId: string, isoNow: string): Promise<CopilotContext> {
   const scope = { organizationId: orgId };
   const [org, projects, budgetAgg, costAgg, invoiceAgg, paymentAgg, prodAgg, laborAgg, openNcrs, incidents, openRisks] =
     await Promise.all([
       prisma.organization.findUnique({ where: { id: orgId } }),
-      prisma.project.findMany({ where: scope, orderBy: { createdAt: 'desc' }, take: 50 }),
+      prisma.project.findMany({ where: { ...scope, isDemo: false }, orderBy: { createdAt: 'desc' }, take: 50 }),
       prisma.budgetLine.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: scope, _sum: { amount: true } }),
@@ -73,13 +78,15 @@ export async function buildContext(orgId: string, isoNow: string): Promise<Copil
       prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' } } }),
     ]);
 
-  const totalBudget = Number(budgetAgg._sum.amount ?? 0) || projects.reduce((s, p) => s + Number(p.budget), 0);
+  const totalBudget = pm0Budget(budgetAgg._sum.amount, projects);
   const actualCost = Number(costAgg._sum.amount ?? 0);
   const planned = Number(prodAgg._sum.plannedQty ?? 0);
   const actual = Number(prodAgg._sum.actualQty ?? 0);
   const labor = Number(laborAgg._sum.laborHours ?? 0);
-  const avgProgress =
-    projects.length === 0 ? 0 : projects.reduce((s, p) => s + p.progressPct, 0) / projects.length;
+  // Progress/health come from the single shared calculation (same numbers as every screen).
+  const pm = await loadProjectMetrics(orgId);
+  const mById = new Map(pm.projects.map((m) => [m.projectId, m]));
+  const avgProgress = pm.totals.avgProgressPct ?? 0;
 
   return {
     organizationName: org?.name ?? 'Organization',
@@ -91,9 +98,9 @@ export async function buildContext(orgId: string, isoNow: string): Promise<Copil
       totalBudget,
       avgProgressPct: Number(avgProgress.toFixed(1)),
       healthBreakdown: {
-        OPTIMAL: projects.filter((p) => p.health === 'OPTIMAL').length,
-        WARNING: projects.filter((p) => p.health === 'WARNING').length,
-        CRITICAL: projects.filter((p) => p.health === 'CRITICAL').length,
+        OPTIMAL: pm.totals.onTrack,
+        WARNING: pm.totals.atRisk,
+        CRITICAL: pm.totals.critical,
       },
     },
     finance: {
@@ -115,8 +122,8 @@ export async function buildContext(orgId: string, isoNow: string): Promise<Copil
       code: p.code,
       name: p.name,
       status: p.status,
-      health: p.health,
-      progressPct: p.progressPct,
+      health: mById.get(p.id)?.health ?? 'NO_DATA',
+      progressPct: mById.get(p.id)?.progressPct ?? 0,
       budget: Number(p.budget),
       location: p.location,
     })),

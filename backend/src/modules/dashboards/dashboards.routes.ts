@@ -313,7 +313,7 @@ router.get(
       prisma.material.findMany({ where: scope }),
       prisma.stockMovement.groupBy({ by: ['materialId', 'type'], where: scope, _sum: { quantity: true } }),
       prisma.productionMaterial.aggregate({ where: scope, _sum: { wasteQty: true, qtyUsed: true } }),
-      prisma.stockMovement.groupBy({ by: ['materialId'], where: scope, _max: { date: true } }),
+      prisma.stockMovement.groupBy({ by: ['materialId'], where: scope, _max: { date: true, createdAt: true } }),
     ]);
 
     const stockBy = new Map<string, number>();
@@ -322,7 +322,8 @@ router.get(
       const d = g.type === 'ISSUE' || g.type === 'WASTE' ? -q : g.type === 'TRANSFER' ? 0 : q;
       stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d);
     }
-    const lastMove = new Map(lastMoves.map((m) => [m.materialId, m._max.date?.getTime() ?? 0]));
+    // Last activity = the later of the movement date and when it was recorded (backdated stock is not dead).
+    const lastMove = new Map(lastMoves.map((m) => [m.materialId, Math.max(m._max.date?.getTime() ?? 0, m._max.createdAt?.getTime() ?? 0)]));
     const now = Date.now();
     const DEAD_MS = 90 * 86400000;
 
@@ -332,7 +333,8 @@ router.get(
       totalValue += stock * num(m.unitCost);
       if (num(m.reorderLevel) > 0 && stock <= num(m.reorderLevel)) reorderCount++;
       const lm = lastMove.get(m.id) ?? 0;
-      if (stock > 0 && (lm === 0 || now - lm > DEAD_MS)) deadStock++;
+      // Dead stock = on hand, no movement for 90+ days, and the material itself is older than 90 days.
+      if (stock > 0 && now - Math.max(lm, m.createdAt.getTime()) > DEAD_MS) deadStock++;
     }
     const usedTotal = num(waste._sum.qtyUsed);
     const wasteTotal = num(waste._sum.wasteQty);
@@ -340,6 +342,8 @@ router.get(
     return ok(res, {
       materialsCount: materials.length,
       totalStockValue: Number(totalValue.toFixed(2)),
+      stockValueNote: 'Stock value = quantity on hand x material unit cost. It is money held in the store, not project spend, so it can exceed spend until the stock is issued.',
+      deadStockRule: 'On hand, no movement for 90+ days.',
       reorderCount,
       deadStockCount: deadStock,
       materialConsumed: usedTotal,

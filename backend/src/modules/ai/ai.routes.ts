@@ -275,17 +275,23 @@ router.get('/alerts', requirePermission('ai:use'), asyncHandler(async (req, res)
   const inv = r.get_inventory_analysis as any;
   const comp = r.get_compliance_analysis as any;
 
-  const alerts: { type: string; severity: string; message: string }[] = [];
-  if (cost && cost.budget > 0 && cost.actualCost > cost.budget) alerts.push({ type: 'COST_OVERRUN', severity: 'CRITICAL', message: `Actual cost ${cost.actualCost.toLocaleString()} exceeds budget ${cost.budget.toLocaleString()}.` });
-  if (cost?.evm?.cpi && cost.evm.cpi > 0 && cost.evm.cpi < 0.9) alerts.push({ type: 'COST_PERFORMANCE', severity: 'HIGH', message: `CPI ${cost.evm.cpi} below 0.9 — cost performance deteriorating.` });
-  for (const a of prod?.underperformingActivities ?? []) alerts.push({ type: 'PRODUCTIVITY', severity: 'HIGH', message: `${a.activity} productivity ${a.variancePct}% below standard.` });
-  if (sched?.delayedCount > 0) alerts.push({ type: 'SCHEDULE_DELAY', severity: 'HIGH', message: `${sched.delayedCount} activity(ies) delayed, up to ${sched.maxDaysDelayed} days.` });
-  for (const m of inv?.reorderItems ?? []) alerts.push({ type: 'LOW_INVENTORY', severity: 'MEDIUM', message: `${m.name} at ${m.stock} (reorder ${m.reorderLevel}).` });
-  if (comp?.criticalNcrs > 0) alerts.push({ type: 'QUALITY', severity: 'HIGH', message: `${comp.criticalNcrs} open critical NCR(s).` });
-  if (comp?.lostTime > 0) alerts.push({ type: 'SAFETY', severity: 'CRITICAL', message: `${comp.lostTime} lost-time/serious incident(s).` });
+  const alerts: { type: string; severity: string; message: string; rank: number }[] = [];
+  const add = (type: string, severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW', message: string, weight = 0) =>
+    alerts.push({ type, severity, message, rank: ({ CRITICAL: 400, HIGH: 300, MEDIUM: 200, LOW: 100 }[severity]) + weight });
+  if (comp?.lostTime > 0) add('SAFETY', 'CRITICAL', `${comp.lostTime} lost-time/serious incident(s).`, 9);
+  if (cost && cost.budget > 0 && cost.actualCost > cost.budget) add('COST_OVERRUN', 'CRITICAL', `Actual cost ${cost.actualCost.toLocaleString()} exceeds budget ${cost.budget.toLocaleString()}.`, 8);
+  if (cost?.evm?.cpi != null && cost.evm.cpi < 0.9) add('COST_PERFORMANCE', 'HIGH', `CPI ${cost.evm.cpi} below 0.9: cost performance deteriorating.`, 5);
+  if (comp?.criticalNcrs > 0) add('QUALITY', 'HIGH', `${comp.criticalNcrs} open critical NCR(s).`, 6);
+  else if (comp?.openNcrs > 0) add('QUALITY', 'MEDIUM', `${comp.openNcrs} open NCR(s) awaiting corrective action.`, 4);
+  if (sched?.delayedCount > 0) add('SCHEDULE_DELAY', 'HIGH', `${sched.delayedCount} activity(ies) delayed, up to ${sched.maxDaysDelayed} days.`, Math.min(5, Math.floor(sched.maxDaysDelayed / 7)));
+  for (const a of (prod?.underperformingActivities ?? []).slice(0, 3)) add('PRODUCTIVITY', 'HIGH', `${a.activity} productivity ${a.variancePct}% below standard.`, 1);
+  // Low stock is one line, not one alert per material, and ranks below delivery/cost/safety risks.
+  const lowStock = (inv?.reorderItems ?? []) as { name: string }[];
+  if (lowStock.length) add('LOW_INVENTORY', 'LOW', `${lowStock.length} material(s) at or below reorder level: ${lowStock.slice(0, 4).map((m) => m.name).join(', ')}${lowStock.length > 4 ? '...' : ''}.`);
+  alerts.sort((x, y) => y.rank - x.rank);
 
   await deductCredits(orgId, CREDIT_COSTS.REPORT, 'AI alert scan', req.user!.id);
-  return ok(res, { count: alerts.length, alerts });
+  return ok(res, { count: alerts.length, alerts: alerts.map(({ rank: _rank, ...rest }) => rest) });
 }));
 
 export default router;

@@ -386,4 +386,21 @@ router.get(
   }),
 );
 
+// ── Supplier balances: ordered vs received (from linked GRNs) ──
+router.get('/supplier-balances', authenticate, requirePermission('procurement:read'), asyncHandler(async (req, res) => {
+  const orgId = req.user!.orgId;
+  const [suppliers, pos, grns] = await Promise.all([
+    prisma.supplier.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
+    prisma.purchaseOrder.findMany({ where: { organizationId: orgId, status: { not: 'CANCELLED' } }, select: { id: true, supplierId: true, total: true } }),
+    prisma.goodsReceipt.findMany({ where: { organizationId: orgId, purchaseOrderId: { not: null }, deletedAt: null }, select: { purchaseOrderId: true, quantityReceived: true, unitCost: true } }),
+  ]);
+  const poSupplier = new Map(pos.map((p) => [p.id, p.supplierId]));
+  const rows = suppliers.map((sp) => {
+    const ordered = pos.filter((p) => p.supplierId === sp.id).reduce((t, p) => t + Number(p.total), 0);
+    const received = grns.filter((g) => poSupplier.get(g.purchaseOrderId as string) === sp.id).reduce((t, g) => t + Number(g.quantityReceived) * Number(g.unitCost ?? 0), 0);
+    return { supplierId: sp.id, supplier: sp.name, ordered, received, notYetReceived: Math.max(0, ordered - received) };
+  }).filter((r) => r.ordered > 0 || r.received > 0);
+  return ok(res, { rows });
+}));
+
 export default router;

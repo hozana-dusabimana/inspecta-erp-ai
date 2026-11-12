@@ -23,6 +23,21 @@ export async function stockForMaterial(orgId: string, materialId: string): Promi
   return stock;
 }
 
+/** Weighted-average unit cost for every material at once (one query): used so every screen values stock the same way. */
+export async function averageCostMap(orgId: string): Promise<Map<string, number>> {
+  const moves = await prisma.stockMovement.findMany({
+    where: { organizationId: orgId, type: { in: ['OPENING', 'RECEIPT', 'ADJUSTMENT', 'RETURN'] }, unitCost: { gt: 0 } },
+    select: { materialId: true, quantity: true, unitCost: true },
+  });
+  const acc = new Map<string, { q: number; v: number }>();
+  for (const m of moves) {
+    const a = acc.get(m.materialId) ?? { q: 0, v: 0 };
+    a.q += Number(m.quantity); a.v += Number(m.quantity) * Number(m.unitCost);
+    acc.set(m.materialId, a);
+  }
+  return new Map([...acc].filter(([, a]) => a.q > 0).map(([id, a]) => [id, a.v / a.q]));
+}
+
 /** Weighted-average unit cost from receipts/opening/adjustments; falls back to the material's list cost. */
 export async function weightedAverageCost(orgId: string, materialId: string): Promise<number> {
   const [moves, mat] = await Promise.all([

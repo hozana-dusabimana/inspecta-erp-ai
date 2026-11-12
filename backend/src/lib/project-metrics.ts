@@ -72,6 +72,8 @@ export interface ProjectMetrics {
   forecastMarginPct: number | null;
   budgetedProfit: number | null;
   openNcrs: number;
+  /** Progress earned but far too little cost recorded: cost data looks incomplete. */
+  costDataIncomplete: boolean;
   spiStatus: IndexStatus;
   cpiStatus: IndexStatus;
   burnStatus: IndexStatus;
@@ -141,7 +143,12 @@ export function buildProjectMetrics(p: {
   const ev = budget != null && progress != null ? (progress / 100) * budget : null;
   const pv = budget != null && planned != null ? (planned / 100) * budget : null;
   const spi = progress != null && planned != null && planned > 0 ? progress / planned : null;
-  const cpi = ev != null && p.actualCost > 0 && ev > 0 ? ev / p.actualCost : null;
+  // CPI is only credible when the cost recorded is a believable share of the value earned.
+  // Spending under 20% of earned value (CPI above 5) means cost entries are incomplete, not that the
+  // project is a miracle: show No data and keep the estimate at budget instead of a fantasy profit.
+  const costCredible = ev != null && ev > 0 && p.actualCost > 0 && p.actualCost / ev >= 0.2;
+  const cpi = costCredible ? (ev as number) / p.actualCost : null;
+  const costDataIncomplete = ev != null && ev > 0 && !costCredible;
   let eac: number | null = null;
   if (budget != null) eac = cpi != null ? budget / cpi : budget;
   const forecastProfit = contractValue != null && eac != null ? contractValue - eac : null;
@@ -160,6 +167,7 @@ export function buildProjectMetrics(p: {
     forecastMarginPct: forecastMarginPct == null ? null : Number(forecastMarginPct.toFixed(1)),
     budgetedProfit: budgetedProfit == null ? null : r2(budgetedProfit),
     openNcrs: p.openNcrs,
+    costDataIncomplete,
     spiStatus: indexStatus(spi), cpiStatus: indexStatus(cpi),
     burnStatus: burnStatus(p.actualCost, budget, progress),
     marginStatus: marginStatus(forecastMarginPct),

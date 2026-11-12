@@ -7,7 +7,7 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
-import { stockForMaterial, weightedAverageCost, postMaterialIssueCost } from './stock';
+import { stockForMaterial, weightedAverageCost, postMaterialIssueCost, averageCostMap } from './stock';
 
 const router = Router();
 
@@ -140,8 +140,10 @@ router.get(
       byMaterial.set(g.materialId, (byMaterial.get(g.materialId) ?? 0) + delta);
     }
 
+    const avgCost = await averageCostMap(orgId);
     const rows = materials.map((m) => {
       const stock = byMaterial.get(m.id) ?? 0;
+      const cost = avgCost.get(m.id) ?? Number(m.unitCost);
       return {
         id: m.id,
         code: m.code,
@@ -150,7 +152,8 @@ router.get(
         stock,
         reorderLevel: Number(m.reorderLevel),
         unitCost: Number(m.unitCost),
-        stockValue: stock * Number(m.unitCost),
+        avgCost: Number(cost.toFixed(2)),
+        stockValue: Number((Math.max(0, stock) * cost).toFixed(2)),
         needsReorder: Number(m.reorderLevel) > 0 && stock <= Number(m.reorderLevel),
       };
     });

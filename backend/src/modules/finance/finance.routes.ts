@@ -225,7 +225,7 @@ router.get(
       prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.payment.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.costEntry.groupBy({ by: ['category'], where: scope, _sum: { amount: true } }),
+      prisma.costEntry.groupBy({ by: ['category'], where: projectId ? scope : { ...scope, project: { isDemo: false } }, _sum: { amount: true } }),
     ]);
 
     const pm = await loadProjectMetrics(orgId, { projectId });

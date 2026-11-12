@@ -26,6 +26,14 @@ describe('project metrics — one calculation for every screen', () => {
     expect(m.forecastProfit).toBeCloseTo(20_000_000, 0);
   });
 
+  it('treats implausibly low spend as incomplete cost data (no fantasy CPI or profit)', () => {
+    const m = buildProjectMetrics({ ...base, budgetLines: 50_000_000, prodPlanned: 100, prodActual: 50, actualCost: 21_250 });
+    expect(m.cpi).toBeNull();
+    expect(m.costDataIncomplete).toBe(true);
+    expect(m.eac).toBe(50_000_000);
+    expect(m.forecastProfit).toBe(30_000_000);
+  });
+
   it('uses the contract value (not 0 or a dash) for profit', () => {
     const m = buildProjectMetrics({ ...base, budgetLines: 50_000_000 });
     expect(m.contractValue).toBe(80_000_000);

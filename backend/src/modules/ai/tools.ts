@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { productivity, productivityVariancePct, etc, vac } from '../../lib/formulas';
 import { loadProjectMetrics } from '../../lib/project-metrics';
+import { averageCostMap } from '../inventory/stock';
 
 const num = (v: unknown) => Number(v ?? 0);
 const round = (n: number, d = 2) => Number(n.toFixed(d));
@@ -142,7 +143,8 @@ async function getInventoryAnalysis(orgId: string) {
   const stockBy = new Map<string, number>();
   for (const g of groups) { const q = num(g._sum.quantity); const d = g.type === 'ISSUE' || g.type === 'WASTE' || g.type === 'POS_SALE' ? -q : g.type === 'TRANSFER' ? 0 : q; stockBy.set(g.materialId, (stockBy.get(g.materialId) ?? 0) + d); }
   const reorder = materials.filter((m) => num(m.reorderLevel) > 0 && (stockBy.get(m.id) ?? 0) <= num(m.reorderLevel)).map((m) => ({ code: m.code, name: m.name, stock: round(stockBy.get(m.id) ?? 0), reorderLevel: num(m.reorderLevel) }));
-  const totalValue = materials.reduce((s, m) => s + (stockBy.get(m.id) ?? 0) * num(m.unitCost), 0);
+  const avgCost = await averageCostMap(orgId);
+  const totalValue = materials.reduce((s, m) => s + Math.max(0, stockBy.get(m.id) ?? 0) * (avgCost.get(m.id) ?? num(m.unitCost)), 0);
   const used = num(waste._sum.qtyUsed); const wasteQty = num(waste._sum.wasteQty);
   return { materials: materials.length, totalStockValue: round(totalValue), reorderItems: reorder, materialWaste: wasteQty, wastePct: used > 0 ? round((wasteQty / used) * 100, 1) : 0 };
 }

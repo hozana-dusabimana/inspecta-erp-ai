@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { loadProjectMetrics, indexStatus } from '../../lib/project-metrics';
+import { averageCostMap } from '../inventory/stock';
 
 const router = Router();
 router.use(authenticate);
@@ -40,11 +41,11 @@ router.get(
       prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: scope, _sum: { amount: true } }),
       prisma.payment.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.productionEntry.aggregate({ where: scope, _sum: { plannedQty: true, actualQty: true } }),
-      prisma.productionEntry.aggregate({ where: scope, _sum: { laborHours: true } }),
+      prisma.productionEntry.aggregate({ where: { ...scope, project: { isDemo: false } }, _sum: { plannedQty: true, actualQty: true } }),
+      prisma.productionEntry.aggregate({ where: { ...scope, project: { isDemo: false } }, _sum: { laborHours: true } }),
       prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' }, project: { isDemo: false } } }),
-      prisma.incident.count({ where: scope }),
-      prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' } } }),
+      prisma.incident.count({ where: { ...scope, project: { isDemo: false } } }),
+      prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' }, project: { isDemo: false } } }),
       prisma.material.findMany({ where: scope, select: { id: true, reorderLevel: true } }),
       prisma.notification.count({ where: { ...scope, isRead: false } }),
     ]);
@@ -327,10 +328,11 @@ router.get(
     const now = Date.now();
     const DEAD_MS = 90 * 86400000;
 
+    const avgCost = await averageCostMap(orgId);
     let totalValue = 0; let reorderCount = 0; let deadStock = 0;
     for (const m of materials) {
       const stock = stockBy.get(m.id) ?? 0;
-      totalValue += stock * num(m.unitCost);
+      totalValue += Math.max(0, stock) * (avgCost.get(m.id) ?? num(m.unitCost));
       if (num(m.reorderLevel) > 0 && stock <= num(m.reorderLevel)) reorderCount++;
       const lm = lastMove.get(m.id) ?? 0;
       // Dead stock = on hand, no movement for 90+ days, and the material itself is older than 90 days.

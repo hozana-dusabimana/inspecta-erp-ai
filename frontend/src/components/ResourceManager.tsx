@@ -34,6 +34,16 @@ const numFmt = (n: unknown) => Number(n ?? 0).toLocaleString();
 
 const PAGE_SIZE = 25;
 
+/** English plural for record names: Activity -> Activities, Diary Entry -> Diary Entries. */
+export function plural(label: string): string {
+  if (/[^aeiou]y$/i.test(label)) return label.slice(0, -1) + 'ies';
+  if (/(s|x|ch|sh)$/i.test(label)) return label + 'es';
+  return label + 's';
+}
+
+// Modules where the server refuses to confirm/close the record without evidence.
+const EVIDENCE_REQUIRED: Record<string, string> = { grn: 'to confirm the GRN', material_issue: 'to confirm the issue', ncr: 'to close the NCR' };
+
 export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
@@ -153,7 +163,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
       <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
         <div className="flex flex-col gap-3 px-5 py-3 border-b border-brand-outline-variant/15">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-bold text-sm text-brand-primary">{entityLabel}s <span className="text-brand-on-surface-variant font-mono text-xs">({total})</span></h3>
+            <h3 className="font-bold text-sm text-brand-primary">{plural(entityLabel)} <span className="text-brand-on-surface-variant font-mono text-xs">({total})</span></h3>
             {canWrite && (
               <button
                 onClick={openCreate}
@@ -237,7 +247,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
         </div>
 
         {projectScoped && !projectId ? (
-          <div className="p-8 text-center text-brand-on-surface-variant text-xs">Select a project above to view and add {entityLabel.toLowerCase()}s.</div>
+          <div className="p-8 text-center text-brand-on-surface-variant text-xs">Select a project above to view and add {plural(entityLabel).toLowerCase()}.</div>
         ) : isLoading ? (
           <div className="p-8 text-center text-brand-on-surface-variant text-xs">Loading…</div>
         ) : (
@@ -258,7 +268,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       ) : c.label}
                     </th>
                   ))}
-                  {attachModule && <th className="px-5 py-2.5">Evidence</th>}
+                  {attachModule && <th className="px-5 py-2.5" title="Proof attached to the record (file or link)">Evidence</th>}
                   {/* Always present: viewing a record is available to read-only users too. */}
                   <th className="px-5 py-2.5 text-right">Actions</th>
                 </tr>
@@ -278,7 +288,9 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       <td className="px-5 py-2.5">
                         {covered.has(row.id)
                           ? <span className="text-emerald-600 font-bold" title="Documents attached">✓</span>
-                          : <span className="text-amber-600 font-bold" title="No documents attached">⚠</span>}
+                          : EVIDENCE_REQUIRED[attachModule]
+                            ? <span className="text-amber-600 font-bold" title={`No evidence yet. Required ${EVIDENCE_REQUIRED[attachModule]}.`}>⚠ Required</span>
+                            : <span className="text-brand-on-surface-variant font-semibold text-[11px]" title="Optional: attach a photo, file or link as proof.">Optional</span>}
                       </td>
                     )}
                     <td className="px-5 py-2.5 text-right whitespace-nowrap">

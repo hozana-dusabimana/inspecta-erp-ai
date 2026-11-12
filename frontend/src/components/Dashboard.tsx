@@ -319,6 +319,31 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               </div>
             </div>
 
+            {/* Empty account: guide the first steps instead of showing zeros and red badges. */}
+            {summary && summary.totalProjects === 0 ? (
+              <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-6 sm:p-8">
+                <h3 className="font-display text-lg font-extrabold text-brand-primary">Get started</h3>
+                <p className="text-sm text-brand-on-surface-variant mt-1">Your workspace is empty. Set up your first project in five steps and the numbers on this page will fill in.</p>
+                <ol className="mt-5 space-y-3">
+                  {([
+                    ['Create a project', 'Name, client and contract value.', () => setIsNewProjectOpen(true), 'New project'],
+                    ['Build the plan', 'Add the WBS, BOQ and the schedule activities.', () => onNavigate(AppView.PLANNING), 'Open Planning'],
+                    ['Set the budget', 'Add budget lines so forecast cost and profit can be calculated.', () => onNavigate(AppView.FINANCE), 'Open Finance'],
+                    ['Record daily production', 'Log quantities and hours to track progress against plan.', () => onNavigate(AppView.PRODUCTION), 'Open Production'],
+                    ['Stock the store', 'Add materials and receive goods so issues become project cost.', () => onNavigate(AppView.INVENTORY), 'Open Inventory'],
+                  ] as [string, string, () => void, string][]).map(([title, text, go, cta], i) => (
+                    <li key={title} className="flex items-center gap-4">
+                      <span className="w-7 h-7 rounded-full bg-brand-primary text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-brand-primary">{title}</p>
+                        <p className="text-xs text-brand-on-surface-variant">{text}</p>
+                      </div>
+                      <button onClick={go} className="px-3 py-1.5 rounded-lg bg-brand-surface-container text-brand-primary text-xs font-bold hover:bg-brand-surface-container-high shrink-0">{cta}</button>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : (<>
             {/* KPI Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-5">
               {/* Progress Card */}
@@ -427,6 +452,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                 </div>
               </div>
             </div>
+            </>)}
 
             {/* Bento Grid Analytics charts */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

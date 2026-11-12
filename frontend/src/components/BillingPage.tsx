@@ -370,7 +370,7 @@ export default function BillingPage({ onNavigate, onLogout }: Props) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <p className={labelCls}>{b.state.status === 'TRIAL' ? 'TRIAL ENDS' : 'RENEWS / ENDS'}</p>
-              <p className="font-mono text-sm font-extrabold text-brand-primary">{fmtDate(b.state.expiresAt)}</p>
+              <p className="font-mono text-sm font-extrabold text-brand-primary">{b.state.expiresAt ? fmtDate(b.state.expiresAt) : b.state.status === 'EXEMPT' ? 'No renewal (billing-exempt)' : 'No renewal date set'}</p>
             </div>
             <div>
               <p className={labelCls}>DAYS LEFT</p>

@@ -188,6 +188,35 @@ const PR_ACTIONS: Record<string, Array<[string, string, boolean]>> = {
   CLOSED: [],
 };
 
+/** Guided "set up the project plan" checklist, shown while the plan is incomplete. */
+function PlanSetupPanel({ projectId }: { projectId?: string }) {
+  const { data } = useQuery({
+    queryKey: ['/dashboards/baseline', projectId],
+    queryFn: () => api.get<any>(`/dashboards/baseline?projectId=${projectId}`),
+    enabled: Boolean(projectId),
+  });
+  const d = data?.data;
+  if (!projectId || !d) return null;
+  const steps: [string, boolean, string][] = [
+    ['Work breakdown (WBS)', d.wbsCount > 0, `${d.wbsCount} items. Add them in the WBS tab or import from Excel.`],
+    ['Bill of quantities (BOQ)', d.boqCount > 0, `${d.boqCount} items. The BOQ budget becomes the cost budget.`],
+    ['Schedule activities', d.activitiesCount > 0, `${d.activitiesCount} activities. Add them in Scheduling so progress and delays can be tracked.`],
+  ];
+  if (steps.every(([, done]) => done)) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-bold text-amber-900">Set up this project's plan</p>
+      <ul className="mt-2 space-y-1">
+        {steps.map(([label, done, hint]) => (
+          <li key={label} className="text-xs text-amber-900">
+            <span className="font-bold">{done ? '✓' : '○'} {label}</span> <span className="opacity-80">— {done ? 'done' : hint}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ProcurementPanel() {
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
@@ -338,6 +367,7 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.PLANNING,
     title: 'Planning & Resources',
     subtitle: 'Project setup, WBS, BOQ & resource baseline (Module 1)',
+    summary: (projectId) => <PlanSetupPanel projectId={projectId} />,
     tabs: [
       {
         key: 'projects', label: 'Project Setup', endpoint: '/projects', entityLabel: 'Project', attachModule: 'project',

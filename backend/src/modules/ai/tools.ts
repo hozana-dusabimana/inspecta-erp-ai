@@ -34,7 +34,9 @@ async function getProjectSummary(orgId: string, projectId?: string) {
     return { code: m.code, name: m.name, client: p?.client?.name, status: m.status, healthStatus: m.health, progressPct: m.progressPct, spi: m.spi, cpi: m.cpi, contractValue: m.contractValue, budget: m.budget, forecastProfit: m.forecastProfit, location: p?.location, plannedProfitMargin: num(p?.plannedProfitMargin) };
   }
   const t = pm.totals;
+  const demoExcluded = await prisma.project.count({ where: { organizationId: orgId, isDemo: true } });
   return {
+    demoProjectsExcluded: demoExcluded,
     totalProjects: t.projectCount,
     active: pm.projects.filter((p) => p.status === 'ACTIVE').length,
     completed: pm.projects.filter((p) => p.status === 'COMPLETED').length,

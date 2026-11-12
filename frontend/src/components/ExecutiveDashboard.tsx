@@ -64,6 +64,7 @@ export default function ExecutiveDashboard({ onNavigate, onLogout }: Props) {
             )}
           </div>
 
+          {d.portfolio.demoProjectsExcluded > 0 && <p className="text-[11px] text-brand-on-surface-variant -mb-2">{d.portfolio.demoProjectsExcluded} demo/test project(s) are excluded from these totals.</p>}
           <Section title="Project Performance" icon={Building2}>
             <Kpi label="Projects" value={numf(d.portfolio.totalProjects)} />
             <Kpi label="Active" value={numf(d.portfolio.active)} />

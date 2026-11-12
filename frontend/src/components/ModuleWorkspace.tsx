@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
 import ResourceManager, { Column, Field, FilterDef, SummaryCardDef } from './ResourceManager';
+import PortfolioPanel from './PortfolioPanel';
 import ExcelImportBar, { ImporterDef } from './ExcelImport';
 
 export interface TabDef {
@@ -116,7 +117,14 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
       onLogout={onLogout}
       actions={projectSelector}
     >
-      {def.summary && <div className="mb-6">{def.summary(projectId || undefined)}</div>}
+      {def.summary && (
+        <div className="mb-6">
+          {/* Project-dependent summaries give way to portfolio totals when no project is picked. */}
+          {needsProject && !projectId && def.summary.length > 0
+            ? <PortfolioPanel onSelect={setProjectId} />
+            : def.summary(projectId || undefined)}
+        </div>
+      )}
 
       {visibleTabs.length > 1 && (
         <div className="flex flex-wrap gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10 mb-5 w-fit">

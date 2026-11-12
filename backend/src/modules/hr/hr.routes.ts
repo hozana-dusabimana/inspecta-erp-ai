@@ -1,6 +1,9 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
 import { createCrudRouter } from '../../lib/crud';
+import { prisma } from '../../lib/prisma';
+import { asyncHandler, ok } from '../../lib/http';
+import { authenticate, requirePermission } from '../../middleware/auth';
 
 // Accept boolean or the string the generic form sends.
 const boolish = z.preprocess(
@@ -143,6 +146,20 @@ const teamMembers = createCrudRouter({
 });
 
 const router = Router();
+
+// One headcount for HR and Payroll: payroll pays active staff, so both screens quote these numbers.
+router.get('/headcount', authenticate, requirePermission('hr:read'), asyncHandler(async (req, res) => {
+  const rows = await prisma.employee.findMany({ where: { organizationId: req.user!.orgId, deletedAt: null }, select: { status: true, grossMonthlySalary: true, dailyWage: true } });
+  const active = rows.filter((e) => e.status === 'active');
+  return ok(res, {
+    total: rows.length,
+    active: active.length,
+    onLeave: rows.filter((e) => e.status === 'on_leave').length,
+    terminated: rows.filter((e) => e.status === 'terminated').length,
+    monthlyWageBillActive: active.reduce((s, e) => s + Number(e.grossMonthlySalary ?? 0), 0),
+    activeWithoutSalary: active.filter((e) => !Number(e.grossMonthlySalary ?? 0) && !Number(e.dailyWage ?? 0)).length,
+  });
+}));
 router.use('/trades', trades);
 router.use('/team-members', teamMembers);
 router.use('/employees', employees);

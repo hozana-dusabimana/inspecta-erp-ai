@@ -70,6 +70,8 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
 
   const { data: runsData, isLoading } = useQuery({ queryKey: ['/payroll/runs'], queryFn: () => api.get<Run[]>('/payroll/runs?pageSize=100') });
   const runs = runsData?.data ?? [];
+  const { data: hc } = useQuery({ queryKey: ['/hr/headcount'], queryFn: () => api.get<any>('/hr/headcount') });
+  const head = hc?.data;
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['/payroll/runs'] });
     qc.invalidateQueries({ queryKey: ['/payroll/summary'] });
@@ -108,6 +110,13 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
 
+      {head && (
+        <div className="rounded-lg border border-brand-outline-variant/20 bg-brand-surface-container-lowest px-4 py-2.5 text-xs text-brand-on-surface-variant">
+          Payroll pays <b className="text-brand-primary">{head.active} active</b> of {head.total} employees on the HR register ({head.onLeave} on leave, {head.terminated} terminated).
+          {head.activeWithoutSalary > 0 && <span className="text-amber-700 font-semibold"> {head.activeWithoutSalary} active employee(s) have no salary or daily wage set.</span>}
+        </div>
+      )}
+
       <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 overflow-hidden">
         <div className="px-5 py-3 border-b border-brand-outline-variant/15 font-bold text-sm text-brand-primary">Payroll Runs <span className="font-mono text-xs text-brand-on-surface-variant">({runs.length})</span></div>
         {isLoading ? (
@@ -137,9 +146,9 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
                       </button>
                     </td>
                     <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_TONE[r.status] ?? ''}`}>{r.status.replace(/_/g, ' ')}</span></td>
-                    <td className="px-3 py-2.5 text-right font-mono">{money(r.totalGross)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono">{money(r.totalPaye)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono font-bold text-brand-primary">{money(r.totalNet)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono">{r.status === 'DRAFT' && Number(r.totalNet) === 0 ? <span className="text-brand-on-surface-variant font-sans">Not computed yet</span> : money(r.totalGross)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono">{r.status === 'DRAFT' && Number(r.totalNet) === 0 ? '—' : money(r.totalPaye)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold text-brand-primary">{r.status === 'DRAFT' && Number(r.totalNet) === 0 ? '—' : money(r.totalNet)}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {canWrite && r.status !== 'POSTED' && (
                         <>

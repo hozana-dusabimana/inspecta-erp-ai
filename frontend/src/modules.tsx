@@ -188,8 +188,72 @@ const PR_ACTIONS: Record<string, Array<[string, string, boolean]>> = {
   CLOSED: [],
 };
 
+/** HR headcount banner: the same numbers Payroll uses. */
+function HeadcountPanel() {
+  const { data } = useQuery({ queryKey: ['/hr/headcount'], queryFn: () => api.get<any>('/hr/headcount') });
+  const h = data?.data;
+  if (!h) return null;
+  return (
+    <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest p-4 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+      {[['Employees', h.total], ['Active (paid by payroll)', h.active], ['On leave', h.onLeave], ['Terminated', h.terminated], ['Monthly wage bill (active)', 'RWF ' + Number(h.monthlyWageBillActive).toLocaleString()]].map(([l, v]) => (
+        <div key={String(l)}><p className="text-[10px] font-bold uppercase text-brand-on-surface-variant">{l}</p><p className="font-mono font-bold text-brand-primary">{v}</p></div>
+      ))}
+    </div>
+  );
+}
+
 /** Guided "set up the project plan" checklist, shown while the plan is incomplete. */
+function PlanSetupWizard({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const [start, setStart] = useState(new Date().toISOString().slice(0, 10));
+  const [sequential, setSequential] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<any>(null);
+  // One line per work item: code | name | unit | quantity | budget (RWF) | duration (days)
+  const parse = () => text.split('\n').map((l) => l.trim()).filter(Boolean).map((l, i) => {
+    const [code, name, unit, qty, budget, days] = l.split(/\s*[|;	]\s*/);
+    if (!code || !name || !(Number(days) > 0)) throw new Error(`Line ${i + 1}: need at least code | name | ... | duration in days`);
+    return { code, name, unit: unit || undefined, quantity: qty ? Number(qty) : undefined, budgetAmount: budget ? Number(budget) : undefined, durationDays: Math.round(Number(days)) };
+  });
+  const run = useMutation({
+    mutationFn: () => api.post<any>('/planning/setup-wizard', { projectId, startDate: new Date(start).toISOString(), sequential, items: parse() }),
+    onSuccess: (r) => { setResult(r.data); setError(null); qc.invalidateQueries(); },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Setup failed'),
+  });
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4" role="dialog">
+      <div className="bg-brand-surface-container-lowest w-full max-w-2xl rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <h3 className="font-display text-lg font-extrabold text-brand-primary">Set up the project plan</h3>
+        {result ? (
+          <div className="mt-4 space-y-3 text-sm">
+            <p className="font-semibold text-emerald-700">Created {result.wbsCreated} WBS items, {result.budgetLines} budget lines and {result.activitiesCreated} schedule activities.</p>
+            {result.skippedExistingCodes.length > 0 && <p className="text-xs text-amber-700">Skipped codes that already exist: {result.skippedExistingCodes.join(', ')}</p>}
+            <button onClick={onClose} className="px-4 py-2 rounded-lg bg-brand-primary text-white text-xs font-bold">Done</button>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            <p className="text-xs text-brand-on-surface-variant">Enter one work item per line. Each becomes a WBS item, a budget line (if you give a budget) and a schedule activity.</p>
+            <p className="text-[11px] font-mono bg-brand-surface rounded p-2">code | name | unit | quantity | budget RWF | duration days<br />1.1 | Excavation | m3 | 500 | 4500000 | 10</p>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className="w-full bg-brand-surface border border-brand-outline-variant rounded-lg p-3 text-xs font-mono outline-none focus:border-brand-primary" placeholder="1.1 | Excavation | m3 | 500 | 4500000 | 10" />
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <label className="flex items-center gap-2 font-semibold">Start date <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="h-9 border border-brand-outline-variant rounded-lg px-2" /></label>
+              <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={sequential} onChange={(e) => setSequential(e.target.checked)} /> Run activities one after another</label>
+            </div>
+            {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">{error}</div>}
+            <div className="flex justify-end gap-3">
+              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-brand-on-surface-variant">Cancel</button>
+              <button onClick={() => { try { parse(); run.mutate(); } catch (e) { setError((e as Error).message); } }} disabled={run.isPending || !text.trim()} className="px-5 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs disabled:opacity-60">{run.isPending ? 'Creating…' : 'Create plan'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlanSetupPanel({ projectId }: { projectId?: string }) {
+  const [wizard, setWizard] = useState(false);
   const { data } = useQuery({
     queryKey: ['/dashboards/baseline', projectId],
     queryFn: () => api.get<any>(`/dashboards/baseline?projectId=${projectId}`),
@@ -205,7 +269,11 @@ function PlanSetupPanel({ projectId }: { projectId?: string }) {
   if (steps.every(([, done]) => done)) return null;
   return (
     <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-      <p className="text-sm font-bold text-amber-900">Set up this project's plan</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm font-bold text-amber-900">Set up this project's plan</p>
+        <button onClick={() => setWizard(true)} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700">Start guided setup</button>
+      </div>
+      {wizard && projectId && <PlanSetupWizard projectId={projectId} onClose={() => setWizard(false)} />}
       <ul className="mt-2 space-y-1">
         {steps.map(([label, done, hint]) => (
           <li key={label} className="text-xs text-amber-900">
@@ -513,6 +581,7 @@ export const MODULES: Record<string, ModuleDef> = {
     view: AppView.HR,
     title: 'Human Resources',
     subtitle: 'Employee register, trades, wages, crews & availability (Module 1)',
+    summary: () => <HeadcountPanel />,
     tabs: [
       {
         key: 'employees', label: 'Employees', endpoint: '/hr/employees', entityLabel: 'Employee', attachModule: 'employee',
@@ -911,7 +980,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'tradeId', label: 'Trade', type: 'select', optionsEndpoint: '/hr/trades', optionLabel: (r) => r.name },
           { name: 'equipmentId', label: 'Equipment', type: 'select', optionsEndpoint: '/equipment/register', optionLabel: (r) => r.name },
           unitField(),
-          { name: 'plannedQty', label: 'Planned Qty', type: 'number', required: true },
+          { name: 'plannedQty', label: 'Planned Qty (leave empty to use the plan)', type: 'number' },
           { name: 'actualQty', label: 'Actual Qty', type: 'number', required: true },
           { name: 'remainingQty', label: 'Remaining Qty', type: 'number' },
           { name: 'laborHours', label: 'Labor Hours', type: 'number' },

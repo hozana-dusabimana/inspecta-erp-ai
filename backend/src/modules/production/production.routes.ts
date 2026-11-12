@@ -32,7 +32,8 @@ export const createSchema = z.object({
   crewId: z.string().optional(),
   productivityStandardId: z.string().optional(),
   unit: z.string().optional(),
-  plannedQty: z.number().nonnegative(),
+  // Optional: defaults from the plan (WBS quantity / scheduled duration) when left empty.
+  plannedQty: z.number().nonnegative().optional(),
   actualQty: z.number().nonnegative(),
   remainingQty: z.number().optional(),
   laborHours: z.number().nonnegative().optional(),
@@ -71,6 +72,18 @@ const entriesCrud = createCrudRouter({
       if (w && !data.wbsActivity) data.wbsActivity = `${w.code} - ${w.name}`;
     }
     if (!data.wbsActivity) throw BadRequest('Select the WBS activity this production belongs to');
+    if (data.plannedQty == null || Number(data.plannedQty) === 0) {
+      let planned = 0;
+      if (data.wbsItemId) {
+        const [w, act] = await Promise.all([
+          prisma.wbsItem.findFirst({ where: { id: String(data.wbsItemId), organizationId: req.user!.orgId }, select: { quantity: true } }),
+          prisma.scheduleActivity.findFirst({ where: { organizationId: req.user!.orgId, wbsItemId: String(data.wbsItemId), milestone: false }, select: { durationDays: true } }),
+        ]);
+        if (w?.quantity && act && act.durationDays > 0) planned = Number((Number(w.quantity) / act.durationDays).toFixed(3));
+        else if (w?.quantity) planned = Number(w.quantity);
+      }
+      data.plannedQty = planned;
+    }
     return stamp(data, req);
   },
   afterChange: async (action, record, req) => {

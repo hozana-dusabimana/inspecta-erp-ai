@@ -569,6 +569,66 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
   return ok(res, { items: out });
 }));
 
+// ── Guided project plan setup: WBS + budget + schedule in one step ──
+const setupSchema = z.object({
+  projectId: z.string(),
+  startDate: z.string().datetime(),
+  sequential: z.boolean().optional(), // chain activities finish-to-start in the order given
+  items: z.array(z.object({
+    code: z.string().min(1),
+    name: z.string().min(1),
+    unit: z.string().optional(),
+    quantity: z.number().nonnegative().optional(),
+    budgetAmount: z.number().nonnegative().optional(),
+    durationDays: z.number().int().positive(),
+  })).min(1).max(300),
+});
+router.post('/setup-wizard', authenticate, requirePermission('planning:write'), asyncHandler(async (req, res) => {
+  const orgId = req.user!.orgId;
+  const userId = req.user!.id;
+  const body = setupSchema.parse(req.body);
+  await assertProjectInOrg(orgId, body.projectId);
+  const [existingWbs, existingActs] = await Promise.all([
+    prisma.wbsItem.findMany({ where: { organizationId: orgId, projectId: body.projectId }, select: { code: true } }),
+    prisma.scheduleActivity.findMany({ where: { organizationId: orgId, projectId: body.projectId }, select: { code: true } }),
+  ]);
+  const haveWbs = new Set(existingWbs.map((w) => w.code.toLowerCase()));
+  const haveAct = new Set(existingActs.map((a) => a.code.toLowerCase()));
+  const DAY = 86400000;
+  let cursor = new Date(body.startDate).getTime();
+  let wbsCreated = 0, budgetLines = 0, activitiesCreated = 0;
+  const skipped: string[] = [];
+  let prevCode: string | null = null;
+  await prisma.$transaction(async (tx) => {
+    let order = 0;
+    for (const it of body.items) {
+      order++;
+      if (haveWbs.has(it.code.toLowerCase())) { skipped.push(it.code); continue; }
+      const wbs = await tx.wbsItem.create({
+        data: { organizationId: orgId, projectId: body.projectId, code: it.code, name: it.name, unit: it.unit ?? null, quantity: it.quantity ?? null, budgetAmount: it.budgetAmount ?? null, level: 1, sortOrder: order },
+      });
+      wbsCreated++;
+      if (it.budgetAmount && it.budgetAmount > 0) {
+        await tx.budgetLine.create({ data: { organizationId: orgId, projectId: body.projectId, wbsItemId: wbs.id, category: 'OTHER', description: `${it.code} ${it.name}`, amount: it.budgetAmount, createdBy: userId } });
+        budgetLines++;
+      }
+      if (!haveAct.has(it.code.toLowerCase())) {
+        const start = new Date(body.sequential ? cursor : new Date(body.startDate).getTime());
+        await tx.scheduleActivity.create({
+          data: {
+            organizationId: orgId, projectId: body.projectId, wbsItemId: wbs.id, code: it.code, name: it.name, durationDays: it.durationDays,
+            predecessors: body.sequential && prevCode ? [prevCode] : [], startDate: start, finishDate: new Date(start.getTime() + it.durationDays * DAY),
+          },
+        });
+        activitiesCreated++;
+        if (body.sequential) cursor += it.durationDays * DAY;
+        prevCode = it.code;
+      }
+    }
+  });
+  return ok(res, { wbsCreated, budgetLines, activitiesCreated, skippedExistingCodes: skipped }, 201);
+}));
+
 router.use('/wbs', wbsRouter);
 router.use('/boq', boqRouter);
 router.use('/boq-versions', verRouter); // separate prefix avoids the /boq/:id route

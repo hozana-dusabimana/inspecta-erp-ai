@@ -137,6 +137,10 @@ function reportAction(action: string, to: ReportStatus, perm: 'production:write'
     if (to === 'SUBMITTED') {
       await notify({ organizationId: req.user!.orgId, type: 'APPROVAL', severity: 'MEDIUM', title: 'Daily report submitted', message: `Report ${report.reportNumber} awaits approval.`, link: '/production' });
     }
+    // A decided report no longer "awaits approval": clear its stale notification(s).
+    if (to === 'APPROVED' || to === 'REJECTED') {
+      await prisma.notification.updateMany({ where: { organizationId: req.user!.orgId, type: 'APPROVAL', isRead: false, message: { contains: report.reportNumber } }, data: { isRead: true } });
+    }
     return ok(res, report);
   }));
 }

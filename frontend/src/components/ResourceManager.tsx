@@ -44,7 +44,7 @@ export function plural(label: string): string {
 // Modules where the server refuses to confirm/close the record without evidence.
 const EVIDENCE_REQUIRED: Record<string, string> = { grn: 'to confirm the GRN', material_issue: 'to confirm the issue', ncr: 'to close the NCR' };
 
-export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
+export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
@@ -61,6 +61,9 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const [sortBy, setSortBy] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
+  const portfolioView = Boolean(projectScoped && !projectId);
+  // Records are added/edited inside one project; the portfolio view is read-only.
+  const canWrite = canWriteProp && !portfolioView;
 
   // Any filter change returns to page 1.
   useEffect(() => { setPage(1); }, [search, dateFrom, dateTo, projectId, sortBy, sortDir, JSON.stringify(filterValues)]);
@@ -105,7 +108,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const { data, isLoading } = useQuery({
     queryKey: listKey,
     queryFn: () => api.get<Record<string, any>[]>(`${endpoint}?${queryString}`),
-    enabled: !projectScoped || Boolean(projectId),
+    enabled: true, // no project selected = portfolio view across all projects (read-only)
   });
   const rows = data?.data ?? [];
   const meta = data?.meta;
@@ -246,9 +249,12 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           )}
         </div>
 
-        {projectScoped && !projectId ? (
-          <div className="p-8 text-center text-brand-on-surface-variant text-xs">Select a project above to view and add {plural(entityLabel).toLowerCase()}.</div>
-        ) : isLoading ? (
+        {portfolioView && (
+          <div className="px-5 py-2 text-[11px] font-semibold text-brand-on-surface-variant bg-brand-surface-container-low border-b border-brand-outline-variant/15">
+            Showing {plural(entityLabel).toLowerCase()} across all projects. Pick a project above to add or edit.
+          </div>
+        )}
+        {isLoading ? (
           <div className="p-8 text-center text-brand-on-surface-variant text-xs">Loading…</div>
         ) : (
           <div className="overflow-x-auto">

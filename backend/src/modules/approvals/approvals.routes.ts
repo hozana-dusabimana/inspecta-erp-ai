@@ -1,9 +1,10 @@
+import { Router } from 'express';
 import { z } from 'zod';
 import { Request } from 'express';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { NotFound, Forbidden } from '../../lib/errors';
-import { requirePermission } from '../../middleware/auth';
+import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
@@ -45,6 +46,8 @@ const router = createCrudRouter({
   },
 });
 
+const inboxRouter = Router(); // mounted before the generic CRUD router so /inbox is not read as an :id
+
 /** Approval level by value: who must sign. A single documented policy, shown in the inbox. */
 export function approvalLevel(amount: number): { level: 1 | 2 | 3; approverRole: string } {
   if (amount >= 50_000_000) return { level: 3, approverRole: 'Director / Admin' };
@@ -53,7 +56,7 @@ export function approvalLevel(amount: number): { level: 1 | 2 | 3; approverRole:
 }
 
 // ── One inbox: everything awaiting a decision, wherever it was raised ──
-router.get('/inbox', requirePermission('approval:read'), asyncHandler(async (req, res) => {
+inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyncHandler(async (req, res) => {
   const orgId = req.user!.orgId;
   const projectId = req.query.projectId as string | undefined;
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
@@ -131,4 +134,8 @@ router.post(
   asyncHandler(async (req, res) => ok(res, await decide(req, 'REJECTED'))),
 );
 
-export default router;
+// Specific routes first, then the generic CRUD + decision routes.
+const root = Router();
+root.use(inboxRouter);
+root.use(router);
+export default root;

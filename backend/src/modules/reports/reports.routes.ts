@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler } from '../../lib/http';
 import { NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
+import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const router = Router();
 router.use(authenticate);
@@ -19,6 +20,8 @@ router.get(
       include: { client: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    // Same numbers as the screens: progress/health/profit from the shared calculation.
+    const pmx = new Map((await loadProjectMetrics(req.user!.orgId, { includeDemo: true })).projects.map((m) => [m.projectId, m]));
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'INSPECTA BUILDOS';
@@ -36,6 +39,9 @@ router.get(
       { header: 'Health', key: 'health', width: 12 },
       { header: 'Progress %', key: 'progress', width: 12 },
       { header: 'Budget', key: 'budget', width: 16 },
+      { header: 'Cost Budget', key: 'costBudget', width: 16 },
+      { header: 'Forecast Profit', key: 'forecastProfit', width: 16 },
+      { header: 'Demo/Test', key: 'demo', width: 10 },
     ];
     ws.getRow(1).font = { bold: true };
     projects.forEach((p) =>
@@ -49,9 +55,12 @@ router.get(
         groundSurface: p.groundSurface != null ? `${p.groundSurface} ${p.groundSurfaceUnit ?? 'm²'}` : '',
         buildingSurface: p.buildingSurface ?? '',
         status: p.status,
-        health: p.health,
-        progress: p.progressPct,
+        health: pmx.get(p.id)?.health.replace('_', ' ') ?? p.health,
+        progress: pmx.get(p.id)?.progressPct ?? 'No data',
         budget: Number(p.budget),
+        costBudget: pmx.get(p.id)?.budget ?? 'No data',
+        forecastProfit: pmx.get(p.id)?.forecastProfit ?? 'No data',
+        demo: p.isDemo ? 'Yes' : '',
       }),
     );
 
@@ -71,6 +80,7 @@ router.get(
       where: { organizationId: req.user!.orgId },
       orderBy: { createdAt: 'desc' },
     });
+    const pmc = new Map((await loadProjectMetrics(req.user!.orgId, { includeDemo: true })).projects.map((m) => [m.projectId, m]));
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const header = ['Code', 'Name', 'Application No', 'Permit No', 'Location', 'Ground Surface', 'Building Surface (m²)', 'Status', 'Health', 'Progress %', 'Budget'];
     const lines = [header.join(',')];
@@ -79,7 +89,7 @@ router.get(
         [
           p.code, p.name, p.applicationNumber, p.permitNumber, p.location,
           p.groundSurface != null ? `${p.groundSurface} ${p.groundSurfaceUnit ?? 'm²'}` : '',
-          p.buildingSurface, p.status, p.health, p.progressPct, Number(p.budget),
+          p.buildingSurface, p.status, pmc.get(p.id)?.health.replace('_', ' ') ?? p.health, pmc.get(p.id)?.progressPct ?? 'No data', Number(p.budget),
         ].map(esc).join(','),
       );
     }
@@ -112,8 +122,10 @@ router.get(
       }),
     ]);
 
-    const budget = Number(budgetAgg._sum.amount ?? 0) || Number(project.budget);
-    const actual = Number(costAgg._sum.amount ?? 0);
+    const mm = (await loadProjectMetrics(orgId, { projectId: project.id })).projects[0];
+    void budgetAgg; void costAgg;
+    const budget = mm.budget;
+    const actual = mm.actualCost;
 
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     res.setHeader('Content-Type', 'application/pdf');
@@ -137,7 +149,7 @@ router.get(
       const building = project.buildingSurface != null ? `${project.buildingSurface} m²` : '—';
       doc.text(`Ground Surface: ${ground}    Building Surface: ${building}`);
     }
-    doc.text(`Status: ${project.status}    Health: ${project.health}    Progress: ${project.progressPct}%`);
+    doc.text(`Status: ${project.status}    Health: ${mm.health.replace('_', ' ')}    Progress: ${mm.progressPct == null ? 'No data' : mm.progressPct + '%'}`);
     doc.moveDown();
 
     const row = (label: string, value: string) => {
@@ -145,9 +157,14 @@ router.get(
     };
     doc.fontSize(13).fillColor('#00286a').text('Financials');
     doc.moveDown(0.3);
-    row('Budget:', `RWF ${budget.toLocaleString()}`);
-    row('Actual cost:', `RWF ${actual.toLocaleString()}`);
-    row('Cost variance:', `RWF ${(budget - actual).toLocaleString()}`);
+    const rwf = (v: number | null) => (v == null ? 'No data' : `RWF ${v.toLocaleString()}`);
+    row('Contract value:', rwf(mm.contractValue));
+    row('Cost budget:', rwf(budget));
+    row('Actual cost:', rwf(actual));
+    row('Cost variance:', rwf(budget == null ? null : budget - actual));
+    row('Estimated cost at completion:', rwf(mm.eac));
+    row('Forecast profit:', rwf(mm.forecastProfit));
+    row('SPI / CPI:', `${mm.spi ?? 'No data'} / ${mm.cpi ?? 'No data'}`);
     doc.moveDown();
 
     doc.fontSize(13).fillColor('#00286a').text('Production');
@@ -193,6 +210,7 @@ router.get('/executive.xlsx', requirePermission('report:read'), asyncHandler(asy
     prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
     prisma.incident.groupBy({ by: ['projectId'], where: scope, _count: { _all: true } }),
   ]);
+  const pmE = new Map((await loadProjectMetrics(req.user!.orgId, { includeDemo: true })).projects.map((x) => [x.projectId, x]));
   const m = (g: any[], v = (x: any) => num(x._sum?.amount)) => new Map(g.map((x) => [x.projectId, v(x)]));
   const cost = m(costByP); const inv = m(invByP);
   const ncr = new Map(ncrByP.map((x) => [x.projectId, x._count._all]));
@@ -206,8 +224,8 @@ router.get('/executive.xlsx', requirePermission('report:read'), asyncHandler(asy
     { header: 'Cost Variance', key: 'variance', width: 16 }, { header: 'Billed', key: 'billed', width: 16 },
     { header: 'Open NCRs', key: 'ncrs', width: 12 }, { header: 'Incidents', key: 'incidents', width: 12 },
   ], projects.map((p) => {
-    const budget = num(p.budget); const actual = cost.get(p.id) ?? 0;
-    return { code: p.code, name: p.name, client: p.client?.name ?? '—', status: p.status, health: p.health, progress: p.progressPct, budget, actual, variance: budget - actual, billed: inv.get(p.id) ?? 0, ncrs: ncr.get(p.id) ?? 0, incidents: inc.get(p.id) ?? 0 };
+    const pe = pmE.get(p.id); const budget = pe?.budget ?? null; const actual = cost.get(p.id) ?? 0;
+    return { code: p.code, name: p.name, client: p.client?.name ?? '—', status: p.status, health: pe?.health.replace('_', ' ') ?? p.health, progress: pe?.progressPct ?? 'No data', budget: budget ?? 'No data', actual, variance: budget == null ? 'No data' : budget - actual, billed: inv.get(p.id) ?? 0, ncrs: ncr.get(p.id) ?? 0, incidents: inc.get(p.id) ?? 0 };
   }));
   await sendWorkbook(res, wb, 'executive-report.xlsx');
 }));

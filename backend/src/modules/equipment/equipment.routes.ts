@@ -126,6 +126,16 @@ const fuelLogs = createCrudRouter({
     if (liters > 0 && cpl > 0) data.totalCost = Number((liters * cpl).toFixed(2));
     return stamp(data, req);
   },
+  // Fuel burned on a project is project cost (equipment category), kept in step with the log.
+  afterChange: async (action, record, req) => {
+    const orgId = req.user!.orgId;
+    const existing = await prisma.costEntry.findFirst({ where: { organizationId: orgId, source: 'FUEL', sourceRef: String(record.id) } });
+    const amount = Number(record.totalCost ?? 0);
+    if (action === 'DELETE' || !record.projectId || amount <= 0) { if (existing) await prisma.costEntry.delete({ where: { id: existing.id } }); return; }
+    const data = { projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, amount, date: (record.date as Date) ?? new Date(), description: `Fuel - ${Number(record.liters)} L` };
+    if (existing) await prisma.costEntry.update({ where: { id: existing.id }, data });
+    else await prisma.costEntry.create({ data: { ...data, organizationId: orgId, category: 'EQUIPMENT', source: 'FUEL', sourceRef: String(record.id), createdBy: req.user!.id } });
+  },
 });
 
 // ── Equipment usage logs (daily hours, operator, WBS cost allocation) ──

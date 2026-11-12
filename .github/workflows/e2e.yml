@@ -97,7 +97,11 @@ jobs:
           npm ci
           npx prisma generate
           npx prisma migrate deploy
-          npx tsx scripts/e2e-seed.ts >> "$GITHUB_ENV"
+          # The seed script's stdout also carries console.log noise from the app (e.g. the debug log
+          # mirrors events to the console), so only the E2E_*= lines it prints are safe to feed to
+          # $GITHUB_ENV — piping everything in broke the env-file format.
+          npx tsx scripts/e2e-seed.ts | tee /tmp/e2e-seed.out
+          grep '^E2E_' /tmp/e2e-seed.out >> "$GITHUB_ENV"
 
       - name: Backend - start
         working-directory: backend

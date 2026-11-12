@@ -13,11 +13,17 @@ sign off that every feature works. Mark each row **PASS / FAIL** in the Result c
 
 ## 0. Test accounts & seeded data
 
-Ensured on **every API boot** (and by `npm run seed`). Passwords below.
+> ⚠️ **This repository is public. Never write a real, currently-working password into this file
+> (or any other committed file) — a password mentioned here must be treated as burned the moment
+> it's committed, and should be rotated.** Use a placeholder like `<ask your team lead>` instead,
+> or reference a secrets manager.
+
+Ensured on **every API boot** (and by `npm run seed`). Get the current password from your own
+secrets manager / `SEED_ADMIN_PASSWORD`, never from this file.
 
 | Role | Email | Password |
 |---|---|---|
-| Super Admin | `admin@inspecta.africa` | `Admin@123` |
+| Super Admin | `admin@inspecta.africa` | *(see your secrets manager — do not commit it here)* |
 
 If `SEED_ADMIN_PASSWORD` was overridden in the environment, that value wins — but
 only until someone signs in, after which the password belongs to the account.
@@ -38,8 +44,9 @@ Most API tests use a bearer token. Get one (PowerShell or bash):
 ```bash
 # bash — set API to local or prod
 API=https://api.inspecta.africa/api
+ADMIN_PASSWORD='<fill in from your secrets manager — never commit a real password>'
 TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' \
+  -d "{\"email\":\"admin@inspecta.africa\",\"password\":\"$ADMIN_PASSWORD\"}" \
   | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
 # get the Skyline project id for project-scoped calls
 PID=$(curl -s "$API/projects?search=Skyline" -H "Authorization: Bearer $TOKEN" \
@@ -401,7 +408,8 @@ node uitest.mjs   # expect "8/8 checks passed", 0 console errors
 
 ```bash
 API=https://api.inspecta.africa/api
-TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@inspecta.africa","password":"Admin@123"}' | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
+ADMIN_PASSWORD='<fill in from your secrets manager — never commit a real password>'
+TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"admin@inspecta.africa\",\"password\":\"$ADMIN_PASSWORD\"}" | python -c "import sys,json;print(json.load(sys.stdin)['data']['accessToken'])")
 PID=$(curl -s "$API/projects?search=Skyline" -H "Authorization: Bearer $TOKEN" | python -c "import sys,json;print(json.load(sys.stdin)['data'][0]['id'])")
 for ep in projects projects/summary clients users dashboards/executive finance/summary \
   production/summary/metrics inventory/stock procurement/suppliers \

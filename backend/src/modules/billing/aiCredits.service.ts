@@ -16,7 +16,9 @@ export const CREDIT_COSTS = {
 } as const;
 
 /** Chat cost depends on how much work the answer actually did. */
-export function chatCreditCost(answer: { sources?: unknown[]; preview?: unknown }): number {
+export function chatCreditCost(answer: { sources?: unknown[]; preview?: unknown; offline?: boolean }): number {
+  // A failed live call (rate limit / outage) falls back to a plain data read: never charge for it.
+  if (answer.offline) return 0;
   if (answer.preview) return CREDIT_COSTS.CHAT_WITH_CREATE;
   if (answer.sources && answer.sources.length > 0) return CREDIT_COSTS.CHAT_WITH_TOOLS;
   return CREDIT_COSTS.CHAT;

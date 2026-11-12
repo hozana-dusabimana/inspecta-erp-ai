@@ -325,10 +325,14 @@ export async function ask(
     }
   }
 
-  // Try the live provider with one retry on transient errors, then degrade gracefully.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Try the live provider with backoff retries, then any other configured provider,
+  // and only then degrade to a plain data read (which is not charged).
+  const candidates = [provider, ...['satellite', 'openrouter', 'claude', 'gemini']
+    .map((n) => getProvider(n)).filter((p) => p.name !== provider.name && p.isConfigured())];
+  for (const candidate of candidates)
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const completion = await provider.complete(messages);
+      const completion = await candidate.complete(messages);
       if (!completion.text?.trim()) throw new Error('empty completion');
       return {
         text: completion.text,
@@ -341,12 +345,12 @@ export async function ask(
       };
     } catch (err) {
       lastErr = err;
-      if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
     }
   }
   // eslint-disable-next-line no-console
   console.warn('AI provider unavailable, using data fallback:', lastErr instanceof Error ? lastErr.message : lastErr);
   return offlineAnswer(
-    `(Live AI is busy right now — likely free-tier rate limiting. Showing a verified data read instead.)`,
+    `(The AI service could not be reached after several attempts. This is a verified read of your data, not an AI answer — you were not charged. Please ask again in a moment.)`,
   );
 }

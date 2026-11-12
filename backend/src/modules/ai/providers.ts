@@ -207,18 +207,25 @@ class OpenRouterProvider implements AiProvider {
       body.tool_choice = opts.toolChoice ?? 'auto';
     }
 
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.ai.openrouter.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': env.corsOrigin,
-        'X-Title': 'Inspecta BuildOS',
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      throw new Error(`OpenRouter error ${res.status}: ${await res.text()}`);
+    // Retry rate limits (429) and upstream errors (5xx) with backoff, honouring Retry-After.
+    let res: Response | undefined;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.ai.openrouter.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': env.corsOrigin,
+          'X-Title': 'Inspecta BuildOS',
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok || (res.status !== 429 && res.status < 500) || attempt === 3) break;
+      const wait = Number(res.headers.get('retry-after')) * 1000 || 1000 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, Math.min(wait, 8000)));
+    }
+    if (!res || !res.ok) {
+      throw new Error(`OpenRouter error ${res?.status}: ${res ? await res.text() : 'no response'}`);
     }
     const json = (await res.json()) as {
       choices: {

@@ -40,7 +40,7 @@ export const env = {
     },
     openrouter: {
       apiKey: process.env.OPENROUTER_API_KEY ?? '',
-      model: process.env.OPENROUTER_MODEL ?? 'meta-llama/llama-3.3-70b-instruct:free',
+      model: process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4.5',
     },
     claude: {
       apiKey: process.env.ANTHROPIC_API_KEY ?? '',

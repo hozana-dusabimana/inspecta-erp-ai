@@ -132,6 +132,8 @@ interface CopilotWorkspaceProps {
   pageContext?: string;
   /** `panel` = compact floating window (no page chrome); default is the full page. */
   variant?: 'page' | 'panel';
+  /** Rendered inside the app shell (side menu present): fit the shell instead of the whole screen. */
+  embedded?: boolean;
   onClose?: () => void;
 }
 
@@ -150,7 +152,7 @@ function fileToBase64(file: Blob): Promise<string> {
   });
 }
 
-export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext, variant = 'page', onClose }: CopilotWorkspaceProps) {
+export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext, variant = 'page', onClose, embedded }: CopilotWorkspaceProps) {
   const panel = variant === 'panel';
   const [input, setInput] = useState('');
   const { conversationId, setConversationId } = useChat();
@@ -215,7 +217,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
           const guided = evt.field || evt.preview;
           const sourceNote = !guided && evt.sources?.length ? `\n\nSources: ${evt.sources.map((s: any) => s.source).join(' · ')}` : '';
           const confidenceNote = !guided && typeof evt.confidence === 'number'
-            ? `\n\n— ${evt.offline ? 'Direct data read' : `${evt.provider} · ${evt.model}`} · Confidence ${evt.confidence}%`
+            ? `\n\n— ${evt.offline ? 'Direct data read' : `${evt.provider} · ${evt.model}`} · Confidence ${evt.confidence}%${typeof evt.creditsUsed === 'number' ? ` · ${evt.creditsUsed} credit${evt.creditsUsed === 1 ? '' : 's'}` : ''}`
             : '';
           onAddMessage({
             id: Math.random().toString(),
@@ -452,7 +454,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
   };
 
   return (
-    <div className={panel ? "bg-brand-surface-container-low text-brand-on-surface font-sans flex flex-col flex-1 min-h-0 h-full overflow-hidden" : "min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden"} id={panel ? "copilot-panel-root" : "copilot-workspace-root"}>
+    <div className={panel ? "bg-brand-surface-container-low text-brand-on-surface font-sans flex flex-col flex-1 min-h-0 h-full overflow-hidden" : (embedded ? "bg-brand-surface text-brand-on-surface font-sans flex flex-col h-[calc(100vh-5rem)] min-h-0 overflow-hidden rounded-xl border border-brand-outline-variant/20" : "min-h-screen bg-brand-surface text-brand-on-surface font-sans flex flex-col h-screen overflow-hidden")} id={panel ? "copilot-panel-root" : "copilot-workspace-root"}>
       {/* Top Header */}
       <header className={`${panel ? 'h-12 px-3' : 'h-16 px-6'} w-full bg-brand-surface-container-lowest/90 backdrop-blur-md flex justify-between items-center border-b border-brand-outline-variant/10 shadow-sm shrink-0`}>
         <div className="flex items-center gap-3">

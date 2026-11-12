@@ -56,7 +56,17 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   // Deep-linkable: ?projectId= preselects a project (and ?tab= a tab), so the
   // platform console can land straight on one record inside a tenant, and any
   // module view is shareable as a URL.
-  const [projectId, setProjectId] = useState<string>(() => searchParams.get('projectId') ?? '');
+  // The chosen project is remembered across modules (URL wins, then the last choice).
+  const REMEMBER_KEY = 'inspecta.selectedProject';
+  const [projectId, setProjectIdState] = useState<string>(() => {
+    const fromUrl = searchParams.get('projectId');
+    if (fromUrl) return fromUrl;
+    try { return localStorage.getItem(REMEMBER_KEY) ?? ''; } catch { return ''; }
+  });
+  const setProjectId = (id: string) => {
+    setProjectIdState(id);
+    try { id ? localStorage.setItem(REMEMBER_KEY, id) : localStorage.removeItem(REMEMBER_KEY); } catch { /* storage unavailable */ }
+  };
 
   const needsProject = def.tabs.some((t) => t.projectScoped);
   const { data: projects } = useQuery({
@@ -77,7 +87,10 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   const soleProject = myProjects.length === 1 ? myProjects[0] : null;
   useEffect(() => {
     if (!projectId && myProjects.length >= 1) setProjectId(myProjects[0].id);
-  }, [myProjects, projectId]);
+    // A remembered project that no longer exists (deleted) falls back to the picker.
+    if (projectId && projects?.data && !projects.data.some((p) => p.id === projectId)) setProjectId('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myProjects, projectId, projects]);
 
   const current = visibleTabs.find((t) => t.key === activeTab) ?? visibleTabs[0];
 

@@ -102,6 +102,7 @@ function CopilotRoute() {
       onAddMessage={addMessage}
       onSetHistory={setHistory}
       pageContext={pageContext}
+      embedded
     />
   );
 }
@@ -153,11 +154,11 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           {/* Full-screen pages (own chrome) */}
-          <Route path="/copilot" element={<CopilotRoute />} />
           <Route path="/daily-entry" element={<DailyEntryRoute />} />
 
           {/* Pages that share the persistent sidebar + header */}
           <Route element={<AppShell />}>
+            <Route path="/copilot" element={<CopilotRoute />} />
             <Route path="/dashboard" element={<Chromed render={(c) => <Dashboard {...c} />} />} />
             <Route path="/executive" element={<Chromed render={(c) => <ExecutiveDashboard {...c} />} />} />
             <Route path="/portfolio" element={<Chromed render={(c) => <PortfolioPage {...c} />} />} />

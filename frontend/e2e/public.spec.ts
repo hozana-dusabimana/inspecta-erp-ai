@@ -38,9 +38,9 @@ test.describe('public site', () => {
     await page.fill('input[type="email"]', 'nobody@example.com');
     await page.fill('input[type="password"]', 'wrong-password');
     await page.click('button[type="submit"]');
-    await page.waitForTimeout(2500);
+    // the error arrives after a real network round trip, so wait for it instead of a fixed pause
+    await expect.poll(async () => bodyText(page), { timeout: 15_000 }).toMatch(/invalid|incorrect|credentials|failed/i);
     expect(page.url()).toMatch(/\/login/);
-    expect(await bodyText(page)).toMatch(/invalid|incorrect|credentials|failed/i);
   });
 
   test('protected pages send a signed-out visitor to the login page', async ({ page }) => {

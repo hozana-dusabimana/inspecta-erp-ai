@@ -2786,3 +2786,23 @@ model DailyPlan {
   @@index([assigneeId])
   @@map("daily_plans")
 }
+
+// ──────────────── Debug log (platform admins only) ────────────────
+// Every notable event: sign-ins, emails (with the verification/reset links and why a send failed),
+// refused or failing requests, boot. The secret column holds codes/links and is only recorded when
+// DEBUG_LOG_SECRETS is switched on on the server.
+model DebugEvent {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  level          String   @default("INFO") // DEBUG | INFO | WARN | ERROR
+  category       String   // AUTH | EMAIL | HTTP | SYSTEM | NOTIFY
+  message        String
+  meta           Json?
+  secret         String?
+  organizationId String?
+  userId         String?
+
+  @@index([createdAt])
+  @@index([category, createdAt])
+  @@map("debug_events")
+}

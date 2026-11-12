@@ -7,6 +7,7 @@ import { defineConfig } from '@playwright/test';
  *   E2E_EMAIL / E2E_PASSWORD   a company admin to sign in with (created by backend/scripts/e2e-seed.ts in CI)
  *   E2E_CHROMIUM_PATH          optional path to an installed Chromium/Chrome
  *   E2E_LIVE=1                 run only the read-only public checks (live.spec.ts) against E2E_WEB_URL/E2E_API_URL
+ *   E2E_HEADED=1               show the browser window while the tests run (E2E_SLOW_MO=150 slows each action so you can follow)
  */
 export default defineConfig({
   testDir: './e2e',
@@ -23,7 +24,11 @@ export default defineConfig({
     acceptDownloads: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : {},
+    headless: !process.env.E2E_HEADED,
+    launchOptions: {
+      ...(process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : {}),
+      ...(process.env.E2E_SLOW_MO ? { slowMo: Number(process.env.E2E_SLOW_MO) } : {}),
+    },
   },
   testIgnore: process.env.E2E_LIVE ? ['**/features.spec.ts', '**/walk.spec.ts', '**/public.spec.ts'] : ['**/live.spec.ts'],
 });

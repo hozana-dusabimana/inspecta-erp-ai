@@ -1,3 +1,4 @@
+import { debugLogRouter } from './debug-log';
 import { Router, Request } from 'express';
 import { z } from 'zod';
 import { Prisma, Role, AuditAction, OrgStatus, OrgPlan, PaymentAccountType, SubscriptionRequestStatus } from '@prisma/client';
@@ -24,6 +25,7 @@ import { ensureDefaultRoles, attachAdminRole } from '../roles/roles.service';
  */
 const router = Router();
 router.use(authenticate, requirePlatformAdmin);
+router.use('/debug-log', debugLogRouter); // platform admins only (see debug-log.ts)
 
 const EXPORT_CAP = 10_000; // matches the CRUD factory's export cap
 

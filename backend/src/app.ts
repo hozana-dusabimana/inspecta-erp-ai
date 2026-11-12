@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { prisma } from './lib/prisma';
 import { notFoundHandler, errorHandler } from './middleware/error';
+import { debugLog } from './lib/debug-log';
 
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
@@ -57,6 +58,24 @@ export function createApp() {
   app.use('/api/ai', express.json({ limit: '14mb' }));
   app.use(express.json({ limit: '4mb' }));
   if (!env.isProd) app.use(morgan('dev'));
+
+  // Debug log: every refused (4xx) or failing (5xx) API request, with who/what/how long. Query strings are
+  // dropped (they can carry tokens) and health checks are ignored.
+  app.use((req, res, next) => {
+    const started = Date.now();
+    res.on('finish', () => {
+      if (res.statusCode < 400 || req.path === '/api/health' || req.path === '/favicon.ico') return;
+      debugLog({
+        level: res.statusCode >= 500 ? 'ERROR' : 'WARN',
+        category: 'HTTP',
+        message: `${req.method} ${req.originalUrl.split('?')[0]} -> ${res.statusCode}`,
+        meta: { status: res.statusCode, ms: Date.now() - started, ip: req.headers['cf-connecting-ip'] ?? req.ip },
+        userId: req.user?.id,
+        organizationId: req.user?.orgId,
+      });
+    });
+    next();
+  });
 
   // ── Rate limiting (Module 21) — key by the real client IP (Cloudflare header) ──
   const clientKey = (req: express.Request) =>

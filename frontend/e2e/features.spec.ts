@@ -1,5 +1,5 @@
 import { test, expect, Page, Browser } from '@playwright/test';
-import { api, apiLogin, login, field, tab, optionText, bodyText, watch, dismissTour, WEB, API } from './support';
+import { api, apiLogin, login, field, tab, optionText, optionsOf, bodyText, watch, dismissTour, WEB, API } from './support';
 
 /**
  * One test per feature, driven through the real UI. A small realistic project is created through the API
@@ -132,14 +132,13 @@ test('Production: plan the day, assign it to someone who can raise requisitions'
   await tab(page, 'Daily Plans').click();
   await page.getByRole('button', { name: /Add Daily Plan/ }).click();
   const wbs = field(page, 'WBS task');
-  const opts = await wbs.locator('option').allTextContents();
-  expect(opts.some((o) => o.includes('Walls'))).toBe(true);
+  const opts = await optionsOf(wbs, 'Walls');
   expect(opts.some((o) => o.includes('BetaOnlyTask'))).toBe(false); // only this project's tasks
   await wbs.selectOption({ label: await optionText(wbs, 'Walls') });
   await field(page, 'Work planned').fill('Lay blocks level 1');
   await field(page, 'Planned quantity').fill('40');
   const asg = field(page, 'Assign to');
-  expect((await asg.locator('option').allTextContents()).some((o) => o.includes('Foreman Joe'))).toBe(true);
+  await optionsOf(asg, 'Foreman Joe');
   await asg.selectOption({ label: await optionText(asg, 'Foreman Joe') });
   await page.getByRole('button', { name: /^Create Daily Plan/ }).click();
   await page.waitForTimeout(2500);
@@ -158,8 +157,7 @@ test('Requisitions: every material line needs a WBS task from this project', asy
   const lines = page.locator('xpath=//label[contains(.,"MATERIALS AND THE TASK")]/following::select');
   await lines.nth(0).selectOption({ label: await optionText(lines.nth(0), 'E2E Cement') });
   const wbs = lines.nth(1);
-  const opts = await wbs.locator('option').allTextContents();
-  expect(opts.some((o) => o.includes('Walls'))).toBe(true);
+  const opts = await optionsOf(wbs, 'Walls');
   expect(opts.some((o) => o.includes('BetaOnlyTask'))).toBe(false);
   await page.locator('input[placeholder="Qty"]').first().fill('15');
   const create = page.getByRole('button', { name: /Create Draft/ });
@@ -197,8 +195,7 @@ test('Procurement: a purchase request has item lines, each with a WBS task, and 
   await page.locator('input[aria-label="Qty"]').first().fill('20');
   await page.locator('input[aria-label="Est. rate"]').first().fill('1500');
   const lineWbs = page.locator('xpath=//label[contains(.,"Items (the request amount")]/following::select[1]');
-  const opts = await lineWbs.locator('option').allTextContents();
-  expect(opts.some((o) => o.includes('Slab'))).toBe(true);
+  const opts = await optionsOf(lineWbs, 'Slab');
   expect(opts.some((o) => o.includes('BetaOnlyTask'))).toBe(false);
   await lineWbs.selectOption({ label: await optionText(lineWbs, 'Slab') });
   await page.getByRole('button', { name: /^Create Purchase Request/ }).click();
@@ -238,6 +235,7 @@ test('Approvals: one inbox for everything awaiting a decision, with level and ap
   await login(page);
   await page.goto('/approvals');
   await page.waitForTimeout(3000);
+  await expect(page.getByText(`E2E approval ${tag}`).first()).toBeVisible({ timeout: 20_000 });
   const t = await bodyText(page);
   expect(t).toContain(`E2E approval ${tag}`);
   expect(t).toMatch(/Level 2/);
@@ -252,10 +250,10 @@ test('Inventory: material issues are auto-numbered and need a WBS task', async (
   await page.goto('/inventory');
   await page.waitForTimeout(3000);
   await tab(page, 'Material Issues').click();
-  expect(await bodyText(page)).toMatch(/ISS-\d+/); // issues are numbered automatically
+  await expect.poll(async () => bodyText(page), { timeout: 20_000 }).toMatch(/ISS-\d+/); // issues are numbered automatically
   await page.getByRole('button', { name: /Add Material Issue/ }).click();
   const wbs = field(page, 'WBS Item');
-  expect(await wbs.locator('option').allTextContents()).toEqual(expect.arrayContaining([expect.stringContaining('Walls')]));
+  await optionsOf(wbs, 'Walls');
 });
 
 test('Planning: an incomplete plan shows the guided setup banner', async ({ page }) => {

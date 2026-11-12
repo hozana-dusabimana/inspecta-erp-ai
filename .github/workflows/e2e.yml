@@ -80,6 +80,7 @@ jobs:
       CLOUDINARY_API_SECRET: e2e
       PORT: '4000'
       CORS_ORIGIN: http://localhost:3000
+      DEBUG_LOG_SECRETS: 'true'   # the debug-log tests read verification links; throwaway CI database only
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -119,7 +120,7 @@ jobs:
 
       - name: Browser tests
         working-directory: frontend
-        run: npx playwright test e2e/public.spec.ts e2e/features.spec.ts e2e/walk.spec.ts
+        run: npx playwright test e2e/public.spec.ts e2e/features.spec.ts e2e/walk.spec.ts e2e/debuglog.spec.ts
 
       - name: Keep the report when something fails
         if: failure()

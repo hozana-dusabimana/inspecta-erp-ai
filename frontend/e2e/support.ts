@@ -36,7 +36,7 @@ export async function login(page: Page, email = EMAIL, password = PASSWORD) {
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL(/dashboard|requisitions|production|projects/, { timeout: 30_000 });
+  await page.waitForURL(/dashboard|requisitions|production|projects|platform/, { timeout: 30_000 });
   await page.waitForTimeout(1500);
 }
 
@@ -54,6 +54,12 @@ export async function optionText(select: Locator, contains: string): Promise<str
   const o = select.locator('option', { hasText: contains }).first();
   await expect(o).toHaveCount(1);
   return ((await o.textContent()) ?? '').trim();
+}
+
+/** The option labels of a dropdown, once it has loaded the one we expect (lists load from the API, slower on a real network). */
+export async function optionsOf(select: Locator, mustContain: string, timeout = 20_000): Promise<string[]> {
+  await expect.poll(async () => (await select.locator('option').allTextContents()).some((o) => o.includes(mustContain)), { timeout, message: `dropdown never listed "${mustContain}"` }).toBe(true);
+  return select.locator('option').allTextContents();
 }
 
 export async function bodyText(page: Page): Promise<string> {

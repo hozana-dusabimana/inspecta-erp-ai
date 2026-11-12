@@ -10,7 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:live": "node -e \"process.env.E2E_LIVE=1;require('child_process').spawnSync('npx',['playwright','test'],{stdio:'inherit',shell:true,env:process.env})\""
+    "test:e2e:live": "node -e \"process.env.E2E_LIVE=1;require('child_process').spawnSync('npx',['playwright','test'],{stdio:'inherit',shell:true,env:process.env})\"",
+    "test:e2e:headed": "node -e \"process.env.E2E_HEADED=1;process.env.E2E_SLOW_MO=process.env.E2E_SLOW_MO||150;require('child_process').spawnSync('npx',['playwright','test'],{stdio:'inherit',shell:true,env:process.env})\""
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

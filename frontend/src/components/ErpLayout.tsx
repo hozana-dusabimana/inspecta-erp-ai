@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, Bug } from 'lucide-react';
 import {
   Layers, Calendar, Zap, DollarSign, Warehouse, CheckSquare, HeartPulse,
   Bot, ShoppingCart, ShieldAlert, FileText, BarChart3,
@@ -112,6 +112,7 @@ export const PLATFORM_NAV: NavItem[] = [
   { id: 'nav-platform-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.PLATFORM_AUDIT },
   { id: 'nav-platform-subscriptions', label: 'Subscriptions', icon: CreditCard, view: AppView.PLATFORM_SUBSCRIPTIONS },
   { id: 'nav-platform-ai-credits', label: 'AI Credits', icon: Bot, view: AppView.PLATFORM_AI_CREDITS },
+  { id: 'nav-platform-debug-log', label: 'Debug log', icon: Bug, view: AppView.PLATFORM_DEBUG_LOG },
   { id: 'nav-platform-settings', label: 'Settings', icon: Settings, view: AppView.PLATFORM_SETTINGS },
 ];
 

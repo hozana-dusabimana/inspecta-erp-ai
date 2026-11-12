@@ -49,6 +49,7 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.PLATFORM_ADOPTION]: '/platform/adoption',
   [AppView.PLATFORM_AUDIT]: '/platform/audit',
   [AppView.PLATFORM_SETTINGS]: '/platform/settings',
+  [AppView.PLATFORM_DEBUG_LOG]: '/platform/debug-log',
   [AppView.PLATFORM_SUBSCRIPTIONS]: '/platform/subscriptions',
   [AppView.PLATFORM_AI_CREDITS]: '/platform/ai-credits',
 };

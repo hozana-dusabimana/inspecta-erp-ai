@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../lib/errors';
+import { debugLog } from '../lib/debug-log';
 
 export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json({ success: false, error: `Route not found: ${req.method} ${req.path}` });
@@ -46,5 +47,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   // eslint-disable-next-line no-console
   console.error('Unhandled error:', err);
+  debugLog({
+    level: 'ERROR', category: 'HTTP', message: `Unhandled error: ${err instanceof Error ? err.message : String(err)}`,
+    meta: { method: _req.method, path: _req.path, stack: err instanceof Error ? err.stack?.split('\n').slice(0, 6).join(' | ') : undefined },
+    userId: _req.user?.id, organizationId: _req.user?.orgId,
+  });
   return res.status(500).json({ success: false, error: 'Internal server error' });
 }

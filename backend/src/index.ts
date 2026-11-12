@@ -4,6 +4,8 @@ import { env, validateProductionEnv } from './config/env';
 import { prisma } from './lib/prisma';
 import { initRealtime } from './lib/realtime';
 import { ensureSuperAdmin } from './modules/auth/superadmin';
+import { debugLog, secretsEnabled } from './lib/debug-log';
+import { isEmailConfigured } from './lib/email';
 
 async function main() {
   // Fail fast on insecure production configuration (weak secrets, etc.).
@@ -38,6 +40,7 @@ async function main() {
   server.listen(env.port, () => {
     // eslint-disable-next-line no-console
     console.log(`🏗️  INSPECTA BUILDOS backend on http://localhost:${env.port} (${env.nodeEnv}) — realtime enabled`);
+    debugLog({ category: 'SYSTEM', message: 'Backend started', meta: { env: env.nodeEnv, build: process.env.BUILD_VERSION ?? 'dev', smtpConfigured: isEmailConfigured(), smtpHost: env.smtp.host || null, secretsRecorded: secretsEnabled() } });
   });
 
   const shutdown = async (signal: string) => {

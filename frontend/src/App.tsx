@@ -27,6 +27,7 @@ import ReportsPage from './components/ReportsPage';
 import ProfitabilityPage from './components/ProfitabilityPage';
 import PortfolioPage from './components/PortfolioPage';
 import ApprovalsPage from './components/ApprovalsPage';
+import DebugLogPage from './components/DebugLogPage';
 import AdminPage from './components/AdminPage';
 import PlatformConsole from './components/PlatformConsole';
 import BillingPage from './components/BillingPage';
@@ -171,6 +172,7 @@ export default function App() {
             <Route path="/billing" element={<Chromed render={(c) => <BillingPage {...c} />} />} />
             <Route path="/platform/subscriptions" element={<Chromed render={(c) => <PlatformConsole tab="subscriptions" {...c} />} />} />
             <Route path="/platform/ai-credits" element={<Chromed render={(c) => <PlatformConsole tab="ai-credits" {...c} />} />} />
+            <Route path="/platform/debug-log" element={<Chromed render={(c) => <DebugLogPage {...c} />} />} />
             <Route path="/platform" element={<Chromed render={(c) => <PlatformConsole tab="overview" {...c} />} />} />
             <Route path="/platform/companies" element={<Chromed render={(c) => <PlatformConsole tab="companies" {...c} />} />} />
             <Route path="/platform/users" element={<Chromed render={(c) => <PlatformConsole tab="users" {...c} />} />} />

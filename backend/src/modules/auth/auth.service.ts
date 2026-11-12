@@ -11,6 +11,7 @@ import {
 import { Unauthorized, Conflict, NotFound, Forbidden, BadRequest } from '../../lib/errors';
 import { isPlatformRole, resolvePermissions } from '../../auth/permissions';
 import { sendMail, isEmailConfigured } from '../../lib/email';
+import { debugLog } from '../../lib/debug-log';
 import { env } from '../../config/env';
 import { getPlatformSettings } from '../platform/settings';
 import { PLAN_DEFAULTS } from '../platform/plans';
@@ -40,10 +41,12 @@ async function sendVerification(user: { id: string; email: string; fullName: str
   });
 
   const link = `${env.webUrl.replace(/\/$/, '')}/verify-email?token=${rawToken}`;
+  debugLog({ category: 'AUTH', message: 'Verification link issued', meta: { email: user.email, smtpConfigured: isEmailConfigured() }, secret: link, userId: user.id });
 
   if (!isEmailConfigured()) {
     // eslint-disable-next-line no-console
     console.warn(`[auth] SMTP not configured — verification link for ${user.email}: ${link}`);
+    debugLog({ level: 'WARN', category: 'EMAIL', message: 'Verification email NOT sent: SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS)', meta: { to: [user.email] }, secret: link, userId: user.id });
     return false;
   }
 
@@ -209,6 +212,7 @@ export async function registerOrganization(input: {
 
   // Account is created but dormant until the email is verified — no tokens yet.
   const emailed = await sendVerification(user);
+  debugLog({ category: 'AUTH', message: `Company registered: ${input.organizationName}`, meta: { email: user.email, emailed }, organizationId: user.organizationId, userId: user.id });
   return { verificationRequired: true, email: user.email, emailed };
 }
 
@@ -221,6 +225,7 @@ export async function verifyEmail(rawToken: string) {
     where: { verificationTokenHash: hashToken(rawToken) },
   });
   if (!user || !user.verificationExpiresAt || user.verificationExpiresAt < new Date()) {
+    debugLog({ level: 'WARN', category: 'AUTH', message: 'Verification link rejected (invalid or expired)' });
     throw BadRequest('This verification link is invalid or has expired. Request a new one.');
   }
   await assertOrgUsable(user);
@@ -234,6 +239,7 @@ export async function verifyEmail(rawToken: string) {
       lastLoginAt: new Date(),
     },
   });
+  debugLog({ category: 'AUTH', message: 'Email verified, account activated', meta: { email: verified.email }, userId: verified.id, organizationId: verified.organizationId });
 
   const tokens = await issueTokens(verified);
   return { user: await publicUser(verified), ...tokens };
@@ -256,20 +262,28 @@ export async function resendVerification(rawEmail: string) {
 export async function login(email: string, password: string) {
   const normalized = email.toLowerCase().trim();
   const user = await prisma.user.findFirst({ where: { email: normalized } });
-  if (!user || !user.isActive) throw Unauthorized('Invalid credentials');
+  if (!user || !user.isActive) {
+    debugLog({ level: 'WARN', category: 'AUTH', message: 'Sign-in refused: unknown or blocked account', meta: { email: normalized } });
+    throw Unauthorized('Invalid credentials');
+  }
 
   const valid = await verifyPassword(password, user.passwordHash);
-  if (!valid) throw Unauthorized('Invalid credentials');
+  if (!valid) {
+    debugLog({ level: 'WARN', category: 'AUTH', message: 'Sign-in refused: wrong password', meta: { email: normalized }, userId: user.id, organizationId: user.organizationId });
+    throw Unauthorized('Invalid credentials');
+  }
 
   // Verify the password BEFORE this check so we don't reveal, to an
   // unauthenticated caller, whether an unverified email is even registered.
   if (!user.emailVerified) {
+    debugLog({ level: 'WARN', category: 'AUTH', message: 'Sign-in refused: email not verified yet', meta: { email: normalized }, userId: user.id, organizationId: user.organizationId });
     throw Forbidden('Please verify your email before signing in. Check your inbox for the verification link.');
   }
 
   await assertOrgUsable(user);
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  debugLog({ category: 'AUTH', message: 'Signed in', meta: { email: normalized, role: user.role }, userId: user.id, organizationId: user.organizationId });
 
   const tokens = await issueTokens(user);
   return { user: await publicUser(user), ...tokens };
@@ -298,12 +312,14 @@ export async function requestPasswordReset(rawEmail: string) {
     });
 
     const link = `${env.webUrl.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
+    debugLog({ category: 'AUTH', message: 'Password reset link issued', meta: { email: user.email, smtpConfigured: isEmailConfigured() }, secret: link, userId: user.id });
 
     if (!isEmailConfigured()) {
       // Same escape hatch as verification: without SMTP the flow is still
       // completable in development from the server log.
       // eslint-disable-next-line no-console
       console.warn(`[auth] SMTP not configured — password reset link for ${user.email}: ${link}`);
+      debugLog({ level: 'WARN', category: 'EMAIL', message: 'Password reset email NOT sent: SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS)', meta: { to: [user.email] }, secret: link, userId: user.id });
     } else {
       await sendMail({
         to: user.email,

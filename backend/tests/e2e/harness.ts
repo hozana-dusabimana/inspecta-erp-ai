@@ -70,3 +70,24 @@ export async function addMember(t: Tenant, role: 'SITE_ENGINEER' | 'QUANTITY_SUR
 export async function disconnect() {
   await prisma.$disconnect();
 }
+
+/** A platform administrator (cross-company role) for the platform-console tests. */
+export async function provisionPlatformAdmin(t: Tenant): Promise<string> {
+  const email = `platform-${Math.random().toString(36).slice(2, 8)}@e2e.test`;
+  const created = await call('post', '/users', { email, fullName: 'E2E Platform', password: PASSWORD, role: 'SYSTEM_ADMIN' }, t.admin);
+  if (!created.body.data?.id) throw new Error(`could not create platform admin: ${JSON.stringify(created.body)}`);
+  await prisma.user.update({ where: { id: created.body.data.id }, data: { role: 'PLATFORM_ADMIN' } });
+  const login = await call('post', '/auth/login', { email, password: PASSWORD });
+  return login.body.data.accessToken as string;
+}
+
+/** Waits for fire-and-forget work (the debug log writes asynchronously). */
+export async function eventually<T>(fn: () => Promise<T | undefined | false>, ms = 6000): Promise<T> {
+  const start = Date.now();
+  for (;;) {
+    const v = await fn();
+    if (v) return v as T;
+    if (Date.now() - start > ms) throw new Error('condition not met in time');
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}

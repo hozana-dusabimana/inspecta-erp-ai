@@ -1603,7 +1603,7 @@ model Trade {
 model Employee {
   id             String   @id @default(cuid())
   organizationId String
-  employeeNo     String?  @unique // auto-generated EMP-#### (spec: employee_code, unique)
+  employeeNo     String?  // auto-generated EMP-#### per company (unique within a company, see @@unique below)
   fullName       String
   nationalId     String?  // Rwanda national ID
   tradeId        String?
@@ -1633,6 +1633,7 @@ model Employee {
   payslips     Payslip[]
 
   @@index([organizationId])
+  @@unique([organizationId, employeeNo])
   @@map("employees")
 }
 
@@ -1740,7 +1741,7 @@ model EquipmentCategory {
 model Equipment {
   id              String   @id @default(cuid())
   organizationId  String
-  code            String?  @unique // auto-generated EQ-#### (spec: equipment_code, unique)
+  code            String?  // auto-generated EQ-#### per company (unique within a company, see @@unique below)
   name            String
   categoryId      String?
   primaryProjectId String? // equipment's home/base project
@@ -1762,6 +1763,7 @@ model Equipment {
   usageLogs   EquipmentUsageLog[]
 
   @@index([organizationId])
+  @@unique([organizationId, code])
   @@map("equipment")
 }
 

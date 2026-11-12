@@ -121,12 +121,22 @@ const inputCls =
   'w-full h-10 bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary transition-all';
 const labelCls = 'font-sans text-[10px] font-bold text-brand-on-surface-variant block mb-1';
 
+/** Pressing Escape closes a pop-up (keyboard users, and a faster way out for everyone). */
+function useEscapeToClose(onClose: () => void) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+}
+
 // ─────────────────────────────── Modal shell ───────────────────────────────
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEscapeToClose(onClose);
   return (
     <div className="fixed inset-0 z-50 bg-brand-on-surface/50 backdrop-blur-md flex items-center justify-center px-4">
       <div className="bg-brand-surface-container-lowest max-w-md w-full rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30">
-        <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
+        <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
           <X className="w-5 h-5" />
         </button>
         <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">{title}</h3>
@@ -479,6 +489,7 @@ function RolesTab() {
 function RoleEditor({
   role, catalog, onClose,
 }: { role: RoleDef | null; catalog: string[]; onClose: () => void }) {
+  useEscapeToClose(onClose);
   const qc = useQueryClient();
   const isAdminRole = role?.key === 'system-admin';
   const [name, setName] = useState(role?.name ?? '');
@@ -510,7 +521,7 @@ function RoleEditor({
   return (
     <div className="fixed inset-0 z-50 bg-brand-on-surface/50 backdrop-blur-md flex items-center justify-center px-4 py-8">
       <div className="bg-brand-surface-container-lowest max-w-3xl w-full max-h-full overflow-y-auto rounded-2xl p-6 shadow-2xl relative border border-brand-outline-variant/30">
-        <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
+        <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 p-1 rounded-full hover:bg-brand-surface text-brand-on-surface-variant hover:text-brand-on-surface">
           <X className="w-5 h-5" />
         </button>
         <h3 className="font-display text-lg font-extrabold text-brand-primary mb-4">

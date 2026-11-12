@@ -425,6 +425,17 @@ ship as delta files under `backend/prisma/migrations/` (apply to an existing DB 
 cd backend && npm test    # RBAC matrix + ERP formula unit tests (Jest)
 ```
 
+Four layers, one command each:
+
+| Layer | Command | What it proves |
+|---|---|---|
+| Unit | `cd backend && npm test` | formulas, the shared progress/EVM/profit calculation, RBAC rules, PDF layout. No database needed. |
+| API end-to-end | `cd backend && npm run test:e2e` | The real app on a real database: WBS integrity, requisition/material/equipment cost posting, commitments, daily plans, project-assignment limits, payroll switch, PDF reports, company isolation. It creates and removes its own test company. Needs `DATABASE_URL` and the JWT secrets, like the API itself. |
+| Browser end-to-end | `cd frontend && npm run test:e2e` | Playwright drives the real UI: every public page, one test per feature, and a walk through every module, tab and Add form. Needs the API (port 4000) and web app (port 3000) running, and `E2E_EMAIL` / `E2E_PASSWORD` of a company admin (`npx tsx backend/scripts/e2e-seed.ts` creates one). Install the browser once with `npx playwright install chromium`. |
+| Deployed site (read-only) | `cd frontend && npm run test:e2e:live` | Public pages and endpoint existence on `E2E_WEB_URL` / `E2E_API_URL`. Creates nothing; the nightly job points it at production. |
+
+GitHub runs the API and browser suites on every push and pull request, and the read-only live check every night (`.github/workflows/e2e.yml`). They report; they never block a deploy.
+
 ## Module coverage
 
 All 24 modules from the specification are implemented end-to-end (data model + API +

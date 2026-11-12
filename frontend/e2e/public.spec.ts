@@ -8,8 +8,9 @@ test.describe('public site', () => {
     test(`page ${path} loads with content and no errors`, async ({ page }) => {
       const w = watch(page);
       await page.goto(path);
-      await page.waitForTimeout(1500);
-      expect((await bodyText(page)).length).toBeGreaterThan(120);
+      // Poll rather than a single fixed-wait read: under load (e.g. right after a long run) a page can
+      // take longer than usual to render, and a one-shot read at a fixed delay can catch it mid-navigation.
+      await expect.poll(async () => (await bodyText(page)).length, { timeout: 15_000 }).toBeGreaterThan(120);
       expect(w.errors).toEqual([]);
     });
   }

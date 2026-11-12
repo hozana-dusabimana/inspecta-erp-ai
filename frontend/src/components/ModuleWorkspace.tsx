@@ -74,8 +74,8 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
     enabled: needsProject,
   });
 
-  // A user assigned to exactly one project lands on it and cannot drop to the
-  // "All projects" read-only view; people with none or several keep the picker.
+  // The project the user is working on is picked once, in the header (CurrentProjectPicker),
+  // and followed everywhere — no per-page picker here.
   const { data: mine } = useQuery({
     queryKey: ['users', 'me', 'projects'],
     queryFn: () => api.get<{ id: string; name: string; code: string }[]>('/users/me/projects'),
@@ -83,7 +83,6 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
     staleTime: 5 * 60 * 1000,
   });
   const myProjects = mine?.data ?? [];
-  const soleProject = myProjects.length === 1 ? myProjects[0] : null;
   useEffect(() => {
     if (!projectId && myProjects.length >= 1) setProjectId(myProjects[0].id);
     // A remembered project that no longer exists (deleted) falls back to the picker.
@@ -92,19 +91,6 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   }, [myProjects, projectId, projects]);
 
   const current = visibleTabs.find((t) => t.key === activeTab) ?? visibleTabs[0];
-
-  const projectSelector = needsProject ? (
-    <select
-      value={projectId}
-      onChange={(e) => setProjectId(e.target.value)}
-      className="h-10 bg-brand-surface-container-lowest border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary min-w-[220px]"
-    >
-      {!soleProject && <option value="">All projects (read-only)</option>}
-      {(soleProject ? [soleProject] : projects?.data ?? []).map((p) => (
-        <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-      ))}
-    </select>
-  ) : undefined;
 
   // Payroll is off until a company admin switches it on: one clear screen, no requests that would be refused.
   if (def.view === AppView.PAYROLL && user?.payrollEnabled === false) {
@@ -125,7 +111,6 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
       subtitle={def.subtitle}
       onNavigate={onNavigate}
       onLogout={onLogout}
-      actions={projectSelector}
     >
       {def.summary && (
         <div className="mb-6">
@@ -172,6 +157,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               canWrite={hasPermission(current.writePerm)}
               projectScoped={current.projectScoped}
               projectId={current.projectScoped ? (projectId || undefined) : undefined}
+              formProjectId={projectId || undefined}
               searchable={current.searchable}
               dateFilter={current.dateFilter}
               filters={current.filters}

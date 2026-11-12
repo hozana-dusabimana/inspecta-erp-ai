@@ -171,6 +171,12 @@ function buildPayload(fields: Field[], form: Record<string, string>, projectId?:
     else payload[f.name] = raw;
   }
   if (projectScoped && projectId) payload.projectId = projectId;
+  // Some tabs aren't project-scoped (the record can be company-wide, e.g. a general cash movement)
+  // but still accept an optional WBS item when one applies — and a WBS item always needs a project to
+  // belong to. So the currently-selected project rides along whenever one is set, even off a
+  // project-scoped tab; a schema that has no `projectId` field simply ignores it (Zod strips unknown
+  // keys by default), so this never affects a genuinely project-less entity (clients, materials...).
+  if (!projectScoped && projectId && !('projectId' in payload)) payload.projectId = projectId;
   return payload;
 }
 

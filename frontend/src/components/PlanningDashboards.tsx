@@ -176,19 +176,11 @@ const TABS = [
 
 export default function PlanningDashboards({ onNavigate, onLogout }: Props) {
   const [tab, setTab] = useState<'baseline' | 'resources' | 'procurement' | 'budget'>('baseline');
-  const { projectId, setProjectId } = useCurrentProject();
-  const { data: projects } = useQuery({ queryKey: ['projects', 'picker'], queryFn: () => api.get<any[]>('/projects?pageSize=200') });
-
-  const selector = (
-    <select value={projectId} onChange={(e) => setProjectId(e.target.value)}
-      className="h-10 bg-brand-surface-container-lowest border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold text-brand-primary outline-none focus:border-brand-primary min-w-[220px]">
-      <option value="">All projects</option>
-      {(projects?.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
-    </select>
-  );
+  // The project to show is picked once, in the header (CurrentProjectPicker), and followed here too.
+  const { projectId } = useCurrentProject();
 
   return (
-    <ErpLayout active={AppView.PLANNING_DASH} title="Planning Dashboards" subtitle="Baseline, resources, procurement & budget (Module 1)" onNavigate={onNavigate} onLogout={onLogout} actions={selector}>
+    <ErpLayout active={AppView.PLANNING_DASH} title="Planning Dashboards" subtitle="Baseline, resources, procurement & budget (Module 1)" onNavigate={onNavigate} onLogout={onLogout}>
       <div className="flex flex-wrap gap-1.5 bg-brand-surface-container p-1 rounded-lg border border-brand-outline-variant/10 mb-6 w-fit">
         {TABS.map((t) => {
           const Icon = t.icon;

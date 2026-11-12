@@ -65,8 +65,10 @@ async function pickProject(page: Page, name: string) {
 test('signing in lands on a dashboard with honest status badges', async ({ page }) => {
   const w = watch(page);
   await login(page);
+  // The executive KPI tile loads from its own API call after the shell renders; poll rather than
+  // read once, since a cold dev-server / first-load compile can make this slower than other pages.
+  await expect.poll(async () => bodyText(page), { timeout: 20_000 }).toMatch(/schedule spi/i);
   const t = await bodyText(page);
-  expect(t).toMatch(/schedule spi/i);
   expect(t).not.toMatch(/ON TRACK[\s\S]{0,40}0\.87/); // no hard-coded badge
   expect(w.errors).toEqual([]);
 });
@@ -89,14 +91,16 @@ test('the same numbers appear on every screen: progress 50%, SPI 0.5, profit', a
   expect(t).toMatch(/30,000,000/); // forecast profit = contract - budget
 });
 
-test('the current project follows you to every page', async ({ page }) => {
+test('the current project follows you to every page, picked from one place only', async ({ page }) => {
   await login(page);
   await pickProject(page, NAME_A);
   for (const path of ['/finance', '/production', '/inventory', '/reports', '/planning-dashboards', '/requisitions']) {
     await page.goto(path);
     await page.waitForTimeout(2800);
+    // One global picker (header, near the sidebar) drives every page — no per-page duplicate.
+    await expect(page.locator('#current-project-picker'), `on ${path}`).toHaveCount(1);
     const selected = await page.locator('select').evaluateAll((els) => els.map((e) => (e as HTMLSelectElement).options[(e as HTMLSelectElement).selectedIndex]?.text ?? ''));
-    expect(selected.filter((v) => v.includes(NAME_A)).length, `on ${path}`).toBeGreaterThanOrEqual(2);
+    expect(selected.filter((v) => v.includes(NAME_A)).length, `on ${path}`).toBe(1);
   }
 });
 
@@ -122,6 +126,44 @@ test('Finance: cost by WBS shows budget, actual and open purchase order commitme
   expect(t).toMatch(/forecast/i);
   expect(t).toContain('Slab');
   expect(t).toMatch(/100,000/);
+});
+
+test('Finance: a cash movement and an invoice can both be tied to a WBS task', async ({ page }) => {
+  await login(page);
+  await pickProject(page, NAME_A);
+  await page.goto('/finance');
+  await page.waitForTimeout(2500);
+  // "Cash Flow" also names the analytics chart tab above; disambiguate via the CRUD tab bar's sibling "Invoices / IPC".
+  const crudTabs = page.locator('div.p-1.rounded-lg', { has: page.getByText('Invoices / IPC') });
+  await crudTabs.getByRole('button', { name: 'Cash Flow' }).click();
+  await page.getByRole('button', { name: /Add Cash Movement/ }).click();
+  // The toolbar's own "Direction" filter sits in the page behind the modal and shares that label,
+  // so scope every field lookup to the modal dialog to avoid grabbing the wrong control.
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  const mfield = (label: string) => modal.locator(`xpath=//label[contains(normalize-space(.), "${label}")]/following::*[self::select or self::input or self::textarea][1]`).first();
+  const direction = mfield('Direction');
+  await direction.selectOption({ label: await optionText(direction, 'OUT') });
+  const category = mfield('Category');
+  await category.selectOption({ label: await optionText(category, 'OTHER') });
+  const wbs = mfield('WBS Item');
+  const opts = await optionsOf(wbs, 'Walls');
+  expect(opts.some((o) => o.includes('BetaOnlyTask'))).toBe(false); // scoped to this project only
+  await wbs.selectOption({ label: await optionText(wbs, 'Walls') });
+  await mfield('Amount').fill('500');
+  await page.getByRole('button', { name: /^Create Cash Movement/ }).click();
+  await page.waitForTimeout(2500);
+  expect(await bodyText(page)).toMatch(/500/); // the request wasn't rejected for "choose a project"
+  await page.getByRole('button', { name: 'Done' }).click(); // dismiss the post-create attachments modal
+
+  await tab(page, 'Invoices').click();
+  await page.waitForTimeout(1500);
+  await page.getByRole('button', { name: /Add Invoice/ }).click();
+  const wbs2 = mfield('WBS Item');
+  await wbs2.selectOption({ label: await optionText(wbs2, 'Slab') });
+  await mfield('Amount (if not an IPC)').fill('1000');
+  await page.getByRole('button', { name: /^Create Invoice/ }).click();
+  await page.waitForTimeout(2500);
+  expect(await bodyText(page)).toMatch(/INV-\d+/);
 });
 
 test('Production: plan the day, assign it to someone who can raise requisitions', async ({ page }) => {
@@ -254,6 +296,24 @@ test('Inventory: material issues are auto-numbered and need a WBS task', async (
   await page.getByRole('button', { name: /Add Material Issue/ }).click();
   const wbs = field(page, 'WBS Item');
   await optionsOf(wbs, 'Walls');
+});
+
+test('Inventory: a planned material requirement shows its WBS task in the list', async ({ page }) => {
+  await login(page);
+  await pickProject(page, NAME_A);
+  await page.goto('/inventory');
+  await page.waitForTimeout(3000);
+  await tab(page, 'Material Planning').click();
+  await page.getByRole('button', { name: /Add Material Requirement/ }).click();
+  const material = field(page, 'Material');
+  await material.selectOption({ label: await optionText(material, 'E2E Cement') });
+  const wbs = field(page, 'WBS Task');
+  await wbs.selectOption({ label: await optionText(wbs, 'Walls') });
+  await field(page, 'Planned Quantity').fill('25');
+  await page.getByRole('button', { name: /^Create Material Requirement/ }).click();
+  await page.waitForTimeout(2500);
+  const t = await bodyText(page);
+  expect(t).toContain('Walls'); // the list column resolves the WBS relation, not a blank "—"
 });
 
 test('Planning: an incomplete plan shows the guided setup banner', async ({ page }) => {

@@ -39,6 +39,7 @@ router.use(
 // ── Material Planning — planned requirements per project (#8) ─────
 const requirementCreate = z.object({
   projectId: z.string(),
+  wbsItemId: z.string().optional(),
   materialId: z.string(),
   plannedQuantity: z.number().nonnegative(),
   requiredByDate: z.string().datetime().optional(),
@@ -56,10 +57,14 @@ export const requirementCrud: CrudOptions = {
     updateSchema: requirementCreate.partial(),
     requireProject: true,
     orderBy: { requiredByDate: 'asc' },
-    include: { material: { select: { id: true, code: true, name: true, unit: true } } },
+    include: {
+      material: { select: { id: true, code: true, name: true, unit: true } },
+      wbsItem: { select: { id: true, code: true, name: true } },
+    },
     refs: [
       { field: 'materialId', model: 'material' },
       { field: 'supplierId', model: 'supplier' },
+      { field: 'wbsItemId', model: 'wbsItem' },
     ],
     transform: (data, req) => {
       if (!('id' in data)) data.createdBy = req.user!.id;

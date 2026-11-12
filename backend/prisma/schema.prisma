@@ -708,6 +708,7 @@ model WbsItem {
   boqItems BoqItem[]
   scheduleActivities ScheduleActivity[]
   dailyPlans         DailyPlan[]
+  materialRequirements MaterialRequirement[]
 
   @@index([organizationId])
   @@index([projectId])
@@ -898,6 +899,7 @@ model Invoice {
   id             String        @id @default(cuid())
   organizationId String
   projectId      String
+  wbsItemId      String? // optional: ties this billing to one WBS task; an IPC spanning the whole period leaves this blank
   number         String
   description    String?
   amount         Decimal       @default(0) @db.Decimal(18, 2)
@@ -1820,6 +1822,7 @@ model MaterialRequirement {
   id              String   @id @default(cuid())
   organizationId  String
   projectId       String
+  wbsItemId       String? // the task this material is planned for
   materialId      String
   plannedQuantity Decimal  @db.Decimal(18, 3)
   requiredByDate  DateTime?
@@ -1834,6 +1837,7 @@ model MaterialRequirement {
   updatedAt DateTime @updatedAt
 
   material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  wbsItem  WbsItem? @relation(fields: [wbsItemId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([projectId])
@@ -2013,6 +2017,7 @@ model CashFlowEntry {
   id             String        @id @default(cuid())
   organizationId String
   projectId      String?
+  wbsItemId      String? // cost allocation to activity (e.g. an advance or payment tied to one task)
   date           DateTime      @default(now())
   direction      CashDirection
   category       String // CLIENT_PAYMENT | ADVANCE | RETENTION_RELEASE | OTHER_INCOME | PAYROLL | SUPPLIER | EQUIPMENT | SUBCONTRACTOR | OVERHEAD | OTHER

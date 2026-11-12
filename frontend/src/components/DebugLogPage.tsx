@@ -104,8 +104,10 @@ export default function DebugLogPage({ onNavigate, onLogout }: { onNavigate: (v:
 
           {/* events */}
           <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest overflow-hidden" data-testid="debug-events">
-            {events.length === 0 ? (
-              <div className="p-10 text-center text-sm text-brand-on-surface-variant"><Bug className="w-6 h-6 mx-auto mb-2 opacity-50" />No events match. Sign in, sign up or send an email and they appear here.</div>
+            {log.isLoading ? (
+              <div className="p-10 text-center text-sm text-brand-on-surface-variant" data-testid="debug-events-loading"><RefreshCw className="w-6 h-6 mx-auto mb-2 opacity-50 animate-spin" />Loading…</div>
+            ) : events.length === 0 ? (
+              <div className="p-10 text-center text-sm text-brand-on-surface-variant" data-testid="debug-events-empty"><Bug className="w-6 h-6 mx-auto mb-2 opacity-50" />No events match. Sign in, sign up or send an email and they appear here.</div>
             ) : events.map((e) => (
               <div key={e.id} className="border-b last:border-0 border-brand-outline-variant/10 px-4 py-2.5" data-event={e.category}>
                 <button className="w-full text-left flex items-start gap-3" onClick={() => setOpen(open === e.id ? null : e.id)} aria-expanded={open === e.id}>

@@ -106,7 +106,8 @@ export default function ReportsPage({ onNavigate, onLogout }: { onNavigate: (v: 
     queryFn: () => api.get<{ id: string; name: string; code: string }[]>('/projects?pageSize=200'),
   });
   const projects = projectsResp?.data ?? [];
-  const { projectId, setProjectId } = useCurrentProject();
+  // The project to report on is picked once, in the header (CurrentProjectPicker), and followed here too.
+  const { projectId } = useCurrentProject();
   const [busy, setBusy] = useState<string | null>(null);
   const current = projects.find((p) => p.id === projectId);
 
@@ -126,15 +127,10 @@ export default function ReportsPage({ onNavigate, onLogout }: { onNavigate: (v: 
   return (
     <ErpLayout active={AppView.REPORTS} title="Reports" subtitle="Designed PDF reports and Excel / CSV exports" onNavigate={onNavigate} onLogout={onLogout}>
       <div className="flex flex-wrap items-center gap-3 mb-6 bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 p-4">
-        <label className="text-xs font-bold text-brand-on-surface-variant uppercase tracking-wide" htmlFor="report-project">Project</label>
-        <select
-          id="report-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}
-          className="h-10 min-w-[260px] bg-brand-surface border border-brand-outline-variant rounded-lg px-3 text-xs font-semibold outline-none focus:border-brand-primary"
-        >
-          <option value="">All projects (company-wide reports only)</option>
-          {projects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
-        </select>
-        <span className="text-[11px] text-brand-on-surface-variant">Reports use the same numbers as the screens. "No data" means the figure cannot be calculated yet.</span>
+        <span className="text-xs font-bold text-brand-primary">
+          {current ? `Reporting on ${current.code} — ${current.name}` : 'Reporting company-wide (no project selected)'}
+        </span>
+        <span className="text-[11px] text-brand-on-surface-variant">Pick a different project from the header to change this. Reports use the same numbers as the screens — "No data" means the figure cannot be calculated yet.</span>
       </div>
 
       <h2 className="font-display text-sm font-extrabold text-brand-primary mb-3">PDF reports</h2>

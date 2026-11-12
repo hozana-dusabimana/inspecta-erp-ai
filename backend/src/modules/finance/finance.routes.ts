@@ -99,6 +99,7 @@ router.use('/costs', createCrudRouter(costEntryCrud));
 // ── Client invoices / IPC ─────────────────────────────────────
 const invoiceCreate = z.object({
   projectId: z.string(),
+  wbsItemId: z.string().optional(),
   number: z.string().min(1).optional(), // auto-generated (INV-####) when omitted
   description: z.string().optional(),
   amount: z.number().nonnegative(),
@@ -138,6 +139,7 @@ router.use(
     sumFields: ['amount', 'netAmount'],
     requireProject: true,
     include: { payments: true },
+    refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
     // IPC net = (gross − previous) − retention − advance + tax. Falls back to amount.
     transform: (data, req) => {
       const gross = num(data.grossValuation);
@@ -158,6 +160,7 @@ router.use(
 // ── Cash flow entries (manual inflows/outflows) ───────────────
 const cashCreate = z.object({
   projectId: z.string().optional(),
+  wbsItemId: z.string().optional(),
   date: z.string().datetime().optional(),
   direction: z.nativeEnum(CashDirection),
   category: z.string().min(1),
@@ -180,6 +183,7 @@ router.use(
     filterFields: ['direction', 'category'],
     sumFields: ['amount'],
     orderBy: { date: 'desc' },
+    refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
     transform: stamp,
   }),
 );

@@ -1093,6 +1093,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'direction', label: 'Direction', type: 'select', options: opt(['IN', 'OUT']), required: true },
           { name: 'category', label: 'Category', type: 'select', options: opt(['CLIENT_PAYMENT', 'ADVANCE', 'RETENTION_RELEASE', 'OTHER_INCOME', 'PAYROLL', 'SUPPLIER', 'EQUIPMENT', 'SUBCONTRACTOR', 'OVERHEAD', 'OTHER']), required: true },
+          { name: 'wbsItemId', label: 'WBS Item (optional — leave blank for a company-wide movement)', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'amount', label: 'Amount', type: 'number', required: true },
           { name: 'isForecast', label: 'Type', type: 'select', options: [{ value: 'false', label: 'Actual / realized' }, { value: 'true', label: 'Forecast / projected' }] },
           { name: 'date', label: 'Date', type: 'date' },
@@ -1114,6 +1115,7 @@ export const MODULES: Record<string, ModuleDef> = {
         fields: [
           { name: 'number', label: 'Invoice Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'description', label: 'Description' },
+          { name: 'wbsItemId', label: 'WBS Item (optional — leave blank for an IPC spanning the whole period)', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'amount', label: 'Amount (if not an IPC)', type: 'number', required: true },
           { name: 'status', label: 'Status', type: 'select', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED']) },
           { name: 'isIpc', label: 'Is IPC?', type: 'select', options: [{ value: 'false', label: 'Invoice' }, { value: 'true', label: 'IPC / Certificate' }] },
@@ -1222,6 +1224,7 @@ export const MODULES: Record<string, ModuleDef> = {
         projectScoped: true, readPerm: 'inventory:read', writePerm: 'inventory:write',
         columns: [
           { key: 'material', label: 'Material', render: (r) => r.material?.name ?? '—' },
+          { key: 'wbsItem', label: 'WBS Task', render: (r) => (r.wbsItem ? `${r.wbsItem.code} — ${r.wbsItem.name}` : '—') },
           { key: 'plannedQuantity', label: 'Planned Qty', align: 'right', render: (r) => num(r.plannedQuantity) },
           { key: 'requiredByDate', label: 'Required By', render: (r) => date(r.requiredByDate) },
           { key: 'leadTimeDays', label: 'Lead (days)', align: 'right' },
@@ -1229,6 +1232,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'materialId', label: 'Material', type: 'select', optionsEndpoint: '/inventory/materials', optionLabel: (m) => `${m.code} — ${m.name}`, required: true },
+          { name: 'wbsItemId', label: 'WBS Task', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'plannedQuantity', label: 'Planned Quantity', type: 'number', required: true },
           { name: 'requiredByDate', label: 'Required By', type: 'date' },
           { name: 'supplierId', label: 'Preferred Supplier', type: 'select', optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name, createConfig: SUPPLIER_CREATE },

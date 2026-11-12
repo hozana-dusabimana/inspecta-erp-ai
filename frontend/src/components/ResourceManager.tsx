@@ -16,6 +16,10 @@ interface Props {
   fields: Field[];
   canWrite: boolean;
   projectId?: string;
+  /** Project to hand the create/edit form (WBS scoping, payload) when the tab itself isn't project-scoped
+   *  — e.g. a company-wide ledger whose list spans every project, but a new entry can still optionally
+   *  tie to whichever project is currently selected. Defaults to `projectId`. */
+  formProjectId?: string;
   projectScoped?: boolean;
   /** Show the free-text search box (backend filters on its searchField). */
   searchable?: boolean;
@@ -44,7 +48,7 @@ export function plural(label: string): string {
 // Modules where the server refuses to confirm/close the record without evidence.
 const EVIDENCE_REQUIRED: Record<string, string> = { grn: 'to confirm the GRN', material_issue: 'to confirm the issue', ncr: 'to close the NCR' };
 
-export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
+export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, formProjectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
@@ -335,7 +339,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           entityLabel={entityLabel}
           fields={fields}
           editing={editingRow}
-          projectId={projectId}
+          projectId={formProjectId ?? projectId}
           projectScoped={projectScoped}
           attachModule={attachModule}
           onClose={() => setFormOpen(false)}

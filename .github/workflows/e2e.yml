@@ -78,7 +78,6 @@ jobs:
       CLOUDINARY_CLOUD_NAME: e2e
       CLOUDINARY_API_KEY: e2e
       CLOUDINARY_API_SECRET: e2e
-      PORT: '4000'
       CORS_ORIGIN: http://localhost:3000
       DEBUG_LOG_SECRETS: 'true'   # the debug-log tests read verification links; throwaway CI database only
     steps:
@@ -93,6 +92,11 @@ jobs:
 
       - name: Backend - install, migrate, create the test company
         working-directory: backend
+        env:
+          # Scoped to this step only: the job-level env is shared with the frontend step below, and the
+          # frontend's own dev server (server.ts) also reads $PORT, defaulting to 3000 — a job-level PORT
+          # here would make it try to bind the backend's port too and collide.
+          PORT: '4000'
         run: |
           npm ci
           npx prisma generate
@@ -105,6 +109,8 @@ jobs:
 
       - name: Backend - start
         working-directory: backend
+        env:
+          PORT: '4000'
         run: nohup npx tsx src/index.ts > /tmp/backend.log 2>&1 &
 
       - name: Frontend - install and start

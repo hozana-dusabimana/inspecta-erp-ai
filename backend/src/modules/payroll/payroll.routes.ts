@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
-import { BadRequest, NotFound } from '../../lib/errors';
+import { BadRequest, NotFound, Forbidden } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 import { auditFromRequest } from '../../auth/audit';
@@ -17,6 +17,16 @@ const stamp = (data: Record<string, unknown>, req: Request) => {
 };
 
 const router = Router();
+
+// Payroll is switched off per company until its admin enables it (Administration > Company).
+router.use(
+  authenticate,
+  asyncHandler(async (req, _res, next) => {
+    const org = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { payrollEnabled: true } });
+    if (!org?.payrollEnabled) throw Forbidden('Payroll is switched off for this company. A company admin can switch it on in Administration.');
+    next();
+  }),
+);
 
 // ── Statutory rates (PAYE bands + RSSB contributions, date-versioned) ──
 const rateSchema = z.object({

@@ -51,7 +51,7 @@ router.get(
   requirePermission('profitability:read'),
   asyncHandler(async (req, res) => {
     const projectId = req.query.projectId as string | undefined;
-    const pm = await loadProjectMetrics(req.user!.orgId, { projectId });
+    const pm = await loadProjectMetrics(req.user!.orgId, { projectId, projectIds: req.user!.projectIds });
     const analyses = pm.projects.map((m) => toProfit(m, m.openNcrs));
     const t = pm.totals;
     return ok(res, {

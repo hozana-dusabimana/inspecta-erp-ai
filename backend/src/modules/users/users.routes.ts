@@ -1,3 +1,4 @@
+import { clearProjectAccessCache } from '../../lib/project-access';
 import { Router } from 'express';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
@@ -78,6 +79,7 @@ router.put(
       prisma.projectAssignment.deleteMany({ where: { userId: user.id } }),
       prisma.projectAssignment.createMany({ data: valid.map((p) => ({ organizationId: orgId, userId: user.id, projectId: p.id })) }),
     ]);
+    clearProjectAccessCache(user.id); // the new limits apply on the very next request
     await auditFromRequest(req, 'UPDATE', 'user', user.id, { newValues: { projectIds: valid.map((p) => p.id) } });
     return ok(res, valid.map((p) => p.id));
   }),

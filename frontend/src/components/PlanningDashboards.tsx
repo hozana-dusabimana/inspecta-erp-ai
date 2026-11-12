@@ -1,3 +1,4 @@
+import { useCurrentProject } from '../lib/currentProject';
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -175,7 +176,7 @@ const TABS = [
 
 export default function PlanningDashboards({ onNavigate, onLogout }: Props) {
   const [tab, setTab] = useState<'baseline' | 'resources' | 'procurement' | 'budget'>('baseline');
-  const [projectId, setProjectId] = useState('');
+  const { projectId, setProjectId } = useCurrentProject();
   const { data: projects } = useQuery({ queryKey: ['projects', 'picker'], queryFn: () => api.get<any[]>('/projects?pageSize=200') });
 
   const selector = (

@@ -1,3 +1,4 @@
+import { useCurrentProject } from '../lib/currentProject';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -153,6 +154,7 @@ function fileToBase64(file: Blob): Promise<string> {
 }
 
 export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage, onSetHistory, pageContext, variant = 'page', onClose, embedded }: CopilotWorkspaceProps) {
+  const { projectId: currentProjectId } = useCurrentProject();
   const panel = variant === 'panel';
   const [input, setInput] = useState('');
   const { conversationId, setConversationId } = useChat();
@@ -206,7 +208,7 @@ export default function CopilotWorkspace({ onNavigate, chatHistory, onAddMessage
     let acc = '';
     try {
       // Streamed Copilot — grounded strictly on the organization's live data (SSE).
-      await api.stream('/ai/chat/stream', { prompt: userText, conversationId: conversationId ?? undefined, pageContext, attachments: attachments.length ? attachments : undefined }, (evt) => {
+      await api.stream('/ai/chat/stream', { prompt: userText, conversationId: conversationId ?? undefined, pageContext, projectId: currentProjectId || undefined, attachments: attachments.length ? attachments : undefined }, (evt) => {
         if (evt.transcript && attachments.some((a) => a.mime.startsWith('audio/'))) {
           onAddMessage({ id: Math.random().toString(), sender: 'user', text: `🎤 “${evt.transcript}”`, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
         }

@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
 import { NotFound, BadRequest } from '../../lib/errors';
 import { loadProjectMetrics } from '../../lib/project-metrics';
+import { assertProjectAccess } from '../../lib/project-access';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { assertProjectQuotaAvailable } from '../platform/plans';
@@ -72,6 +73,9 @@ async function assertOrgRefs(orgId: string, clientId?: string, managerId?: strin
   }
 }
 
+// A member limited to certain projects cannot open any other project by id.
+router.param('id', (req, _res, next, id) => { assertProjectAccess(req, id); next(); });
+
 // ── Portfolio summary (real KPIs for the dashboard) ──────────────
 router.get(
   '/summary',
@@ -79,8 +83,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
     // Demo/test projects never count in client totals; progress comes from the shared calculation.
-    const pm = await loadProjectMetrics(orgId);
-    const projects = await prisma.project.findMany({ where: { organizationId: orgId, isDemo: false } });
+    const mine = req.user!.projectIds;
+    const pm = await loadProjectMetrics(orgId, { projectIds: mine });
+    const projects = await prisma.project.findMany({ where: { organizationId: orgId, isDemo: false, ...(mine ? { id: { in: mine } } : {}) } });
     const t = pm.totals;
 
     const total = projects.length;
@@ -116,6 +121,7 @@ router.get(
 
     const where = {
       organizationId: req.user!.orgId,
+      ...(req.user!.projectIds ? { id: { in: req.user!.projectIds } } : {}),
       ...(status ? { status } : {}),
       ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
     };
@@ -135,7 +141,7 @@ router.get(
     ]);
 
     // Overlay the single shared calculation so the list never disagrees with Production/Finance.
-    const pm = await loadProjectMetrics(req.user!.orgId, { includeDemo: true });
+    const pm = await loadProjectMetrics(req.user!.orgId, { includeDemo: true, projectIds: req.user!.projectIds });
     const byId = new Map(pm.projects.map((m) => [m.projectId, m]));
     const rows = data.map((p) => {
       const m = byId.get(p.id);

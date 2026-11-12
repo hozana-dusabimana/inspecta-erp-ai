@@ -34,6 +34,17 @@ describe('project metrics — one calculation for every screen', () => {
     expect(m.forecastProfit).toBe(30_000_000);
   });
 
+  it('a project with no progress evidence is NO_DATA, not on track', () => {
+    const m = buildProjectMetrics({ ...base, budgetLines: 50_000_000, actualCost: 0 });
+    expect(m.progressPct).toBeNull();
+    expect(m.health).toBe('NO_DATA');
+  });
+
+  it('but real warnings still show without progress (over budget)', () => {
+    const m = buildProjectMetrics({ ...base, budgetLines: 1_000_000, actualCost: 2_000_000 });
+    expect(m.health).toBe('CRITICAL');
+  });
+
   it('uses the contract value (not 0 or a dash) for profit', () => {
     const m = buildProjectMetrics({ ...base, budgetLines: 50_000_000 });
     expect(m.contractValue).toBe(80_000_000);

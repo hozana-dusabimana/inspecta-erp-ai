@@ -173,7 +173,10 @@ export function buildProjectMetrics(p: {
     marginStatus: marginStatus(forecastMarginPct),
     health: 'NO_DATA',
   };
-  m.health = worst(m.spiStatus, m.cpiStatus, m.burnStatus, m.marginStatus);
+  // With no progress evidence yet a project is not "on track": only a real warning (over budget,
+  // negative margin) counts; otherwise there is simply no data to judge it by.
+  const flagged = worst(m.burnStatus, m.marginStatus);
+  m.health = m.progressPct != null ? worst(m.spiStatus, m.cpiStatus, m.burnStatus, m.marginStatus) : RANK[flagged] >= 2 ? flagged : 'NO_DATA';
   return m;
 }
 
@@ -219,11 +222,12 @@ export function rollupPortfolio(projects: ProjectMetrics[]): PortfolioMetrics['t
  * Load metrics for the organisation's projects (or one). Demo/test projects are
  * excluded from client totals unless `includeDemo` is set or a single project is asked for.
  */
-export async function loadProjectMetrics(orgId: string, opts: { projectId?: string; includeDemo?: boolean } = {}): Promise<PortfolioMetrics> {
-  const scope = { organizationId: orgId, ...(opts.projectId ? { projectId: opts.projectId } : {}) };
+export async function loadProjectMetrics(orgId: string, opts: { projectId?: string; includeDemo?: boolean; projectIds?: string[] | null } = {}): Promise<PortfolioMetrics> {
+  const only = opts.projectIds && !opts.projectId ? { in: opts.projectIds } : undefined;
+  const scope = { organizationId: orgId, ...(opts.projectId ? { projectId: opts.projectId } : only ? { projectId: only } : {}) };
   const [projects, contracts, budgetLines, boq, costs, invoices, payments, prod, sched, ncrs] = await Promise.all([
     prisma.project.findMany({
-      where: { organizationId: orgId, ...(opts.projectId ? { id: opts.projectId } : opts.includeDemo ? {} : { isDemo: false }) },
+      where: { organizationId: orgId, ...(opts.projectId ? { id: opts.projectId } : opts.includeDemo ? {} : { isDemo: false }), ...(only ? { id: only } : {}) },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.contract.findMany({ where: { organizationId: orgId, deletedAt: null }, select: { projectId: true, value: true } }),

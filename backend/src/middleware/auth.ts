@@ -6,6 +6,7 @@ import { asyncHandler } from '../lib/http';
 import { Unauthorized, Forbidden, BadRequest, PaymentRequired } from '../lib/errors';
 import { isPlatformRole, resolvePermissions, Permission } from '../auth/permissions';
 import { billingStateOf } from '../modules/billing/billing.service';
+import { loadProjectIds } from '../lib/project-access';
 
 export interface AuthUser {
   id: string;
@@ -28,6 +29,8 @@ export interface AuthUser {
   inspecting: boolean;
   /** True when the tenant's subscription has lapsed past its grace period. */
   billingLocked: boolean;
+  /** Projects this member is limited to (their assignments); null = unrestricted. */
+  projectIds?: string[] | null;
 }
 
 /** Header a platform admin sets to view another tenant's workspace read-only. */
@@ -147,6 +150,17 @@ export const authenticate = asyncHandler(async (req: Request, _res: Response, ne
     inspecting,
     billingLocked,
   };
+
+  // Assignment enforcement: a member assigned to specific projects may only touch those.
+  const projectIds = await loadProjectIds(req.user);
+  req.user.projectIds = projectIds;
+  if (projectIds) {
+    const asked = [req.query?.projectId, (req.body as Record<string, unknown> | undefined)?.projectId, req.params?.projectId]
+      .filter((v): v is string => typeof v === 'string' && v !== '');
+    for (const id of asked) {
+      if (!projectIds.includes(id)) throw Forbidden('You are not assigned to this project.');
+    }
+  }
   next();
 });
 

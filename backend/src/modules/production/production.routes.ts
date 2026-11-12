@@ -11,6 +11,7 @@ import { productivity, variancePct, ratePerWorkerDay } from '../../lib/formulas'
 import { analyzeProduction, EngineEntry, EngineMaterial } from './engine';
 import { computeCpm } from '../scheduling/cpm';
 import { fieldReportRouter } from './field-report';
+import { dailyPlanRouter } from './daily-plans';
 import { loadProjectMetrics } from '../../lib/project-metrics';
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -441,6 +442,7 @@ const router = Router();
 router.use('/', analytics); // /production/analytics, /delays, /ai-summary, /summary/metrics
 router.use('/', fieldReportRouter); // /production/field-report (+ /today)
 router.use('/daily-reports', reportsRouter);
+router.use('/daily-plans', dailyPlanRouter);
 router.use('/materials', materialsCrud);
 router.use('/', entriesCrud); // entry CRUD last (handles /:id)
 

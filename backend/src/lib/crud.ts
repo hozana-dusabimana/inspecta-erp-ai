@@ -7,6 +7,8 @@ import { NotFound, BadRequest } from './errors';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { auditFromRequest, recordAudit } from '../auth/audit';
 import { Permission } from '../auth/permissions';
+import { assertWbsInProject } from './wbs-link';
+import { allowedProjects, assertProjectAccess, modelHasProject } from './project-access';
 
 type Delegate = {
   findMany: (args: unknown) => Promise<unknown[]>;
@@ -195,6 +197,9 @@ function buildWhere(req: Request, opts: CrudOptions): Record<string, unknown> {
   const where: Record<string, unknown> = { organizationId: req.user!.orgId };
   const projectId = req.query.projectId as string | undefined;
   if (projectId) where.projectId = projectId;
+  // A member limited to certain projects only ever lists those projects' records.
+  const mine = allowedProjects(req);
+  if (mine && !projectId && modelHasProject(opts.model)) where.projectId = { in: mine };
 
   const search = (req.query.search as string)?.trim();
   if (search && opts.searchField) {
@@ -276,7 +281,10 @@ export async function runCreate(
   if (opts.requireProject || parsed.projectId) {
     await assertProjectInOrg(orgId, parsed.projectId);
   }
+  assertProjectAccess(req, parsed.projectId);
   await assertRefsInOrg(orgId, parsed, opts.refs);
+  // A WBS item must always belong to the record's own project (cost must not land on another job).
+  if (parsed.wbsItemId) await assertWbsInProject(parsed, req);
   if (opts.validate) await opts.validate(parsed, req);
   let data = coerceDates(parsed);
   if (opts.transform) data = await opts.transform(data, req);
@@ -369,6 +377,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
         ...(opts.include ? { include: opts.include } : {}),
       });
       if (!record) throw NotFound(`${opts.entity} not found`);
+      assertProjectAccess(req, (record as Record<string, unknown>).projectId);
       return ok(res, record);
     }),
   );
@@ -392,10 +401,13 @@ export function createCrudRouter(opts: CrudOptions): Router {
         where: { id: req.params.id, organizationId: req.user!.orgId },
       });
       if (!existing) throw NotFound(`${opts.entity} not found`);
+      assertProjectAccess(req, (existing as Record<string, unknown>).projectId);
 
       const parsed = opts.updateSchema.parse(req.body) as Record<string, unknown>;
       if (parsed.projectId) await assertProjectInOrg(req.user!.orgId, parsed.projectId);
+      assertProjectAccess(req, parsed.projectId);
       await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
+      if (parsed.wbsItemId || parsed.projectId) await assertWbsInProject({ ...(existing as Record<string, unknown>), ...parsed }, req);
       if (opts.validate) await opts.validate({ ...existing, ...parsed }, req);
       let data = coerceDates(parsed);
       if (opts.transform) data = await opts.transform({ ...existing, ...data }, req);
@@ -420,6 +432,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
         where: { id: req.params.id, organizationId: req.user!.orgId },
       });
       if (!existing) throw NotFound(`${opts.entity} not found`);
+      assertProjectAccess(req, (existing as Record<string, unknown>).projectId);
       await delegate().delete({ where: { id: req.params.id } });
       await auditFromRequest(req, 'DELETE', opts.entity, req.params.id, { oldValues: existing });
       if (opts.afterChange) await opts.afterChange('DELETE', existing as Record<string, unknown>, req);

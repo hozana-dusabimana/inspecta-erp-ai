@@ -52,6 +52,7 @@ router.use('/inspections', createCrudRouter({
 // ── Material tests ────────────────────────────────────────────
 const testCreate = z.object({
   projectId: z.string(),
+  wbsItemId: z.string().optional(),
   materialId: z.string().optional(),
   supplierId: z.string().optional(),
   testType: z.enum(['CONCRETE', 'SOIL', 'ASPHALT', 'STEEL', 'OTHER']).optional(),
@@ -74,7 +75,7 @@ router.use('/material-tests', createCrudRouter({
       await raiseNcrFromFailure(req.user!.orgId, req.user!.id, {
         projectId: String(record.projectId), sourceType: 'MATERIAL_TEST', sourceId: String(record.id),
         description: `${record.testType} test failed (batch ${record.batchNumber ?? '-'}${record.labName ? `, lab ${record.labName}` : ''}).`,
-        severity: 'HIGH',
+        severity: 'HIGH', wbsItemId: (record.wbsItemId as string) ?? undefined,
       });
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: 'HIGH', title: 'Material test FAILED', message: `${record.testType} test (batch ${record.batchNumber ?? '—'}) failed.`, link: '/qaqc' });
     }

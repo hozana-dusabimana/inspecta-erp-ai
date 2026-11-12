@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
+import CurrentProjectPicker from './CurrentProjectPicker';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Bot, Bell, Search, LogOut, Menu, X, HelpCircle, ChevronRight, Layers, Eye, AlertTriangle } from 'lucide-react';
 import { AppView } from '../types';
@@ -116,7 +117,8 @@ function Sidebar({ open, onClose, onLogout }: { open: boolean; onClose: () => vo
   // in which case they need that tenant's ERP nav to actually look around it.
   const platformMode = Boolean(user?.isPlatformAdmin) && !inspected;
 
-  const visible = (item: NavItem) => !item.perm || hasPermission(item.perm);
+  // Payroll stays out of the menu until the company admin switches it on.
+  const visible = (item: NavItem) => (!item.perm || hasPermission(item.perm)) && !(item.view === AppView.PAYROLL && !user?.payrollEnabled);
 
   // Keep the category holding the current page open, so a fresh session (or a
   // deep link into a collapsed category) never hides where the user actually is.
@@ -268,6 +270,7 @@ function TopHeader({ onOpenSidebar, onStartTour }: { onOpenSidebar: () => void; 
       </div>
 
       <div className="flex items-center gap-4">
+        <CurrentProjectPicker />
         <button
           id="tour-ask-ai"
           onClick={() => navigateView(AppView.COPILOT)}

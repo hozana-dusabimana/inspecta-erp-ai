@@ -1,3 +1,4 @@
+import { useAuth } from '../lib/auth';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Calculator, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -63,6 +64,7 @@ function Payslips({ runId }: { runId: string }) {
 }
 
 export default function PayrollWorkspace({ canWrite }: { projectId?: string; canWrite: boolean }) {
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [month, setMonth] = useState('');
@@ -93,6 +95,14 @@ export default function PayrollWorkspace({ canWrite }: { projectId?: string; can
     onError: (e) => setError(e instanceof Error ? e.message : 'Post failed'),
   });
 
+  if (user && user.payrollEnabled === false) {
+    return (
+      <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest p-8 text-center">
+        <p className="font-bold text-brand-primary">Payroll is switched off for this company</p>
+        <p className="text-xs text-brand-on-surface-variant mt-1">A company admin can switch it on in Administration &gt; Company Settings.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-5">
       {/* KPI cards render above the tabs via the module summary banner (PayrollSummary). */}

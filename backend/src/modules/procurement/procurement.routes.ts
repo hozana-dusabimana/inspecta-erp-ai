@@ -11,6 +11,17 @@ import { createCrudRouter, CrudOptions } from '../../lib/crud';
 
 const router = Router();
 
+/** Every line's WBS item must belong to the document's project, so spend lands on the right task. */
+async function assertItemsWbsInProject(data: Record<string, unknown>, req: Request): Promise<void> {
+  const items = data.items as Array<Record<string, unknown>> | undefined;
+  if (!Array.isArray(items)) return;
+  const wbsIds = [...new Set(items.map((i) => i.wbsItemId).filter(Boolean).map(String))];
+  if (!wbsIds.length) return;
+  if (!data.projectId) throw BadRequest('Choose a project before linking lines to WBS items');
+  const n = await prisma.wbsItem.count({ where: { id: { in: wbsIds }, projectId: String(data.projectId), organizationId: req.user!.orgId } });
+  if (n !== wbsIds.length) throw BadRequest('A line points at a WBS item that is not in this project');
+}
+
 const stamp = (data: Record<string, unknown>, req: Request) => {
   if (!('id' in data)) data.createdBy = req.user!.id;
   data.updatedBy = req.user!.id;
@@ -50,6 +61,7 @@ const poItem = z.object({
   materialId: z.string().optional(),
   description: z.string().min(1),
   unit: z.string().optional(),
+  wbsItemId: z.string().optional(),
   quantity: z.number().nonnegative(),
   rate: z.number().nonnegative(),
 });
@@ -84,12 +96,14 @@ router.use(
     sumFields: ['total'],
     refs: [{ field: 'supplierId', model: 'supplier' }],
     include: { items: true, supplier: { select: { id: true, name: true } } },
+    validate: assertItemsWbsInProject,
     transform: (data) => {
       const items = (data.items as Array<Record<string, number>> | undefined) ?? [];
       if (Array.isArray(items) && items.length) {
         const withAmounts = items.map((it) => ({
           materialId: (it.materialId as unknown as string) || null,
           description: it.description,
+          wbsItemId: (it.wbsItemId as unknown as string) || null,
           unit: (it.unit as unknown as string) ?? 'unit',
           quantity: Number(it.quantity ?? 0),
           rate: Number(it.rate ?? 0),
@@ -110,6 +124,7 @@ const prItem = z.object({
   materialId: z.string().optional(),
   description: z.string().min(1),
   unit: z.string().optional(),
+  wbsItemId: z.string().optional(),
   quantity: z.number().nonnegative(),
   estimatedRate: z.number().positive('Enter the estimated rate for every line'),
 });
@@ -140,12 +155,14 @@ const prCrud = createCrudRouter({
   sumFields: ['total'],
   orderBy: { createdAt: 'desc' },
   include: { items: true },
+  validate: assertItemsWbsInProject,
   transform: (data, req) => {
     const items = (data.items as Array<Record<string, number>> | undefined) ?? [];
     if (Array.isArray(items) && items.length) {
       const withAmounts = items.map((it) => ({
         materialId: (it.materialId as unknown as string) || null,
         description: it.description,
+        wbsItemId: (it.wbsItemId as unknown as string) || null,
         unit: (it.unit as unknown as string) ?? 'unit',
         quantity: Number(it.quantity ?? 0),
         estimatedRate: Number(it.estimatedRate ?? 0),

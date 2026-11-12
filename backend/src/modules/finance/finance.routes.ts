@@ -9,6 +9,7 @@ import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 import { etc, vac } from '../../lib/formulas';
 import { loadProjectMetrics } from '../../lib/project-metrics';
+import { costByWbs } from '../../lib/cost-by-wbs';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -228,7 +229,7 @@ router.get(
       prisma.costEntry.groupBy({ by: ['category'], where: projectId ? scope : { ...scope, project: { isDemo: false } }, _sum: { amount: true } }),
     ]);
 
-    const pm = await loadProjectMetrics(orgId, { projectId });
+    const pm = await loadProjectMetrics(orgId, { projectId, projectIds: req.user!.projectIds });
     const t = pm.totals;
     const one = projectId ? pm.projects[0] : null;
     void budgetAgg; void costAgg; void invoiceAgg; void paymentAgg;
@@ -323,24 +324,9 @@ router.get('/evm', authenticate, requirePermission('finance:read'), asyncHandler
 
 // ── Cost rollup by WBS (budget vs actual) ─────────────────────
 router.get('/cost-by-wbs', authenticate, requirePermission('finance:read'), asyncHandler(async (req, res) => {
-  const orgId = req.user!.orgId;
   const projectId = req.query.projectId as string | undefined;
   if (!projectId) throw BadRequest('projectId is required');
-  const scope = { organizationId: orgId, projectId };
-
-  const [wbs, budgets, costs] = await Promise.all([
-    prisma.wbsItem.findMany({ where: scope, select: { id: true, code: true, name: true } }),
-    prisma.budgetLine.groupBy({ by: ['wbsItemId'], where: scope, _sum: { amount: true } }),
-    prisma.costEntry.groupBy({ by: ['wbsItemId'], where: scope, _sum: { amount: true } }),
-  ]);
-  const bMap = new Map(budgets.map((b) => [b.wbsItemId ?? 'none', num(b._sum.amount)]));
-  const cMap = new Map(costs.map((c) => [c.wbsItemId ?? 'none', num(c._sum.amount)]));
-  const rows = wbs.map((w) => {
-    const budget = bMap.get(w.id) ?? 0; const actual = cMap.get(w.id) ?? 0;
-    return { wbsItemId: w.id, code: w.code, name: w.name, budget, actual, variance: budget - actual };
-  });
-  rows.push({ wbsItemId: 'none', code: '—', name: 'Unassigned', budget: bMap.get('none') ?? 0, actual: cMap.get('none') ?? 0, variance: (bMap.get('none') ?? 0) - (cMap.get('none') ?? 0) });
-  return ok(res, { rows: rows.filter((r) => r.budget || r.actual) });
+  return ok(res, { rows: await costByWbs(req.user!.orgId, projectId) });
 }));
 
 // ── Auto-post production labor/equipment cost to the cost ledger ──

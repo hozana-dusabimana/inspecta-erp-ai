@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
 import ResourceManager, { Column, Field, FilterDef, SummaryCardDef } from './ResourceManager';
 import PortfolioPanel from './PortfolioPanel';
+import { useCurrentProject } from '../lib/currentProject';
 import ExcelImportBar, { ImporterDef } from './ExcelImport';
 
 export interface TabDef {
@@ -48,7 +49,7 @@ interface Props {
 }
 
 export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const visibleTabs = def.tabs.filter((t) => hasPermission(t.readPerm));
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(
@@ -57,17 +58,14 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   // Deep-linkable: ?projectId= preselects a project (and ?tab= a tab), so the
   // platform console can land straight on one record inside a tenant, and any
   // module view is shareable as a URL.
-  // The chosen project is remembered across modules (URL wins, then the last choice).
-  const REMEMBER_KEY = 'inspecta.selectedProject';
-  const [projectId, setProjectIdState] = useState<string>(() => {
+  // The current project is shared by every page (header picker, reports, daily entry...).
+  // A ?projectId= in the URL wins once, so deep links still land on one record.
+  const { projectId, setProjectId } = useCurrentProject();
+  useEffect(() => {
     const fromUrl = searchParams.get('projectId');
-    if (fromUrl) return fromUrl;
-    try { return localStorage.getItem(REMEMBER_KEY) ?? ''; } catch { return ''; }
-  });
-  const setProjectId = (id: string) => {
-    setProjectIdState(id);
-    try { id ? localStorage.setItem(REMEMBER_KEY, id) : localStorage.removeItem(REMEMBER_KEY); } catch { /* storage unavailable */ }
-  };
+    if (fromUrl) setProjectId(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const needsProject = def.tabs.some((t) => t.projectScoped);
   const { data: projects } = useQuery({
@@ -107,6 +105,18 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
       ))}
     </select>
   ) : undefined;
+
+  // Payroll is off until a company admin switches it on: one clear screen, no requests that would be refused.
+  if (def.view === AppView.PAYROLL && user?.payrollEnabled === false) {
+    return (
+      <ErpLayout active={def.view} title={def.title} subtitle="Payroll is switched off for this company" onNavigate={onNavigate} onLogout={onLogout}>
+        <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest p-10 text-center max-w-xl">
+          <p className="font-bold text-brand-primary">Payroll is switched off</p>
+          <p className="text-xs text-brand-on-surface-variant mt-2">A company admin can switch it on in Administration &gt; Company Settings.</p>
+        </div>
+      </ErpLayout>
+    );
+  }
 
   return (
     <ErpLayout

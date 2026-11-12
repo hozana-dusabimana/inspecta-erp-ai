@@ -26,6 +26,7 @@ const selectOrg = {
   logoUrl: true,
   tinNumber: true,
   workingDaysPerWeek: true,
+  payrollEnabled: true,
   status: true,
   plan: true,
   maxUsers: true,
@@ -81,6 +82,8 @@ const updateSchema = z.object({
   logoUrl: optStr,
   tinNumber: optStr,
   workingDaysPerWeek: z.number().int().min(1).max(7).optional(),
+  // Payroll stays off until the company admin switches it on.
+  payrollEnabled: z.boolean().optional(),
 });
 
 // UPDATE company settings (SYSTEM_ADMIN only).

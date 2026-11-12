@@ -12,6 +12,8 @@ export interface AuthUser {
   organizationId: string;
   isPlatformAdmin?: boolean;
   permissions: string[];
+  /** Payroll is switched off per company until its admin enables it. */
+  payrollEnabled?: boolean;
 }
 
 export interface RegisterResult {
@@ -35,6 +37,8 @@ interface AuthState {
   requestPasswordReset: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Re-read the signed-in account (after a company setting changes). */
+  refreshUser: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
 
@@ -135,6 +139,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const res = await api.get<AuthUser>('/auth/me');
+    setUser(res.data);
+  }, []);
+
   // Inspect mode is read-only, so every write permission is withheld while a
   // platform admin is viewing another tenant. The server enforces this too —
   // this only stops the UI offering buttons that would 403.
@@ -154,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user, loading, login, register, verifyEmail, resendVerification,
-        requestPasswordReset, resetPassword, logout, hasPermission,
+        requestPasswordReset, resetPassword, logout, refreshUser, hasPermission,
       }}
     >
       {children}

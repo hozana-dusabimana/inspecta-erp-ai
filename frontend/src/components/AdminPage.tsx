@@ -591,6 +591,11 @@ function CompanyTab() {
     queryFn: () => api.get<Organization>('/organization'),
   });
   const org = data?.data;
+  const { refreshUser } = useAuth();
+  const payrollSwitch = useMutation({
+    mutationFn: (enabled: boolean) => api.put('/organization', { payrollEnabled: enabled }),
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['admin-org'] }); await refreshUser(); },
+  });
 
   const [form, setForm] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
@@ -644,7 +649,25 @@ function CompanyTab() {
         </div>
       </form>
 
-      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5">
+      <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-5 space-y-5">
+        <div>
+          <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-2">Modules</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-brand-primary">Payroll</p>
+              <p className="text-[11px] text-brand-on-surface-variant">{(org as any).payrollEnabled ? 'On: PAYE, RSSB and pay runs are available.' : 'Off: hidden from the menu and blocked on the server.'}</p>
+            </div>
+            <button
+              type="button" disabled={payrollSwitch.isPending}
+              onClick={() => payrollSwitch.mutate(!(org as any).payrollEnabled)}
+              role="switch" aria-checked={Boolean((org as any).payrollEnabled)} aria-label="Payroll module"
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${(org as any).payrollEnabled ? 'bg-emerald-600' : 'bg-brand-outline-variant'} disabled:opacity-60`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${(org as any).payrollEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+        </div>
+        <div>
         <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-1">Total Users</p>
         <p className="font-mono text-3xl font-extrabold text-brand-primary mb-4">{org.totalUsers}</p>
         <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider mb-2">By Role</p>
@@ -655,6 +678,7 @@ function CompanyTab() {
               <span className="font-bold text-brand-primary">{org.usersByRole?.[r] ?? 0}</span>
             </div>
           ))}
+        </div>
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { useCurrentProject } from '../lib/currentProject';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Trash2, Camera, WifiOff, CloudUpload, CheckCircle2, Loader2, ClipboardCheck, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -42,7 +43,7 @@ async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
 
 export default function DailyEntry({ onNavigate, onSubmitSuccess }: DailyEntryProps) {
   const online = useOnlineStatus();
-  const [projectId, setProjectId] = useState('');
+  const { projectId, setProjectId } = useCurrentProject();
   const [date, setDate] = useState(today);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [materials, setMaterials] = useState<MaterialRow[]>([]);

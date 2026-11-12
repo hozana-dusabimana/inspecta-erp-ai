@@ -311,9 +311,26 @@ function Sheet({ title, onClose, children, wide }: { title: string; onClose: () 
 function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ projectId: projectId ?? '', title: '', location: '', requiredByDate: '', notes: '' });
-  const [lines, setLines] = useState<{ materialId: string; quantityRequested: string }[]>([
-    { materialId: '', quantityRequested: '' },
+  const { user } = useAuth();
+  const [lines, setLines] = useState<{ materialId: string; quantityRequested: string; wbsItemId: string }[]>([
+    { materialId: '', quantityRequested: '', wbsItemId: '' },
   ]);
+  const [planWbs, setPlanWbs] = useState('');
+
+  // The project's WBS items: every material line must say which task it is for.
+  const { data: wbsData } = useQuery({
+    queryKey: ['/planning/wbs', 'requisition', form.projectId],
+    queryFn: () => api.get<{ id: string; code: string; name: string }[]>(`/planning/wbs?projectId=${form.projectId}&pageSize=500`),
+    enabled: Boolean(form.projectId),
+  });
+  const wbsOptions = wbsData?.data ?? [];
+  // Work planned for this person today (assigned from the daily plan), to pre-fill the WBS.
+  const { data: plansData } = useQuery({
+    queryKey: ['/production/daily-plans', 'mine', form.projectId, user?.id],
+    queryFn: () => api.get<any[]>(`/production/daily-plans?projectId=${form.projectId}&assigneeId=${user?.id}&status=PLANNED&pageSize=50`),
+    enabled: Boolean(form.projectId && user?.id),
+  });
+  const myPlans = (plansData?.data ?? []).filter((p) => p.wbsItemId);
 
   const { data: projects } = useQuery({
     queryKey: ['projects', 'picker'],
@@ -341,6 +358,7 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
           .filter((l) => l.materialId && Number(l.quantityRequested) > 0)
           .map((l) => ({
             materialId: l.materialId,
+            wbsItemId: l.wbsItemId,
             unit: materialById.get(l.materialId)?.unit ?? 'unit',
             quantityRequested: Number(l.quantityRequested),
           })),
@@ -352,7 +370,8 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
     },
   });
   const err = save.error instanceof ApiError ? save.error.message : save.isError ? 'Failed to create requisition' : null;
-  const valid = form.projectId && lines.some((l) => l.materialId && Number(l.quantityRequested) > 0);
+  const filled = lines.filter((l) => l.materialId || l.quantityRequested);
+  const valid = form.projectId && filled.length > 0 && filled.every((l) => l.materialId && Number(l.quantityRequested) > 0 && l.wbsItemId);
 
   return (
     <Sheet title="New material requisition" onClose={onClose} wide>
@@ -379,11 +398,21 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
           </div>
         </div>
 
+        {myPlans.length > 0 && (
+          <div>
+            <label className={labelCls}>FROM MY DAILY PLAN (fills the WBS task)</label>
+            <select className={inputCls} value={planWbs} onChange={(e) => { setPlanWbs(e.target.value); setLines(lines.map((x) => (x.wbsItemId ? x : { ...x, wbsItemId: e.target.value }))); }}>
+              <option value="">Choose a planned task…</option>
+              {myPlans.map((p) => <option key={p.id} value={p.wbsItemId}>{String(p.planDate).slice(0, 10)} — {p.title}</option>)}
+            </select>
+          </div>
+        )}
+
         <div>
-          <label className={labelCls}>MATERIALS</label>
+          <label className={labelCls}>MATERIALS AND THE TASK (WBS) EACH IS FOR</label>
           <div className="space-y-2">
             {lines.map((l, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
                 <select
                   className={inputCls}
                   value={l.materialId}
@@ -391,6 +420,15 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
                 >
                   <option value="">Select a material…</option>
                   {(materials?.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.code} — {m.name}</option>)}
+                </select>
+                <select
+                  className={inputCls}
+                  required
+                  value={l.wbsItemId}
+                  onChange={(e) => setLines(lines.map((x, i) => (i === idx ? { ...x, wbsItemId: e.target.value } : x)))}
+                >
+                  <option value="">{form.projectId ? 'WBS task…' : 'Pick a project first'}</option>
+                  {wbsOptions.map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
                 </select>
                 <input
                   type="number" min="0" step="any" placeholder="Qty"
@@ -403,7 +441,7 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
                 </span>
                 <button
                   type="button"
-                  onClick={() => setLines(lines.length === 1 ? [{ materialId: '', quantityRequested: '' }] : lines.filter((_, i) => i !== idx))}
+                  onClick={() => setLines(lines.length === 1 ? [{ materialId: '', quantityRequested: '', wbsItemId: '' }] : lines.filter((_, i) => i !== idx))}
                   className="p-1.5 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-red-600"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -411,7 +449,7 @@ function CreateModal({ projectId, onClose }: { projectId?: string; onClose: () =
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => setLines([...lines, { materialId: '', quantityRequested: '' }])} className="mt-2 text-[11px] font-bold text-brand-primary hover:underline">
+          <button type="button" onClick={() => setLines([...lines, { materialId: '', quantityRequested: '', wbsItemId: planWbs }])} className="mt-2 text-[11px] font-bold text-brand-primary hover:underline">
             + Add line
           </button>
         </div>

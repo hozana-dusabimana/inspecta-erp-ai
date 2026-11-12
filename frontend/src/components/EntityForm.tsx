@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Check, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import { Field } from './formTypes';
+import { Field, LineColumn } from './formTypes';
 import GeoPicker from './GeoPicker';
 import DocumentAttachments from './DocumentAttachments';
 import FileOrUrlInput from './FileOrUrlInput';
@@ -27,6 +27,47 @@ function DynamicSelect({ field, value, onChange, required, projectId }: { field:
         <option key={r.id} value={String(r[field.optionValue ?? 'id'])}>{field.optionLabel ? field.optionLabel(r) : r.name ?? r.id}</option>
       ))}
     </select>
+  );
+}
+
+/** Repeating rows (items of a purchase request / order). The value is kept as JSON in the form state. */
+function LinesEditor({ field, value, onChange, projectId }: { field: Field; value: string; onChange: (v: string) => void; projectId?: string }) {
+  const cols = field.lineColumns ?? [];
+  let rows: Array<Record<string, string>> = [];
+  try { rows = value ? JSON.parse(value) : []; } catch { rows = []; }
+  if (!rows.length) rows = [{}];
+  const write = (next: Array<Record<string, string>>) => onChange(JSON.stringify(next));
+  const setCell = (i: number, key: string, v: string) => write(rows.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)));
+  const inputCls = 'w-full h-9 bg-brand-surface border border-brand-outline-variant rounded-lg px-2 text-xs outline-none focus:border-brand-primary';
+  return (
+    <div className="space-y-2">
+      <div className="hidden sm:flex gap-2 text-[10px] font-bold text-brand-on-surface-variant uppercase tracking-wide">
+        {cols.map((c) => <div key={c.key} style={{ flex: c.grow ?? 1 }}>{c.label}{c.required && <span className="text-brand-primary"> *</span>}</div>)}
+        <div className="w-7" />
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex gap-2 items-center flex-wrap sm:flex-nowrap">
+          {cols.map((c) => (
+            <div key={c.key} style={{ flex: c.grow ?? 1 }} className="min-w-[90px]">
+              {c.optionsEndpoint ? (
+                <DynamicSelect
+                  field={{ name: c.key, label: c.label, optionsEndpoint: c.optionsEndpoint, scopeToProject: c.scopeToProject, optionLabel: c.optionLabel }}
+                  value={r[c.key] ?? ''} projectId={projectId} onChange={(v) => setCell(i, c.key, v)}
+                />
+              ) : (
+                <input
+                  type={c.type === 'number' ? 'number' : 'text'} step={c.type === 'number' ? 'any' : undefined} min={c.type === 'number' ? 0 : undefined}
+                  value={r[c.key] ?? ''} placeholder={c.label} aria-label={c.label}
+                  onChange={(e) => setCell(i, c.key, e.target.value)} className={inputCls}
+                />
+              )}
+            </div>
+          ))}
+          <button type="button" aria-label="Remove line" onClick={() => write(rows.length === 1 ? [{}] : rows.filter((_, idx) => idx !== i))} className="w-7 h-9 shrink-0 rounded-lg hover:bg-brand-surface text-brand-on-surface-variant hover:text-red-600"><X className="w-3.5 h-3.5 mx-auto" /></button>
+        </div>
+      ))}
+      <button type="button" onClick={() => write([...rows, {}])} className="text-[11px] font-bold text-brand-primary hover:underline">+ Add line</button>
+    </div>
   );
 }
 
@@ -114,6 +155,16 @@ function buildPayload(fields: Field[], form: Record<string, string>, projectId?:
   for (const f of fields) {
     const raw = form[f.name];
     if (raw === '' || raw === undefined) continue;
+    if (f.type === 'lines') {
+      let rows: Array<Record<string, string>> = [];
+      try { rows = JSON.parse(raw); } catch { rows = []; }
+      payload[f.name] = rows
+        .filter((r) => (f.lineColumns ?? []).some((c) => String(r[c.key] ?? '').trim() !== ''))
+        .map((r) => Object.fromEntries((f.lineColumns ?? [])
+          .filter((c) => String(r[c.key] ?? '').trim() !== '')
+          .map((c) => [c.key, c.type === 'number' ? Number(r[c.key]) : r[c.key]])));
+      continue;
+    }
     if (f.type === 'number') payload[f.name] = Number(raw);
     else if (f.type === 'date') payload[f.name] = new Date(raw).toISOString();
     else if (f.type === 'csv') payload[f.name] = raw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -212,7 +263,17 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   });
 
   const missingIn = (list: Field[]) =>
-    list.find((f) => f.required && !String(form[f.name] ?? '').trim());
+    list.find((f) => {
+      if (f.type === 'lines') {
+        if (!f.required) return false;
+        let rows: Array<Record<string, string>> = [];
+        try { rows = JSON.parse(form[f.name] || '[]'); } catch { rows = []; }
+        const used = rows.filter((r) => (f.lineColumns ?? []).some((c) => String(r[c.key] ?? '').trim() !== ''));
+        if (used.length === 0) return true;
+        return used.some((r) => (f.lineColumns ?? []).some((c) => c.required && !String(r[c.key] ?? '').trim()));
+      }
+      return f.required && !String(form[f.name] ?? '').trim();
+    });
 
   const next = () => {
     const miss = missingIn(current.fields);
@@ -235,11 +296,13 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   };
 
   const renderField = (f: Field) => (
-    <div key={f.name} className={`space-y-1 ${f.type === 'textarea' || f.type === 'geo' || f.type === 'file' ? 'sm:col-span-2' : ''}`}>
+    <div key={f.name} className={`space-y-1 ${f.type === 'textarea' || f.type === 'geo' || f.type === 'file' || f.type === 'lines' ? 'sm:col-span-2' : ''}`}>
       <label className="text-[11px] font-bold text-brand-on-surface-variant block uppercase tracking-wide">
         {f.label}{f.required && <span className="text-brand-primary"> *</span>}
       </label>
-      {f.type === 'file' ? (
+      {f.type === 'lines' ? (
+        <LinesEditor field={f} value={form[f.name] ?? ''} projectId={form.projectId || projectId} onChange={(v) => set(f.name, v)} />
+      ) : f.type === 'file' ? (
         <FileOrUrlInput
           value={form[f.name] ?? ''} required={f.required} accept={f.accept}
           placeholder={f.placeholder} onChange={(v) => set(f.name, v)}

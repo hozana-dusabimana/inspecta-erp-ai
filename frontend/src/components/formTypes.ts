@@ -4,7 +4,9 @@ export interface Field {
   name: string;
   label: string;
   /** `file` = upload-or-paste-link control whose value is a single URL. */
-  type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv' | 'geo' | 'file';
+  type?: 'text' | 'number' | 'textarea' | 'select' | 'date' | 'csv' | 'geo' | 'file' | 'lines';
+  /** For `type: 'lines'` — the columns of each repeating row (e.g. items of a purchase request). */
+  lineColumns?: LineColumn[];
   /** For `type: 'file'` — override the accepted upload types (default: any document). */
   accept?: string;
   options?: { value: string; label: string }[];
@@ -33,6 +35,20 @@ export interface Field {
   /** For a foreign-key (optionsEndpoint) field: allow creating a new related record
    *  inline via a "＋ New" button that opens this entity's own form. */
   createConfig?: { endpoint: string; entityLabel: string; fields: Field[] };
+}
+
+/** One column of a `lines` field. Number columns are sent as numbers; select columns can load options from the API. */
+export interface LineColumn {
+  key: string;
+  label: string;
+  type?: 'text' | 'number' | 'select';
+  required?: boolean;
+  optionsEndpoint?: string;
+  /** Scope the options to the project chosen in the form. */
+  scopeToProject?: boolean;
+  optionLabel?: (row: Record<string, any>) => string;
+  /** Relative width weight (default 1). */
+  grow?: number;
 }
 
 /** Dropdown filter shown in the toolbar (maps to a backend filterField). */

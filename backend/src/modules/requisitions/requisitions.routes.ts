@@ -8,14 +8,14 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
-import { stockForMaterial } from '../inventory/stock';
+import { stockForMaterial, weightedAverageCost, postMaterialIssueCost } from '../inventory/stock';
 
 const router = Router();
 
 // ── Shape ─────────────────────────────────────────────────────
 const itemSchema = z.object({
   materialId: z.string(),
-  wbsItemId: z.string().optional(),
+  wbsItemId: z.string().min(1, 'Choose the WBS item this material is needed for'),
   unit: z.string().optional(),
   quantityRequested: z.number().positive(),
   note: z.string().optional(),
@@ -66,6 +66,14 @@ const crud = createCrudRouter({
   // otherwise an approval could be obtained for one set of materials and
   // quietly spent on another.
   validate: async (data, req) => {
+    // Each line's WBS item must belong to this requisition's project.
+    if (Array.isArray(data.items) && data.projectId) {
+      for (const it of data.items as Array<Record<string, unknown>>) {
+        if (!it.wbsItemId) continue;
+        const w = await prisma.wbsItem.findFirst({ where: { id: String(it.wbsItemId), projectId: String(data.projectId), organizationId: req.user!.orgId }, select: { id: true } });
+        if (!w) throw BadRequest('A requisition line points at a WBS item that is not in this project');
+      }
+    }
     if (!data.id) return;
     if (!Array.isArray(data.items)) return;
     const existing = await prisma.materialRequisition.findFirst({
@@ -399,6 +407,11 @@ router.post(
 
     const dateIssued = body.dateIssued ? new Date(body.dateIssued) : new Date();
 
+    // Cost every drawdown at the material's weighted-average cost so it becomes project cost.
+    const unitCosts = new Map<string, number>();
+    for (const { item } of requested) unitCosts.set(item.id, await weightedAverageCost(orgId, item.materialId));
+    const createdIssues: Array<{ issue: Record<string, unknown>; unitCost: number; name: string }> = [];
+
     const updated = await prisma.$transaction(async (tx) => {
       for (const { item, quantity } of requested) {
         const issue = await tx.materialIssue.create({
@@ -427,12 +440,14 @@ router.post(
             wbsItemId: item.wbsItemId,
             type: 'ISSUE',
             quantity,
+            unitCost: unitCosts.get(item.id) ?? 0,
             reference: issue.issueNumber ?? existing.number,
             referenceId: issue.id,
             date: dateIssued,
             note: `Requisition ${existing.number}`,
           },
         });
+        createdIssues.push({ issue: issue as unknown as Record<string, unknown>, unitCost: unitCosts.get(item.id) ?? 0, name: item.material.name });
         await tx.materialRequisitionItem.update({
           where: { id: item.id },
           data: { quantityIssued: { increment: quantity } },
@@ -457,6 +472,7 @@ router.post(
         include,
       });
     });
+    for (const c of createdIssues) await postMaterialIssueCost(orgId, c.issue, c.unitCost, c.name, req.user!.id);
 
     await auditFromRequest(req, 'UPDATE', 'material-requisition', existing.id, {
       oldValues: { status: existing.status },

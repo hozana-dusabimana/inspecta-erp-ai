@@ -63,7 +63,8 @@ export function createApp() {
     (req.headers['cf-connecting-ip'] as string) || req.ip || 'unknown';
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 600,
+    // A whole site office can share one address and the app polls in the background, so this is per-IP but generous.
+    max: Number(process.env.API_RATE_LIMIT) || 2400,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: clientKey,

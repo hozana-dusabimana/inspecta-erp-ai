@@ -19,7 +19,7 @@ router.get(
     const scope = { organizationId: orgId };
     // Batch all per-project aggregates into grouped queries (was 5N+1 → ~6 total).
     const [projects, costByP, invByP, ncrByP, incByP, openRisks] = await Promise.all([
-      prisma.project.findMany({ where: scope, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
+      prisma.project.findMany({ where: { ...scope, ...(req.user!.projectIds ? { id: { in: req.user!.projectIds } } : {}) }, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
       prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
       prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
       prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
@@ -33,7 +33,7 @@ router.get(
     const topRiskMap = new Map<string, number>();
     for (const r of openRisks) topRiskMap.set(r.projectId, Math.max(topRiskMap.get(r.projectId) ?? 0, r.score));
 
-    const pm = await loadProjectMetrics(orgId, { includeDemo: true });
+    const pm = await loadProjectMetrics(orgId, { includeDemo: true, projectIds: req.user!.projectIds });
     const metricsById = new Map(pm.projects.map((m) => [m.projectId, m]));
     const rows = projects.map((p) => {
         const m = metricsById.get(p.id)!;

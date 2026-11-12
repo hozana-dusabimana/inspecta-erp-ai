@@ -20,6 +20,7 @@ const router = Router();
 // ── Incidents (incl. near-miss + investigation/root cause) ────
 const incidentCreate = z.object({
   projectId: z.string(),
+  wbsItemId: z.string().optional(),
   number: z.string().min(1).optional(), // auto-generated (INC-####) when omitted
   type: z.nativeEnum(IncidentType).optional(),
   severity: z.nativeEnum(Severity).optional(),

@@ -107,7 +107,9 @@ async function publicUser(u: {
         select: { id: true, name: true, permissions: true },
       })
     : null;
+  const org = await prisma.organization.findUnique({ where: { id: u.organizationId }, select: { payrollEnabled: true } });
   return {
+    payrollEnabled: org?.payrollEnabled ?? false,
     id: u.id,
     email: u.email,
     fullName: u.fullName,

@@ -21,6 +21,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const orgId = req.user!.orgId;
     const scope = { organizationId: orgId };
+    const mineIds = req.user!.projectIds;
+    const pf = mineIds ? { projectId: { in: mineIds } } : {};
 
     const [
       projects,
@@ -36,22 +38,23 @@ router.get(
       lowStock,
       unreadNotifs,
     ] = await Promise.all([
-      prisma.project.findMany({ where: scope }),
-      prisma.budgetLine.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.costEntry.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.invoice.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.payment.aggregate({ where: scope, _sum: { amount: true } }),
-      prisma.productionEntry.aggregate({ where: { ...scope, project: { isDemo: false } }, _sum: { plannedQty: true, actualQty: true } }),
-      prisma.productionEntry.aggregate({ where: { ...scope, project: { isDemo: false } }, _sum: { laborHours: true } }),
-      prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' }, project: { isDemo: false } } }),
-      prisma.incident.count({ where: { ...scope, project: { isDemo: false } } }),
-      prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' }, project: { isDemo: false } } }),
+      prisma.project.findMany({ where: { ...scope, ...(req.user!.projectIds ? { id: { in: req.user!.projectIds } } : {}) } }),
+      prisma.budgetLine.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
+      prisma.costEntry.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
+      prisma.invoice.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
+      prisma.productionEntry.aggregate({ where: { ...scope, ...pf, project: { isDemo: false } }, _sum: { plannedQty: true, actualQty: true } }),
+      prisma.productionEntry.aggregate({ where: { ...scope, ...pf, project: { isDemo: false } }, _sum: { laborHours: true } }),
+      prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' }, ...pf, project: { isDemo: false } } }),
+      prisma.incident.count({ where: { ...scope, ...pf, project: { isDemo: false } } }),
+      prisma.risk.count({ where: { ...scope, status: { not: 'CLOSED' }, ...pf, project: { isDemo: false } } }),
       prisma.material.findMany({ where: scope, select: { id: true, reorderLevel: true } }),
       prisma.notification.count({ where: { ...scope, isRead: false } }),
     ]);
 
     // One calculation for every screen: progress, EVM and forecast profit come from the shared metrics.
-    const pm = await loadProjectMetrics(orgId);
+    const mine = req.user!.projectIds;
+    const pm = await loadProjectMetrics(orgId, { projectIds: mine });
     const t = pm.totals;
     const demoIds = new Set(projects.filter((p) => p.isDemo).map((p) => p.id));
     const liveProjects = projects.filter((p) => !p.isDemo);

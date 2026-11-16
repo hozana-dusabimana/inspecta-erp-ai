@@ -8,6 +8,8 @@ import { api, apiLogin, login, field, tab, optionText, optionsOf, bodyText, watc
 test.describe.configure({ mode: 'serial' });
 
 const tag = Date.now().toString(36).slice(-6);
+// Photo evidence for records the company requires it on (T2-09).
+const EVIDENCE = { _evidence: [{ url: 'https://example.com/e2e/site-photo.jpg', fileName: 'site-photo.jpg' }] };
 const NAME_A = `E2E Alpha ${tag}`;
 const NAME_B = `E2E Beta ${tag}`;
 let token = '';
@@ -29,15 +31,16 @@ test.beforeAll(async () => {
   wA = (await api('POST', '/planning/wbs', { projectId: A.id, code: '1', name: 'Walls', unit: 'm2', quantity: 100 }, token)).data;
   wA2 = (await api('POST', '/planning/wbs', { projectId: A.id, code: '2', name: 'Slab' }, token)).data;
   await api('POST', '/planning/wbs', { projectId: B.id, code: '9', name: 'BetaOnlyTask' }, token);
-  await api('POST', '/finance/budget', { projectId: A.id, wbsItemId: wA.id, description: 'Walls budget', amount: 3_000_000, category: 'MATERIAL' }, token);
-  await api('POST', '/finance/budget', { projectId: A.id, description: 'Rest of the job', amount: 47_000_000, category: 'OTHER' }, token);
+  // The BOQ is the one cost budget (T1-03): 3M on the walls + 47M for the rest = 50M.
+  await api('POST', '/planning/boq', { projectId: A.id, wbsItemId: wA.id, code: `B-W-${tag}`, description: 'Walls budget', quantity: 1, rate: 3_000_000 }, token);
+  await api('POST', '/planning/boq', { projectId: A.id, code: `B-R-${tag}`, description: 'Rest of the job', quantity: 1, rate: 47_000_000 }, token);
   await api('POST', '/production', { projectId: A.id, wbsItemId: wA.id, plannedQty: 100, actualQty: 50, laborHours: 8, date: new Date().toISOString() }, token);
   mat = (await api('POST', '/inventory/materials', { code: `E2E-${tag}`, name: `E2E Cement ${tag}`, unit: 'bag', unitCost: 400 }, token)).data;
-  await api('POST', '/inventory/grn', { materialId: mat.id, projectId: A.id, quantityReceived: 100, unitCost: 500 }, token);
+  await api('POST', '/inventory/grn', { ...EVIDENCE, materialId: mat.id, projectId: A.id, quantityReceived: 100, unitCost: 500 }, token);
   await api('POST', '/inventory/material-issues', { materialId: mat.id, projectId: A.id, wbsItemId: wA.id, quantityIssued: 10 }, token);
   const sup = (await api('POST', '/procurement/suppliers', { name: `E2E Supplier ${tag}` }, token)).data;
   await api('POST', '/procurement/purchase-orders', { supplierId: sup.id, projectId: A.id, status: 'ISSUED', items: [{ description: 'Rebar', quantity: 50, rate: 2000, wbsItemId: wA2.id }] }, token);
-  await api('POST', '/qaqc/material-tests', { projectId: A.id, wbsItemId: wA.id, testType: 'CONCRETE', batchNumber: 'E2E1', result: 'FAIL' }, token);
+  await api('POST', '/qaqc/material-tests', { ...EVIDENCE, projectId: A.id, wbsItemId: wA.id, testType: 'CONCRETE', batchNumber: 'E2E1', result: 'FAIL' }, token);
   const rq = (await api('POST', '/requisitions', { projectId: A.id, title: 'E2E own requisition', items: [{ materialId: mat.id, quantityRequested: 5, wbsItemId: wA.id }] }, token)).data;
   await api('POST', `/requisitions/${rq.id}/submit`, {}, token);
   await api('POST', '/approvals', { title: `E2E approval ${tag}`, entityType: 'INVOICE', projectId: A.id, amount: 7_000_000 }, token);
@@ -85,10 +88,14 @@ test('the same numbers appear on every screen: progress 50%, SPI 0.5, profit', a
   await page.waitForTimeout(3000);
   t = await bodyText(page);
   expect(t).toMatch(/80,000,000/); // contract value
+  // Forecast margin = contract − (actual cost + cost to complete): the page shows the server's one figure.
+  const prof = (await api('GET', `/profitability/analysis?projectId=${A.id}`, undefined, token)).data.projects[0];
+  expect(prof.budget).toBe(50_000_000);
+  expect(prof.forecastMargin).toBe(80_000_000 - (prof.actualCost + (50_000_000 - 25_000_000)));
   await page.goto('/profitability');
   await page.waitForTimeout(3000);
   t = await bodyText(page);
-  expect(t).toMatch(/30,000,000/); // forecast profit = contract - budget
+  expect(t).toMatch(new RegExp(Math.round(prof.forecastMargin).toLocaleString('en-US')));
 });
 
 test('the current project follows you to every page, picked from one place only', async ({ page }) => {

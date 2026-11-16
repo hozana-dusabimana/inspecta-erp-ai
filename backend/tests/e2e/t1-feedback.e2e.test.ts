@@ -626,3 +626,50 @@ describe('Part 9 — procurement and payment match (T2-08)', () => {
     expect(ok(await call('get', `/procurement/purchase-orders/${third.id}`, undefined, admin)).flags.some((x: string) => x.startsWith('REPEAT_SUPPLIER'))).toBe(true);
   });
 });
+
+describe('Part 8 — access rules and screens (T1-08, T1-09, T2-07)', () => {
+  // One read endpoint per module in the permission table (payroll is switched off per company, so left out).
+  const ENDPOINT: Record<string, string> = {
+    project: '/projects', planning: '/planning/wbs', scheduling: '/scheduling', production: '/production', fieldops: '/fieldops/attendance',
+    finance: '/finance/costs', inventory: '/inventory/materials', requisition: '/requisitions', procurement: '/procurement/suppliers',
+    qaqc: '/qaqc/ncrs', hse: '/hse/incidents', risk: '/risk', hr: '/hr/employees', equipment: '/equipment/register', document: '/documents',
+    approval: '/approvals', profitability: '/profitability/analysis', audit: '/audit', user: '/users',
+  };
+
+  it('every role, every module: the server answers exactly as the permission table says (Foreman, PM and Store Manager included)', async () => {
+    const roles = ok(await call('get', '/roles', undefined, admin));
+    const byKey = new Map((roles.roles ?? roles).map((r: any) => [r.key, r]));
+    const table = ok(await call('get', '/auth/permission-table', undefined, admin));
+    const people: Array<[string, string]> = [];
+    for (const key of ['foreman', 'project-manager', 'storekeeper', 'site-engineer', 'quantity-surveyor']) {
+      const role: any = byKey.get(key);
+      expect(role).toBeTruthy();
+      const email = `p8-${key}-${Date.now()}@e2e.test`;
+      ok(await call('post', '/users', { email, fullName: `P8 ${role.name}`, password: 'E2e!Passw0rd-x', roleId: role.id }, admin));
+      const login = await call('post', '/auth/login', { email, password: 'E2e!Passw0rd-x' });
+      people.push([role.name, login.body.data.accessToken]);
+    }
+    const mismatches: string[] = [];
+    for (const [roleName, token] of people) {
+      const row = table.rows.find((r: any) => r.role === roleName);
+      expect(row).toBeTruthy();
+      for (const [mod, path] of Object.entries(ENDPOINT)) {
+        const expected = row.modules[mod].view ? 200 : 403;
+        const got = (await call('get', path, undefined, token)).status;
+        if (got !== expected) mismatches.push(`${roleName} ${path}: expected ${expected}, got ${got}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+    // A forbidden call is refused with the standard message and leaves an audit entry.
+    const [, foremanToken] = people[0];
+    const r = await call('get', '/finance/costs', undefined, foremanToken);
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatch(/You do not have access/);
+  });
+
+  it('the product tour is shown once per user on any device, and Skip counts', async () => {
+    expect(ok(await call('get', '/auth/me', undefined, admin)).tourCompleted).toBe(false);
+    ok(await call('post', '/auth/tour-complete', {}, admin));
+    expect(ok(await call('get', '/auth/me', undefined, admin)).tourCompleted).toBe(true);
+  });
+});

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { permissionTable } from '../../auth/permission-table';
+import { prisma } from '../../lib/prisma';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler, ok } from '../../lib/http';
@@ -158,6 +160,18 @@ router.post(
     return ok(res, { loggedOut: true });
   }),
 );
+
+// The product tour: finished or skipped once means never shown again, on any device.
+router.post('/tour-complete', authenticate, asyncHandler(async (req, res) => {
+  await prisma.user.update({ where: { id: req.user!.id }, data: { tourCompletedAt: new Date() } });
+  return ok(res, { tourCompleted: true });
+}));
+
+// One permission table (T1-08): role x module x action, from the same source the server enforces.
+router.get('/permission-table', authenticate, asyncHandler(async (req, res) => {
+  const roles = await prisma.roleDefinition.findMany({ where: { organizationId: req.user!.orgId }, select: { name: true, permissions: true }, orderBy: { name: 'asc' } });
+  return ok(res, permissionTable(roles.map((r) => ({ name: r.name, permissions: r.permissions as string[] }))));
+}));
 
 router.get(
   '/me',

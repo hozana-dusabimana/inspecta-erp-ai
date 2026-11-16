@@ -111,8 +111,10 @@ async function publicUser(u: {
       })
     : null;
   const org = await prisma.organization.findUnique({ where: { id: u.organizationId }, select: { payrollEnabled: true } });
+  const tour = await prisma.user.findUnique({ where: { id: u.id }, select: { tourCompletedAt: true } });
   return {
     payrollEnabled: org?.payrollEnabled ?? false,
+    tourCompleted: Boolean(tour?.tourCompletedAt),
     id: u.id,
     email: u.email,
     fullName: u.fullName,

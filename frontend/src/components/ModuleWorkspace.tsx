@@ -9,6 +9,7 @@ import ResourceManager, { Column, Field, FilterDef, SummaryCardDef, PostingDef, 
 import PortfolioPanel from './PortfolioPanel';
 import { useCurrentProject } from '../lib/currentProject';
 import ExcelImportBar, { ImporterDef } from './ExcelImport';
+import { NoAccessPage } from './AccessPages';
 
 export interface TabDef {
   key: string;
@@ -95,6 +96,8 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
   }, [myProjects, projectId, projects]);
 
   const current = visibleTabs.find((t) => t.key === activeTab) ?? visibleTabs[0];
+
+  if (visibleTabs.length === 0) return <NoAccessPage view={def.view} title={def.title} onNavigate={onNavigate} onLogout={onLogout} />;
 
   // Payroll is off until a company admin switches it on: one clear screen, no requests that would be refused.
   if (def.view === AppView.PAYROLL && user?.payrollEnabled === false) {

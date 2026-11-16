@@ -402,14 +402,17 @@ export default function AppShell() {
   const tourKey = user ? `inspecta.tour.v1.${user.id}` : null;
   useEffect(() => {
     if (!tourKey) return;
-    if (localStorage.getItem(tourKey)) return;
+    if ((user as { tourCompleted?: boolean } | null)?.tourCompleted) return; // seen on another device / session
+    try { if (localStorage.getItem(tourKey)) return; } catch { /* storage blocked */ }
     const t = setTimeout(() => setTourOpen(true), 900); // let the shell settle first
     return () => clearTimeout(t);
   }, [tourKey]);
 
   const closeTour = () => {
     setTourOpen(false);
-    if (tourKey) localStorage.setItem(tourKey, 'done');
+    try { if (tourKey) localStorage.setItem(tourKey, 'done'); } catch { /* storage blocked */ }
+    // Finishing or skipping counts as done for this user everywhere.
+    void api.post('/auth/tour-complete', {}).catch(() => undefined);
   };
   const startTour = () => {
     setSidebarOpen(false);

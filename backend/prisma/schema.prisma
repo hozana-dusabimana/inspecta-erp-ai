@@ -448,6 +448,8 @@ model User {
   resetTokenHash        String?   @unique
   resetExpiresAt        DateTime?
   lastLoginAt    DateTime?
+  /// The product tour is shown once per user (any device) and Skip counts as done (T1-09).
+  tourCompletedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

@@ -6,6 +6,7 @@ import { Field, FilterDef, SummaryCardDef, Column, PostingDef, RowAction } from 
 import EntityForm from './EntityForm';
 import RecordDetail from './RecordDetail';
 import { useEvidenceRules } from '../lib/evidence';
+import { NoAccessPanel, Skeleton } from './AccessPages';
 
 // Re-exported so existing imports (`from './ResourceManager'`) keep working.
 export type { Field, FilterDef, SummaryCardDef, Column, PostingDef, RowAction } from './formTypes';
@@ -117,7 +118,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
 
   const listKey = [endpoint, queryString];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: listError } = useQuery({
     queryKey: listKey,
     queryFn: () => api.get<Record<string, any>[]>(`${endpoint}?${queryString}`),
     enabled: true, // no project selected = portfolio view across all projects (read-only)
@@ -155,7 +156,9 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const openCreate = () => { setEditingRow(null); setError(null); setFormOpen(true); };
   const openEdit = (row: Record<string, any>) => { setEditingRow(row); setError(null); setFormOpen(true); };
 
-  const cardValue = (c: SummaryCardDef) => {
+  const cardValue = (c: SummaryCardDef): React.ReactNode => {
+    // Never show 0 before the request has answered (T1-09).
+    if (isLoading || !data) return <Skeleton className="h-6 w-20" />;
     if (c.key === '__count') return numFmt(total);
     const v = sums?.[c.key] ?? 0;
     return c.money ? money(v) : numFmt(v);
@@ -275,7 +278,11 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           </div>
         )}
         {isLoading ? (
-          <div className="p-8 text-center text-brand-on-surface-variant text-xs">Loading…</div>
+          <div className="space-y-2 p-5" aria-busy="true" aria-label="Loading">{[0, 1, 2, 3].map((i) => <div key={i} className="h-8 animate-pulse rounded bg-brand-surface-container-low" />)}</div>
+        ) : listError ? (
+          (listError as { status?: number }).status === 403
+            ? <div className="p-6"><NoAccessPanel what={plural(entityLabel).toLowerCase()} /></div>
+            : <div role="alert" className="p-8 text-center text-xs font-semibold text-red-700">Could not load {plural(entityLabel).toLowerCase()}: {errorMessage(listError)}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -301,7 +308,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + 1} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
+                  <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + 1} className="px-5 py-8 text-center text-brand-on-surface-variant">No records.</td></tr>
                 )}
                 {rows.map((row) => (
                   <tr key={row.id} className={`border-b border-brand-outline-variant/10 hover:bg-brand-surface/40 ${row.cancelledAt ? 'opacity-60' : ''}`}>

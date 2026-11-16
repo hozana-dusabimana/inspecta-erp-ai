@@ -38,6 +38,7 @@ import AppShell, { ShellChrome } from './components/AppShell';
 import FloatingCopilot from './components/FloatingCopilot';
 import BookDemoModal from './components/BookDemoModal';
 import { MODULES } from './modules';
+import { Guard, NotFoundPage } from './components/AccessPages';
 
 /**
  * Supplies the shell-provided chrome props ({onNavigate, onLogout}) to a page so
@@ -161,16 +162,16 @@ export default function App() {
           {/* Pages that share the persistent sidebar + header */}
           <Route element={<AppShell />}>
             <Route path="/copilot" element={<CopilotRoute />} />
-            <Route path="/dashboard" element={<Chromed render={(c) => <Dashboard {...c} />} />} />
-            <Route path="/executive" element={<Chromed render={(c) => <ExecutiveDashboard {...c} />} />} />
-            <Route path="/portfolio" element={<Chromed render={(c) => <PortfolioPage {...c} />} />} />
-            <Route path="/planning-dashboards" element={<Chromed render={(c) => <PlanningDashboards {...c} />} />} />
-            <Route path="/profitability" element={<Chromed render={(c) => <ProfitabilityPage {...c} />} />} />
-            <Route path="/reports" element={<Chromed render={(c) => <ReportsPage {...c} />} />} />
-            <Route path="/approvals" element={<Chromed render={(c) => <ApprovalsPage {...c} />} />} />
-            <Route path="/audit" element={<Chromed render={(c) => <AuditPage {...c} />} />} />
-            <Route path="/notifications" element={<Chromed render={(c) => <NotificationsPage {...c} />} />} />
-            <Route path="/admin" element={<Chromed render={(c) => <AdminPage {...c} />} />} />
+            <Route path="/dashboard" element={<Chromed render={(c) => <Guard view={AppView.DASHBOARD} {...c}><Dashboard {...c} /></Guard>} />} />
+            <Route path="/executive" element={<Chromed render={(c) => <Guard view={AppView.EXEC_DASH} {...c}><ExecutiveDashboard {...c} /></Guard>} />} />
+            <Route path="/portfolio" element={<Chromed render={(c) => <Guard view={AppView.PORTFOLIO} {...c}><PortfolioPage {...c} /></Guard>} />} />
+            <Route path="/planning-dashboards" element={<Chromed render={(c) => <Guard view={AppView.PLANNING_DASH} {...c}><PlanningDashboards {...c} /></Guard>} />} />
+            <Route path="/profitability" element={<Chromed render={(c) => <Guard view={AppView.PROFITABILITY} {...c}><ProfitabilityPage {...c} /></Guard>} />} />
+            <Route path="/reports" element={<Chromed render={(c) => <Guard view={AppView.REPORTS} {...c}><ReportsPage {...c} /></Guard>} />} />
+            <Route path="/approvals" element={<Chromed render={(c) => <Guard view={AppView.APPROVALS} {...c}><ApprovalsPage {...c} /></Guard>} />} />
+            <Route path="/audit" element={<Chromed render={(c) => <Guard view={AppView.AUDIT} {...c}><AuditPage {...c} /></Guard>} />} />
+            <Route path="/notifications" element={<Chromed render={(c) => <Guard view={AppView.NOTIFICATIONS} {...c}><NotificationsPage {...c} /></Guard>} />} />
+            <Route path="/admin" element={<Chromed render={(c) => <Guard view={AppView.ADMIN} {...c}><AdminPage {...c} /></Guard>} />} />
             <Route path="/billing" element={<Chromed render={(c) => <BillingPage {...c} />} />} />
             <Route path="/platform/subscriptions" element={<Chromed render={(c) => <PlatformConsole tab="subscriptions" {...c} />} />} />
             <Route path="/platform/ai-credits" element={<Chromed render={(c) => <PlatformConsole tab="ai-credits" {...c} />} />} />
@@ -188,14 +189,14 @@ export default function App() {
               <Route
                 key={def.view}
                 path={pathForView(def.view)}
-                element={<Chromed render={(c) => <ModuleWorkspace def={def} {...c} />} />}
+                element={<Chromed render={(c) => <Guard view={def.view} {...c}><ModuleWorkspace def={def} {...c} /></Guard>} />}
               />
             ))}
           </Route>
         </Route>
 
-        {/* Unknown URL → send authed users to the dashboard, guests to login. */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Unknown URL: say so (T1-09), never a silent jump to the dashboard. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </ChatProvider>
   );

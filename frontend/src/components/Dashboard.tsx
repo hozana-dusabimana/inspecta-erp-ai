@@ -54,6 +54,7 @@ import { useAuth } from '../lib/auth';
 import { NAV } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
 import { TIP, NO_COST_BUDGET } from '../lib/formulas';
+import { Skeleton } from './AccessPages';
 
 interface DashboardProps {
   onNavigate: (view: AppView) => void;
@@ -139,7 +140,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   });
   const projectsList = projectsResp?.data ?? [];
 
-  const { data: summaryResp } = useQuery({
+  const { data: summaryResp, isLoading: summaryLoading } = useQuery({
     queryKey: ['projects-summary'],
     queryFn: () => api.get<PortfolioSummary>('/projects/summary'),
   });
@@ -179,7 +180,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   }));
 
   // Executive KPIs (real) for the productivity / SPI / budget / profit tiles.
-  const { data: execResp } = useQuery({
+  const { data: execResp, isLoading: execLoading } = useQuery({
     queryKey: ['dashboard-exec'],
     queryFn: () => api.get<any>('/dashboards/executive'),
   });
@@ -356,7 +357,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   <StatusBadge status={summary?.health ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{displayedProjects.some((p: any) => p.hasProgress !== false) ? `${scopedAvgProgress.toFixed(1)}%` : 'No data'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{summaryLoading || !projectsResp ? <Skeleton className="h-8 w-20" /> : displayedProjects.some((p: any) => p.hasProgress !== false) ? `${scopedAvgProgress.toFixed(1)}%` : 'No data'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-bold flex items-center">
                     {progressSubtext}
                   </span>
@@ -373,7 +374,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   {kpis && Number(kpis.productivityIndex) > 0 ? null : <StatusBadge status="NO_DATA" />}
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{execLoading ? <Skeleton className="h-8 w-16" /> : kpis ? Number(kpis.productivityIndex).toFixed(2) : '—'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">out/lh</span>
                 </div>
                 <p className="text-[10px] text-brand-on-surface-variant mt-3 italic leading-tight">Actual output per labor hour across production entries.</p>
@@ -386,7 +387,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   <StatusBadge status={kpis?.spiStatus ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.spi != null ? Number(kpis.spi).toFixed(2) : 'No data'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{execLoading ? <Skeleton className="h-8 w-16" /> : kpis?.spi != null ? Number(kpis.spi).toFixed(2) : 'No data'}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">Target: 1.00</span>
                 </div>
                 <div className="mt-4 flex gap-1">
@@ -404,7 +405,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   <StatusBadge status={kpis?.budgetStatus ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.budgetUtilizationPct != null ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : NO_COST_BUDGET}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{execLoading ? <Skeleton className="h-8 w-20" /> : kpis?.budgetUtilizationPct != null ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : NO_COST_BUDGET}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">
                     {execFinance?.costVariance != null ? `RWF ${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
                   </span>
@@ -418,7 +419,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate" title={TIP.forecastMargin}>Forecast Margin ⓘ</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={TIP.forecastMargin}>{execFinance?.forecastProfit != null ? `${compactMoney(execFinance.forecastProfit)}${execFinance.forecastMarginPct != null ? ` (${execFinance.forecastMarginPct}%)` : ''}` : NO_COST_BUDGET}</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={TIP.forecastMargin}>{execLoading ? <Skeleton className="h-5 w-24" /> : execFinance?.forecastProfit != null ? `${compactMoney(execFinance.forecastProfit)}${execFinance.forecastMarginPct != null ? ` (${execFinance.forecastMarginPct}%)` : ''}` : NO_COST_BUDGET}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <TrendingUp className="w-4.5 h-4.5" />
@@ -428,7 +429,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Cash Received</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance ? compactMoney(execFinance.received) : '—'}</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execLoading ? <Skeleton className="h-5 w-20" /> : execFinance ? compactMoney(execFinance.received) : '—'}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <DollarSign className="w-4.5 h-4.5" />
@@ -438,7 +439,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Safety Score</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={safetyWhy}>{safetyScore}</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={safetyWhy}>{execLoading ? <Skeleton className="h-5 w-12" /> : safetyScore}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-emerald-600 shrink-0">
                   <HeartPulse className="w-4.5 h-4.5" />
@@ -448,7 +449,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Open NCRs</p>
-                  <p className="font-mono font-bold text-base text-brand-status-critical truncate">{compliance ? compliance.openNcrs : '—'}</p>
+                  <p className="font-mono font-bold text-base text-brand-status-critical truncate">{execLoading ? <Skeleton className="h-5 w-10" /> : compliance ? compliance.openNcrs : '—'}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-status-critical shrink-0">
                   <AlertTriangle className="w-4.5 h-4.5" />

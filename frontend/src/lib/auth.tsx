@@ -12,6 +12,8 @@ export interface AuthUser {
   organizationId: string;
   isPlatformAdmin?: boolean;
   permissions: string[];
+  /** The product tour was finished or skipped (stored on the server, so it shows once per user). */
+  tourCompleted?: boolean;
   /** Payroll is switched off per company until its admin enables it. */
   payrollEnabled?: boolean;
 }

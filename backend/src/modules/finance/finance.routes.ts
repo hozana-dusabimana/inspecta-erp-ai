@@ -13,6 +13,8 @@ import { costByWbs } from '../../lib/cost-by-wbs';
 import { Conflict } from '../../lib/errors';
 import { reverseCostEntries, costSourceAlive, costIntegrityReport } from '../../lib/posting';
 import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
+import { syncSourceCost } from '../../lib/posting';
+import { syncAttendanceCost } from '../fieldops/labour';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -398,41 +400,33 @@ router.get('/cost-by-wbs', authenticate, requirePermission('finance:read'), asyn
 
 // ── Auto-post production labor/equipment cost to the cost ledger ──
 /**
- * Posts labour and equipment cost for a project, once per source record.
- * Casual attendance rows carry their own trade-rated cost, so a production entry
- * that has attendance linked to it is NOT also costed from the average wage.
+ * Posts project labour and equipment cost (T1-05). Labour comes ONLY from attendance
+ * (employees at their wage, casual labour at the trade rate) — typed labour hours are
+ * never costed at an average rate any more (that produced 80 h = RWF 1,600). Equipment
+ * hours on a daily entry are costed at that machine's rate. Idempotent: every source posts
+ * one live entry, edits reverse and re-post (lib/posting.syncSourceCost).
  */
 export async function postProductionCosts(orgId: string, projectId: string, userId: string) {
-  const [entries, posted, equipment, wages, attendance] = await Promise.all([
-    prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId } }),
-    prisma.costEntry.findMany({ where: { organizationId: orgId, projectId, source: { in: ['PRODUCTION', 'ATTENDANCE'] } }, select: { sourceRef: true, category: true } }),
+  const [entries, equipment, attendance] = await Promise.all([
+    prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId, deletedAt: null }, include: { dailyReport: { select: { status: true } } } }),
     prisma.equipment.findMany({ where: { organizationId: orgId } }),
-    prisma.wageRate.findMany({ where: { organizationId: orgId, approvalStatus: 'APPROVED' } }),
-    prisma.attendance.findMany({ where: { organizationId: orgId, projectId, employeeId: null, cost: { gt: 0 } } }),
+    prisma.attendance.findMany({ where: { organizationId: orgId, projectId }, select: { id: true } }),
   ]);
   const eqRate = new Map(equipment.map((e) => [e.id, num(e.hourlyRate) || num(e.dailyRate) / 8]));
-  const hourly = wages.map((w) => (w.rateType === 'HOURLY' ? num(w.amount) : num(w.amount) / 8)).filter((x) => x > 0);
-  const laborRate = hourly.length ? hourly.reduce((s, x) => s + x, 0) / hourly.length : 20;
-  const alreadyPosted = new Set(posted.map((p) => `${p.sourceRef}|${p.category}`));
-  const entriesWithAttendance = new Set(attendance.map((a) => a.productionEntryId).filter(Boolean) as string[]);
-  const wbsByEntry = new Map(entries.map((e) => [e.id, e.wbsItemId]));
-  const entryName = new Map(entries.map((e) => [e.id, e.wbsActivity]));
-
-  const toCreate: any[] = [];
+  const actor = { orgId, userId, reason: 'Re-posted from production' };
+  let posted = 0;
+  for (const a of attendance) { await syncAttendanceCost(orgId, userId, a.id, 'Re-posted from attendance'); posted++; }
   for (const e of entries) {
-    const labor = entriesWithAttendance.has(e.id) ? 0 : num(e.laborHours) * laborRate;
+    if (e.dailyReport && e.dailyReport.status !== 'APPROVED') continue; // report costs post on approval
     const equip = num(e.equipmentHours) * (e.equipmentId ? eqRate.get(e.equipmentId) ?? 0 : 0);
-    if (labor > 0 && !alreadyPosted.has(`${e.id}|LABOR`)) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'LABOR', source: 'PRODUCTION', sourceRef: e.id, description: `Labor — ${e.wbsActivity}`, amount: labor, date: e.date, createdBy: userId });
-    if (equip > 0 && !alreadyPosted.has(`${e.id}|EQUIPMENT`)) toCreate.push({ organizationId: orgId, projectId, wbsItemId: e.wbsItemId, category: 'EQUIPMENT', source: 'PRODUCTION', sourceRef: e.id, description: `Equipment — ${e.wbsActivity}`, amount: equip, date: e.date, createdBy: userId });
+    await prisma.$transaction((tx) => syncSourceCost(tx, 'PRODUCTION', e.id, 'EQUIPMENT', equip > 0 ? {
+      projectId, wbsItemId: e.wbsItemId, category: 'EQUIPMENT', amount: equip, date: e.date, description: `Equipment — ${e.wbsActivity}`,
+    } : null, actor));
+    // Old-style labour postings (hours × average rate) are reversed: labour is costed from attendance only.
+    await prisma.$transaction((tx) => syncSourceCost(tx, 'PRODUCTION', e.id, 'LABOR', null, { ...actor, reason: 'Labour is costed from attendance, not typed hours' }));
   }
-  for (const a of attendance) {
-    if (alreadyPosted.has(`${a.id}|LABOR`)) continue;
-    const wbsItemId = a.wbsItemId ?? (a.productionEntryId ? wbsByEntry.get(a.productionEntryId) ?? null : null);
-    const label = a.productionEntryId ? entryName.get(a.productionEntryId) : null;
-    toCreate.push({ organizationId: orgId, projectId, wbsItemId, category: 'LABOR', source: 'ATTENDANCE', sourceRef: a.id, description: `Casual labour — ${a.workerName}${label ? ` (${label})` : ''}`, amount: num(a.cost), date: a.date, createdBy: userId });
-  }
-  if (toCreate.length) await prisma.costEntry.createMany({ data: toCreate });
-  return { posted: toCreate.length, entriesProcessed: entries.length, laborRate: Number(laborRate.toFixed(2)) };
+  const unattended = entries.filter((e) => e.flags.includes('LABOUR_WITHOUT_ATTENDANCE')).length;
+  return { posted, entriesProcessed: entries.length, entriesWithLabourButNoAttendance: unattended };
 }
 
 router.post('/post-production', authenticate, requirePermission('finance:write'), asyncHandler(async (req, res) => {

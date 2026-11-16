@@ -8,6 +8,7 @@ import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { assertWbsInProject } from '../../lib/wbs-link';
 import { auditFromRequest } from '../../auth/audit';
 import { labourCost } from '../../lib/formulas';
+import { syncSourceCost } from '../../lib/posting';
 
 const num = (v: unknown) => Number(v ?? 0);
 
@@ -27,6 +28,59 @@ export async function resolveDailyRate(orgId: string, trade?: string | null, cas
   const wage = await prisma.wageRate.findFirst({ where: { organizationId: orgId, tradeId: t.id, approvalStatus: 'APPROVED' }, orderBy: [{ effectiveDate: 'desc' }, { createdAt: 'desc' }] });
   if (!wage || num(wage.amount) <= 0) return null;
   return wage.rateType === 'HOURLY' ? num(wage.amount) * 8 : num(wage.amount);
+}
+
+/** Working days in a month from the company's working week (6 days -> 26). */
+export async function workingDaysPerMonth(orgId: string): Promise<number> {
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { workingDaysPerWeek: true } });
+  return Math.round(((org?.workingDaysPerWeek ?? 6) * 52) / 12);
+}
+
+/** An employee's day rate: their daily wage, else monthly salary ÷ working days. Null when neither is set. */
+export function employeeDayRate(e: { dailyWage: unknown; grossMonthlySalary: unknown }, daysPerMonth: number): number | null {
+  if (num(e.dailyWage) > 0) return num(e.dailyWage);
+  if (num(e.grossMonthlySalary) > 0) return Number((num(e.grossMonthlySalary) / Math.max(1, daysPerMonth)).toFixed(2));
+  return null;
+}
+
+/**
+ * Post (or re-post / reverse) the labour cost of one attendance row (T1-05). Labour cost is ALWAYS
+ * attendance × the person's rate: employees at their wage, casual labour at the trade rate.
+ * Rows that belong to a daily report post when that report is approved (T2-03), not before.
+ */
+export async function syncAttendanceCost(orgId: string, userId: string, attendanceId: string, reason = 'Attendance changed'): Promise<void> {
+  const a = await prisma.attendance.findFirst({ where: { id: attendanceId, organizationId: orgId } });
+  const actor = { orgId, userId, reason };
+  if (!a) {
+    await prisma.$transaction((tx) => syncSourceCost(tx, 'ATTENDANCE', attendanceId, 'LABOR', null, actor));
+    return;
+  }
+  let wbsItemId = a.wbsItemId;
+  let label: string | null = null;
+  if (a.productionEntryId) {
+    const pe = await prisma.productionEntry.findUnique({ where: { id: a.productionEntryId }, select: { wbsItemId: true, wbsActivity: true, dailyReport: { select: { status: true } } } });
+    wbsItemId = wbsItemId ?? pe?.wbsItemId ?? null;
+    label = pe?.wbsActivity ?? null;
+    if (pe?.dailyReport && pe.dailyReport.status !== 'APPROVED') return; // posts on approval
+  }
+  await prisma.$transaction((tx) => syncSourceCost(tx, 'ATTENDANCE', a.id, 'LABOR', {
+    projectId: a.projectId, wbsItemId, category: 'LABOR', amount: num(a.cost), date: a.date,
+    description: `Labour - ${a.workerName}${label ? ` (${label})` : ''}: ${num(a.headcount) > 1 ? `${a.headcount} × ` : ''}${num(a.hoursWorked)} h`,
+  }, actor));
+}
+
+/** Labour hours of a daily entry come from its attendance, never typed (T1-05 c). */
+export async function deriveEntryLabourHours(entryId: string): Promise<number> {
+  const rows = await prisma.attendance.findMany({ where: { productionEntryId: entryId, present: true }, select: { headcount: true, hoursWorked: true } });
+  const hours = rows.reduce((s, r) => s + r.headcount * num(r.hoursWorked), 0);
+  const pe = await prisma.productionEntry.findUnique({ where: { id: entryId }, select: { laborHours: true, flags: true } });
+  if (pe && rows.length) {
+    await prisma.productionEntry.update({
+      where: { id: entryId },
+      data: { laborHours: hours, flags: pe.flags.filter((f) => f !== 'LABOUR_WITHOUT_ATTENDANCE') },
+    });
+  }
+  return hours;
 }
 
 export const attendanceCreate = z.object({
@@ -50,6 +104,7 @@ const resolved = new WeakMap<Request, { rate: number | null; name?: string; trad
 
 export const attendanceOpts: CrudOptions = {
   model: 'attendance',
+  evidence: 'attendance',
   entity: 'attendance',
   readPerm: 'fieldops:read',
   writePerm: 'fieldops:write',
@@ -75,8 +130,17 @@ export const attendanceOpts: CrudOptions = {
       const w = await prisma.casualWorker.findFirst({ where: { id: String(data.casualWorkerId), organizationId: req.user!.orgId } });
       if (w) { name = w.fullName; trade = trade ?? w.trade; }
     }
-    // HR employees are paid through the monthly payroll run, never costed here.
-    const rate = data.employeeId ? null : await resolveDailyRate(req.user!.orgId, trade, data.casualWorkerId ? String(data.casualWorkerId) : null);
+    // Employees are costed at their own wage (daily, or monthly ÷ working days); casual labour at the trade rate.
+    let rate: number | null;
+    if (data.employeeId) {
+      const emp = await prisma.employee.findFirst({ where: { id: String(data.employeeId), organizationId: req.user!.orgId }, include: { trade: { select: { name: true } } } });
+      if (!emp) throw BadRequest('Employee not found');
+      name = emp.fullName; trade = trade ?? emp.trade?.name ?? null;
+      rate = employeeDayRate(emp, await workingDaysPerMonth(req.user!.orgId));
+      if (data.hoursWorked === undefined && !data.id) data.hoursWorked = 8; // a day's attendance
+    } else {
+      rate = await resolveDailyRate(req.user!.orgId, trade, data.casualWorkerId ? String(data.casualWorkerId) : null);
+    }
     resolved.set(req, { rate, name, trade });
   },
   // Keep present/status consistent so payroll proration and field views agree.
@@ -87,10 +151,20 @@ export const attendanceOpts: CrudOptions = {
     data.headcount = headcount;
     if (!data.workerName) data.workerName = r?.name ?? `${data.trade ?? r?.trade ?? 'Casual labour'} ×${headcount}`;
     if (r) {
+      if (r.name && data.employeeId) data.workerName = r.name;
       data.ratePerDay = r.rate;
       data.cost = r.rate && data.present !== false ? labourCost(headcount, num(data.hoursWorked), r.rate) : 0;
     }
     return data;
+  },
+  // Cost follows the row: posted, re-posted on edit, reversed on delete (never edited in place).
+  afterChange: async (action, record, req) => {
+    if (action === 'DELETE') return;
+    await syncAttendanceCost(req.user!.orgId, req.user!.id, String(record.id), action === 'CREATE' ? 'posted' : 'Attendance edited');
+    if (record.productionEntryId) await deriveEntryLabourHours(String(record.productionEntryId));
+  },
+  onDelete: async (tx, record, req) => {
+    await syncSourceCost(tx, 'ATTENDANCE', String(record.id), 'LABOR', null, { orgId: req.user!.orgId, userId: req.user!.id, reason: 'Attendance deleted' });
   },
 };
 

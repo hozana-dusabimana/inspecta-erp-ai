@@ -91,3 +91,6 @@ export async function eventually<T>(fn: () => Promise<T | undefined | false>, ms
     await new Promise((r) => setTimeout(r, 150));
   }
 }
+
+/** Photo evidence for records whose company rules require it (GRN, attendance, tests, inspections, incidents). */
+export const EVIDENCE = { _evidence: [{ url: 'https://example.com/e2e/site-photo.jpg', fileName: 'site-photo.jpg', capturedLat: -1.9441, capturedLng: 30.0619 }] };

@@ -7,6 +7,7 @@ import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions, assertProjectInOrg } from '../../lib/crud';
 import { syncProjectProgress } from '../../lib/project-metrics';
+import { resourcesRouter } from './resources';
 import { computeCpm, DependencyKind } from './cpm';
 import { wouldCreateCycle, Edge } from './graph';
 import baselinesRouter from './baselines';
@@ -372,6 +373,7 @@ router.post('/dependencies/import', authenticate, requirePermission('scheduling:
 router.use('/baselines', baselinesRouter);
 
 router.use('/dependencies', dependenciesRouter);
+router.use('/resources', resourcesRouter);
 
 // CRUD for activities mounted last.
 router.use('/', crud);

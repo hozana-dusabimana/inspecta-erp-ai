@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { ReportStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest, NotFound } from '../../lib/errors';
+import { BadRequest, NotFound, Conflict, Forbidden } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 import { assertMakerChecker } from '../../lib/maker-checker';
+import { auditFromRequest } from '../../auth/audit';
+import { postApprovedReportCosts } from './report-costs';
 import { notify } from '../notifications/notify';
 import { productivity, variancePct, ratePerWorkerDay } from '../../lib/formulas';
 import { analyzeProduction, EngineEntry, EngineMaterial } from './engine';
@@ -68,6 +70,23 @@ const entriesCrud = createCrudRouter({
     { field: 'tradeId', model: 'trade' },
     { field: 'productivityStandardId', model: 'productivityStandard' },
   ],
+  validate: async (data, req: Request) => {
+    if (!data.id) return;
+    if (data.dailyReportId) {
+      const rep = await prisma.dailyReport.findUnique({ where: { id: String(data.dailyReportId) }, select: { status: true, reportNumber: true } });
+      if (rep?.status === 'APPROVED') throw Conflict(`This entry belongs to approved report ${rep.reportNumber} and is locked. Use Correct, with a reason, instead.`);
+    }
+    if (data.createdById && data.createdById !== req.user!.id) {
+      throw Forbidden('Only the person who entered this record can change it. Approvers approve or reject; they do not edit what others entered.');
+    }
+  },
+  onDelete: async (tx, record, req) => {
+    if (record.dailyReportId) {
+      const rep = await tx.dailyReport.findUnique({ where: { id: String(record.dailyReportId) }, select: { status: true, reportNumber: true } });
+      if (rep?.status === 'APPROVED') throw Conflict(`This entry belongs to approved report ${rep.reportNumber} and cannot be deleted.`);
+    }
+    if (record.createdById && record.createdById !== req.user!.id) throw Forbidden('Only the person who entered this record can delete it.');
+  },
   transform: async (data, req: Request) => {
     if (!('id' in data) && req.user) data.createdById = req.user.id;
     if (data.wbsItemId) {
@@ -75,6 +94,18 @@ const entriesCrud = createCrudRouter({
       if (w && !data.wbsActivity) data.wbsActivity = `${w.code} - ${w.name}`;
     }
     if (!data.wbsActivity) throw BadRequest('Select the WBS activity this production belongs to');
+    // Labour hours come from attendance (T1-05 c). Hours typed with no named workers are kept but
+    // flagged and never costed, so 80 hours can no longer turn into RWF 1,600 of "labour".
+    if (data.id) {
+      const att = await prisma.attendance.findMany({ where: { productionEntryId: String(data.id), present: true }, select: { headcount: true, hoursWorked: true } });
+      if (att.length) data.laborHours = att.reduce((s, r) => s + r.headcount * Number(r.hoursWorked), 0);
+    }
+    const flags = new Set(((data.flags as string[] | undefined) ?? []).filter((f) => f !== 'LABOUR_WITHOUT_ATTENDANCE'));
+    if (Number(data.laborHours ?? 0) > 0) {
+      const has = data.id ? await prisma.attendance.count({ where: { productionEntryId: String(data.id) } }) : 0;
+      if (!has) flags.add('LABOUR_WITHOUT_ATTENDANCE');
+    }
+    data.flags = [...flags];
     if (data.plannedQty == null || Number(data.plannedQty) === 0) {
       let planned = 0;
       if (data.wbsItemId) {
@@ -92,6 +123,13 @@ const entriesCrud = createCrudRouter({
   afterChange: async (action, record, req) => {
     await syncProjectProgress(req.user!.orgId, String(record.projectId));
     if (action === 'DELETE') return;
+    if ((record.flags as string[] | undefined)?.includes('LABOUR_WITHOUT_ATTENDANCE')) {
+      await notify({
+        organizationId: req.user!.orgId, type: 'GENERAL', severity: 'MEDIUM', title: 'Labour hours without attendance',
+        message: `"${record.wbsActivity}" reports ${num(record.laborHours)} labour hours but no named workers. Record attendance so the hours are verified and costed.`,
+        link: '/production', refKey: `entry-flag:${record.id}`,
+      });
+    }
     const planned = num(record.plannedQty);
     const actual = num(record.actualQty);
     if (planned > 0 && (actual - planned) / planned <= -0.1) {
@@ -130,11 +168,40 @@ const reportsCrud = createCrudRouter({
   requireProject: true,
   orderBy: { reportDate: 'desc' },
   include: { _count: { select: { entries: true } } },
+  validate: (data, req) => {
+    if (data.id && data.status === 'APPROVED') throw Conflict('An approved report is locked. Use Correct on an entry, with a reason.');
+    if (data.id && data.preparedById && data.preparedById !== req.user!.id) throw Forbidden('Only the person who prepared this report can change it.');
+  },
   transform: (data, req) => {
     if (!('id' in data)) data.preparedById = req.user!.id;
     return stamp(data, req);
   },
 });
+
+/**
+ * After approval a change is a CORRECTION: who, when, why, old -> new, kept in the audit log and
+ * counted on the report. Only the person who entered the figure may correct it.
+ */
+const correctionRouter = Router();
+correctionRouter.post('/:id/correct', authenticate, requirePermission('production:write'), asyncHandler(async (req, res) => {
+  const body = z.object({
+    actualQty: z.number().nonnegative().optional(), plannedQty: z.number().nonnegative().optional(), remarks: z.string().max(2000).optional(),
+    reason: z.string().trim().min(5, 'Give the reason for the correction (at least 5 characters)'),
+  }).parse(req.body);
+  const entry = await prisma.productionEntry.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
+  if (!entry) throw NotFound('Entry not found');
+  if (entry.createdById && entry.createdById !== req.user!.id) throw Forbidden('Only the person who entered this figure can correct it.');
+  const data: Record<string, unknown> = {};
+  if (body.actualQty !== undefined) data.actualQty = body.actualQty;
+  if (body.plannedQty !== undefined) data.plannedQty = body.plannedQty;
+  if (body.remarks !== undefined) data.remarks = body.remarks;
+  if (!Object.keys(data).length) throw BadRequest('Nothing to correct');
+  const updated = await prisma.productionEntry.update({ where: { id: entry.id }, data: { ...data, updatedBy: req.user!.id } });
+  if (entry.dailyReportId) await prisma.dailyReport.update({ where: { id: entry.dailyReportId }, data: { correctionCount: { increment: 1 } } });
+  await auditFromRequest(req, 'UPDATE', 'production-entry', entry.id, { oldValues: entry, newValues: updated, reason: `Correction: ${body.reason}` });
+  await syncProjectProgress(req.user!.orgId, entry.projectId);
+  return ok(res, updated);
+}));
 
 const REPORT_TRANSITIONS: Record<ReportStatus, ReportStatus[]> = {
   DRAFT: ['SUBMITTED'],
@@ -149,9 +216,22 @@ function reportAction(action: string, to: ReportStatus, perm: 'production:write'
     if (!existing) throw NotFound('Daily report not found');
     if (!REPORT_TRANSITIONS[existing.status].includes(to)) throw BadRequest(`Cannot ${action} a report in status ${existing.status}`);
     if (to === 'APPROVED' || to === 'REJECTED') await assertMakerChecker(req, existing.preparedById, 'daily report');
-    const data: Record<string, unknown> = { status: to, updatedBy: req.user!.id };
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (to === 'APPROVED' && existing.flags.length && reason.length < 5) {
+      throw BadRequest(`This report has ${existing.flags.length} flagged cross-check(s): ${existing.flags.map((f) => f.split(':')[0]).join(', ')}. Write the reason it is still correct to approve it.`);
+    }
+    if (to === 'REJECTED' && reason.length < 5) throw BadRequest('Give the reason for rejecting the report.');
+    const data: Record<string, unknown> = { status: to, updatedBy: req.user!.id, ...(to === 'APPROVED' && existing.flags.length ? { flagReason: reason } : {}) };
     if (to === 'APPROVED' || to === 'REJECTED') { data.approvedById = req.user!.id; data.approvedAt = new Date(); }
     const report = await prisma.dailyReport.update({ where: { id: existing.id }, data });
+    await auditFromRequest(req, to === 'APPROVED' ? 'APPROVE' : to === 'REJECTED' ? 'REJECT' : 'UPDATE', 'daily-report', report.id, {
+      oldValues: { status: existing.status }, newValues: { status: to, flags: existing.flags }, reason: reason || null,
+    });
+    if (to === 'APPROVED') {
+      // Only approved reports feed cost, progress, SPI and CPI (T2-03 f).
+      await postApprovedReportCosts(req.user!.orgId, req.user!.id, report.id);
+      await syncProjectProgress(req.user!.orgId, report.projectId);
+    }
     if (to === 'SUBMITTED') {
       await notify({ organizationId: req.user!.orgId, type: 'APPROVAL', severity: 'MEDIUM', title: 'Daily report submitted', message: `Report ${report.reportNumber} awaits approval.`, link: '/production' });
     }
@@ -162,6 +242,26 @@ function reportAction(action: string, to: ReportStatus, perm: 'production:write'
     return ok(res, report);
   }));
 }
+reportsRouter.get('/:id/detail', authenticate, requirePermission('production:read'), asyncHandler(async (req, res) => {
+  const report = await prisma.dailyReport.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
+  if (!report) throw NotFound('Daily report not found');
+  const entries = await prisma.productionEntry.findMany({ where: { dailyReportId: report.id }, include: { materials: true } });
+  const att = await prisma.attendance.findMany({ where: { productionEntryId: { in: entries.map((e) => e.id) } }, include: { employee: { select: { employeeNo: true, fullName: true } } } });
+  const logs = await prisma.equipmentUsageLog.findMany({ where: { sourceRef: report.id }, include: { equipment: { select: { code: true, name: true } } } });
+  const users = await prisma.user.findMany({ where: { id: { in: [report.preparedById, report.approvedById].filter(Boolean) as string[] } }, select: { id: true, fullName: true } });
+  const who = new Map(users.map((u) => [u.id, u.fullName]));
+  return ok(res, {
+    ...report, preparedBy: report.preparedById ? who.get(report.preparedById) ?? null : null, approvedBy: report.approvedById ? who.get(report.approvedById) ?? null : null,
+    entries: entries.map((e) => ({
+      id: e.id, activity: e.wbsActivity, unit: e.unit, plannedQty: num(e.plannedQty), actualQty: num(e.actualQty), laborHours: num(e.laborHours), flags: e.flags,
+      workers: att.filter((a) => a.productionEntryId === e.id).map((a) => ({
+        name: a.employee ? `${a.employee.employeeNo ?? ''} ${a.employee.fullName}`.trim() : a.workerName, employee: !!a.employeeId,
+        headcount: a.headcount, hours: num(a.hoursWorked), cost: num(a.cost),
+      })),
+    })),
+    equipment: logs.map((l) => ({ equipment: `${l.equipment.code ?? ''} ${l.equipment.name}`.trim(), hours: num(l.hoursUsed), cost: num(l.cost) })),
+  });
+}));
 reportAction('submit', ReportStatus.SUBMITTED, 'production:write');
 reportAction('approve', ReportStatus.APPROVED, 'approval:write');
 reportAction('reject', ReportStatus.REJECTED, 'approval:write');
@@ -448,6 +548,7 @@ router.use('/', fieldReportRouter); // /production/field-report (+ /today)
 router.use('/daily-reports', reportsRouter);
 router.use('/daily-plans', dailyPlanRouter);
 router.use('/materials', materialsCrud);
+router.use('/', correctionRouter); // /production/:id/correct
 router.use('/', entriesCrud); // entry CRUD last (handles /:id)
 
 export default router;

@@ -1,4 +1,4 @@
-import { call, download, provisionTenant, destroyTenant, addMember, disconnect, Tenant } from './harness';
+import { call, download, provisionTenant, destroyTenant, addMember, disconnect, Tenant, EVIDENCE } from './harness';
 
 /**
  * API end-to-end suite. Runs the real app against a real database.
@@ -102,7 +102,7 @@ describe('every WBS link must belong to the record\'s project', () => {
 
 describe('materials become project cost', () => {
   it('goods in, then issues: WBS required, stock guarded, cost posted at average cost', async () => {
-    ok(await call('post', '/inventory/grn', { materialId: mat.id, projectId: A.id, quantityReceived: 100, unitCost: 500 }, admin));
+    ok(await call('post', '/inventory/grn', { ...EVIDENCE,  materialId: mat.id, projectId: A.id, quantityReceived: 100, unitCost: 500 }, admin));
     expect((await call('post', '/inventory/material-issues', { materialId: mat.id, projectId: A.id, quantityIssued: 5 }, admin)).status).toBe(400); // no WBS
     const over = await call('post', '/inventory/material-issues', { materialId: mat.id, projectId: A.id, wbsItemId: wA.id, quantityIssued: 500 }, admin);
     expect(over.status).toBe(400);
@@ -167,9 +167,9 @@ describe('quality and safety chain', () => {
   it('compliance says No data first, then a failed test raises an NCR + corrective action on the same WBS task', async () => {
     const empty = (await call('get', `/compliance/ai-risk?projectId=${B.id}`, undefined, admin)).body.data;
     expect(empty.complianceScore).toBeNull();
-    const inc = ok(await call('post', '/hse/incidents', { projectId: A.id, wbsItemId: wA.id, description: 'Slip', type: 'NEAR_MISS' }, admin));
+    const inc = ok(await call('post', '/hse/incidents', { ...EVIDENCE,  projectId: A.id, wbsItemId: wA.id, description: 'Slip', type: 'NEAR_MISS' }, admin));
     expect(inc.wbsItemId).toBe(wA.id);
-    const mt = ok(await call('post', '/qaqc/material-tests', { projectId: A.id, wbsItemId: wA.id, testType: 'CONCRETE', batchNumber: 'E2E', result: 'FAIL' }, admin));
+    const mt = ok(await call('post', '/qaqc/material-tests', { ...EVIDENCE,  projectId: A.id, wbsItemId: wA.id, testType: 'CONCRETE', batchNumber: 'E2E', result: 'FAIL' }, admin));
     expect(mt.wbsItemId).toBe(wA.id);
     const ncrs = (await call('get', `/qaqc/ncrs?projectId=${A.id}`, undefined, admin)).body.data;
     expect(ncrs).toHaveLength(1);
@@ -221,7 +221,7 @@ describe('roles and project assignment are enforced by the server', () => {
     expect(projects.map((p: any) => p.id)).toEqual([A.id]);
     expect((await call('get', `/projects/${B.id}`, undefined, eng.token)).status).toBe(403);
     expect((await call('get', `/production?projectId=${B.id}`, undefined, eng.token)).status).toBe(403);
-    expect((await call('post', '/hse/incidents', { projectId: B.id, description: 'sneaky' }, eng.token)).status).toBe(403);
+    expect((await call('post', '/hse/incidents', { ...EVIDENCE,  projectId: B.id, description: 'sneaky' }, eng.token)).status).toBe(403);
     const incidents = (await call('get', '/hse/incidents?pageSize=100', undefined, eng.token)).body.data;
     expect(incidents.every((i: any) => i.projectId === A.id)).toBe(true);
     const dash = (await call('get', '/dashboards/executive', undefined, eng.token)).body.data;

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
+import { evidenceRules, EVIDENCE_MODULES } from '../../lib/evidence';
 import { asyncHandler, ok } from '../../lib/http';
 import { NotFound } from '../../lib/errors';
-import { authenticate, requireRole } from '../../middleware/auth';
+import { authenticate, requireRole, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 
 import { usageFor } from '../platform/plans';
@@ -110,5 +111,28 @@ router.put(
     return ok(res, org);
   }),
 );
+
+// Evidence rules and the daily report cut-off (T2-09, T2-03). Everyone may read them (forms need
+// to know what is required); only the System Admin changes them.
+router.get('/evidence-rules', asyncHandler(async (req, res) => {
+  const org = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { dailyReportCutoff: true } });
+  return ok(res, { rules: await evidenceRules(req.user!.orgId), labels: EVIDENCE_MODULES, dailyReportCutoff: org?.dailyReportCutoff ?? '18:00' });
+}));
+router.put('/evidence-rules', requirePermission('user:write'), asyncHandler(async (req, res) => {
+  const body = z.object({
+    rules: z.record(z.boolean()).optional(),
+    dailyReportCutoff: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Cut-off must be HH:MM').optional(),
+  }).parse(req.body);
+  const before = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { evidenceRules: true, dailyReportCutoff: true } });
+  const rules = { ...(await evidenceRules(req.user!.orgId)) } as Record<string, boolean>;
+  for (const [k, v] of Object.entries(body.rules ?? {})) if (k in EVIDENCE_MODULES) rules[k] = v;
+  const org = await prisma.organization.update({
+    where: { id: req.user!.orgId },
+    data: { evidenceRules: rules, ...(body.dailyReportCutoff ? { dailyReportCutoff: body.dailyReportCutoff } : {}) },
+    select: { evidenceRules: true, dailyReportCutoff: true },
+  });
+  await auditFromRequest(req, 'UPDATE', 'evidence-rules', req.user!.orgId, { oldValues: before, newValues: org });
+  return ok(res, { rules: org.evidenceRules, labels: EVIDENCE_MODULES, dailyReportCutoff: org.dailyReportCutoff });
+}));
 
 export default router;

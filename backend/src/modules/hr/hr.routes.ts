@@ -6,6 +6,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 import { auditFromRequest } from '../../auth/audit';
+import { workingDaysPerMonth } from '../fieldops/labour';
 
 // Accept boolean or the string the generic form sends.
 const boolish = z.preprocess(
@@ -194,14 +195,24 @@ const router = Router();
 
 // One headcount for HR and Payroll: payroll pays active staff, so both screens quote these numbers.
 router.get('/headcount', authenticate, requirePermission('hr:read'), asyncHandler(async (req, res) => {
-  const rows = await prisma.employee.findMany({ where: { organizationId: req.user!.orgId, deletedAt: null }, select: { status: true, grossMonthlySalary: true, dailyWage: true } });
-  const active = rows.filter((e) => e.status === 'active');
+  const orgId = req.user!.orgId;
+  const rows = await prisma.employee.findMany({ where: { organizationId: orgId, deletedAt: null }, select: { status: true, grossMonthlySalary: true, dailyWage: true } });
+  // New employees are stored as "ACTIVE" while the form sends "active": compare without case (T1-05: bill showed 0).
+  const st = (e: { status: string }) => e.status.toLowerCase();
+  const active = rows.filter((e) => st(e) === 'active');
+  const daysPerMonth = await workingDaysPerMonth(orgId);
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const monthAttendance = await prisma.attendance.aggregate({ where: { organizationId: orgId, employeeId: { not: null }, date: { gte: monthStart } }, _sum: { cost: true } });
   return ok(res, {
     total: rows.length,
     active: active.length,
-    onLeave: rows.filter((e) => e.status === 'on_leave').length,
-    terminated: rows.filter((e) => e.status === 'terminated').length,
-    monthlyWageBillActive: active.reduce((s, e) => s + Number(e.grossMonthlySalary ?? 0), 0),
+    onLeave: rows.filter((e) => st(e) === 'on_leave').length,
+    terminated: rows.filter((e) => st(e) === 'terminated').length,
+    // Monthly salary, or daily wage x working days in a month (EMP-0001 at 10,000/day x 26 = 260,000).
+    monthlyWageBillActive: active.reduce((s, e) => s + (Number(e.grossMonthlySalary ?? 0) || Number(e.dailyWage ?? 0) * daysPerMonth), 0),
+    workingDaysPerMonth: daysPerMonth,
+    // What attendance has actually cost this month (employees at their wage).
+    labourCostThisMonth: Number(Number(monthAttendance._sum.cost ?? 0).toFixed(2)),
     activeWithoutSalary: active.filter((e) => !Number(e.grossMonthlySalary ?? 0) && !Number(e.dailyWage ?? 0)).length,
   });
 }));

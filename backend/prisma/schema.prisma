@@ -252,6 +252,10 @@ model Organization {
   // Tenant admin's self-set ceiling on the size of a single credit top-up
   // request, so nobody on the team can commit the company to a surprise spend.
   aiSpendLimitCredits Int      @default(0)
+  /// Which records need photo evidence before they are confirmed/approved (System Admin setting).
+  evidenceRules     Json?
+  /// Daily report cut-off, local "HH:MM"; a report after this is late, none by then raises an alert.
+  dailyReportCutoff String   @default("18:00")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -776,6 +780,8 @@ model ProductionEntry {
   remarks         String?
   photos          String[]
   attachments     String[]
+  /// Cross-check flags raised when the entry was saved (e.g. LABOUR_WITHOUT_ATTENDANCE).
+  flags           String[] @default([])
   createdById     String?
   createdBy       String?
   updatedBy       String?
@@ -816,6 +822,14 @@ model DailyReport {
   approvedAt     DateTime?
   status         ReportStatus @default(DRAFT)
   notes          String?
+  /// Cross-check flags (labour without attendance, pour without cement/test, ...): approval needs a written reason.
+  flags          String[] @default([])
+  flagReason     String?
+  submittedAt    DateTime?
+  /// Submitted after the company's daily cut-off time.
+  late           Boolean  @default(false)
+  /// Number of logged corrections made after approval.
+  correctionCount Int     @default(0)
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -1305,6 +1319,10 @@ model ProjectDocument {
   description      String?
   isClientVisible  Boolean  @default(false)
   uploadedBy       String?  // user id of the uploader
+  /// Stamp for photo evidence: where and when it was captured (browser geolocation at upload).
+  capturedLat      Float?
+  capturedLng      Float?
+  capturedAt       DateTime?
   deletedAt        DateTime? // soft delete only — never hard-deleted
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1393,6 +1411,7 @@ model ScheduleActivity {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   wbsItem WbsItem? @relation(fields: [wbsItemId], references: [id], onDelete: SetNull)
+  resources    ActivityResource[]
   dependencies ScheduleDependency[] @relation("ActivityDeps")
   dependents   ScheduleDependency[] @relation("PredecessorDeps")
 
@@ -2873,4 +2892,29 @@ model DebugEvent {
   @@index([createdAt])
   @@index([category, createdAt])
   @@map("debug_events")
+}
+
+// Planned resources per schedule activity (T2-04): named employees, crews and equipment.
+model ActivityResource {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  activityId     String
+  resourceType   String   // EMPLOYEE | CREW | EQUIPMENT
+  employeeId     String?
+  crewId         String?
+  equipmentId    String?
+  plannedDays    Float?
+  plannedHours   Float?
+  note           String?
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  activity ScheduleActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([activityId])
+  @@map("activity_resources")
 }

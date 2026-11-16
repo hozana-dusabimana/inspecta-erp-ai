@@ -246,7 +246,7 @@ export function rollupPortfolio(projects: ProjectMetrics[]): PortfolioMetrics['t
  * excluded from client totals unless `includeDemo` is set or a single project is asked for.
  */
 /** Part 6 (T2-03): progress counts only daily entries whose report is approved (manual entries without a report still count). */
-export const APPROVED_ONLY = false;
+export const APPROVED_ONLY = true;
 
 export async function loadProjectMetrics(orgId: string, opts: { projectId?: string; includeDemo?: boolean; projectIds?: string[] | null; approvedOnly?: boolean } = {}): Promise<PortfolioMetrics> {
   const only = opts.projectIds && !opts.projectId ? { in: opts.projectIds } : undefined;
@@ -262,7 +262,7 @@ export async function loadProjectMetrics(orgId: string, opts: { projectId?: stri
     prisma.costEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null }, _sum: { amount: true } }),
     prisma.invoice.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
     prisma.payment.groupBy({ by: ['projectId'], where: { ...scope, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
-    prisma.productionEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null }, _sum: { plannedQty: true, actualQty: true } }),
+    prisma.productionEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null, ...(opts.approvedOnly ?? APPROVED_ONLY ? { OR: [{ dailyReportId: null }, { dailyReport: { status: 'APPROVED' } }] } : {}) }, _sum: { plannedQty: true, actualQty: true } }),
     prisma.scheduleActivity.groupBy({ by: ['projectId'], where: { ...scope, milestone: false }, _avg: { progressPct: true }, _count: { _all: true } }),
     prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
   ]);

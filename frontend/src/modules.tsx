@@ -17,6 +17,7 @@ import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
 import RequisitionWorkspace from './components/RequisitionWorkspace';
 import CostIntegrity from './components/CostIntegrity';
+import ActivityResources from './components/ActivityResources';
 import {
   PROJECT_FIELDS, CLIENT_FIELDS, SUPPLIER_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
   SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
@@ -195,9 +196,11 @@ function HeadcountPanel() {
   const h = data?.data;
   if (!h) return null;
   return (
-    <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest p-4 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-      {[['Employees', h.total], ['Active (paid by payroll)', h.active], ['On leave', h.onLeave], ['Terminated', h.terminated], ['Monthly wage bill (active)', 'RWF ' + Number(h.monthlyWageBillActive).toLocaleString()]].map(([l, v]) => (
-        <div key={String(l)}><p className="text-[10px] font-bold uppercase text-brand-on-surface-variant">{l}</p><p className="font-mono font-bold text-brand-primary">{v}</p></div>
+    <div className="rounded-xl border border-brand-outline-variant/20 bg-brand-surface-container-lowest p-4 grid grid-cols-2 sm:grid-cols-6 gap-3 text-xs">
+      {[['Employees', h.total, ''], ['Active (paid by payroll)', h.active, ''], ['On leave', h.onLeave, ''], ['Terminated', h.terminated, ''],
+        ['Monthly wage bill (active)', 'RWF ' + Number(h.monthlyWageBillActive).toLocaleString(), `Monthly salary, or daily wage × ${h.workingDaysPerMonth ?? 26} working days`],
+        ['Labour cost this month', 'RWF ' + Number(h.labourCostThisMonth ?? 0).toLocaleString(), 'Attendance × each person’s wage, posted to project cost']].map(([l, v, tip]) => (
+        <div key={String(l)} title={String(tip) || undefined}><p className="text-[10px] font-bold uppercase text-brand-on-surface-variant">{l}</p><p className="font-mono font-bold text-brand-primary">{v}</p></div>
       ))}
     </div>
   );
@@ -1766,6 +1769,11 @@ export const MODULES: Record<string, ModuleDef> = {
         key: 'baselines', label: 'Baselines', endpoint: '/scheduling/baselines', entityLabel: 'Baseline',
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         component: ScheduleBaselines, columns: [], fields: [],
+      },
+      {
+        key: 'resources', label: 'Resources', endpoint: '/scheduling/resources', entityLabel: 'Resource Assignment',
+        projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
+        component: ActivityResources, columns: [], fields: [],
       },
     ],
   },

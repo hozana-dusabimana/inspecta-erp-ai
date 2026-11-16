@@ -7,6 +7,7 @@ import GeoPicker from './GeoPicker';
 import DocumentAttachments from './DocumentAttachments';
 import FileOrUrlInput from './FileOrUrlInput';
 import { flushPending, type PendingAttachment } from '../lib/attachments';
+import { useEvidenceRules, pendingToEvidence } from '../lib/evidence';
 
 function DynamicSelect({ field, value, onChange, required, projectId }: { field: Field; value: string; onChange: (v: string) => void; required?: boolean; projectId?: string }) {
   const url = useMemo(() => {
@@ -251,7 +252,7 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
       // Upload anything queued on the form now that the record has an id. A
       // failed attachment must not read as a failed create — the record is
       // already saved, so surface the problem and keep the panel open.
-      if (pending.length) {
+      if (pending.length && !evidenceRequired) {
         setAttaching(true);
         const errors = await flushPending(
           { module: attachModule, recordId: saved.id, projectId: projectScoped ? projectId : undefined },
@@ -299,7 +300,10 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
   };
   const back = () => { setError(null); setStep((s) => Math.max(0, s - 1)); };
 
-  const submit = (e: React.FormEvent) => {
+  const evidenceRules = useEvidenceRules().data;
+  const evidenceRequired = !isEdit && Boolean(attachModule && evidenceRules?.rules?.[attachModule]);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const miss = missingIn(visible);
     if (miss) {
@@ -308,7 +312,22 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
       if (idx >= 0) setStep(idx);
       return;
     }
-    save.mutate(buildPayload(fields, form, projectId, projectScoped));
+    const payload = buildPayload(fields, form, projectId, projectScoped);
+    if (evidenceRequired) {
+      // The company requires photo evidence for this record: it goes with the save, stamped.
+      if (!pending.length) { setError(`Missing evidence: attach at least one photo (or a link to one) for this ${entityLabel.toLowerCase()} before saving. Required by your company's evidence settings.`); return; }
+      try {
+        setAttaching(true);
+        payload._evidence = await pendingToEvidence(attachModule!, projectScoped ? projectId : undefined, pending);
+        setPending([]);
+      } catch (err) {
+        setError(`Could not upload the evidence: ${errorMessage(err)}`);
+        return;
+      } finally {
+        setAttaching(false);
+      }
+    }
+    save.mutate(payload);
   };
 
   const renderField = (f: Field) => (

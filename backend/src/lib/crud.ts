@@ -7,6 +7,7 @@ import { NotFound, BadRequest, Conflict } from './errors';
 import { Prisma } from '@prisma/client';
 import { assertReason, CancelActor } from './posting';
 import { assertMakerChecker } from './maker-checker';
+import { EvidenceModule, evidenceFromBody, assertEvidence, saveEvidence } from './evidence';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { auditFromRequest, recordAudit } from '../auth/audit';
 import { Permission } from '../auth/permissions';
@@ -142,6 +143,11 @@ export interface CrudOptions {
   onDelete?: (tx: Prisma.TransactionClient, record: Record<string, unknown>, req: Request) => Promise<void>;
   /** Marks the model as a posted record: see PostingOptions. */
   posting?: PostingOptions;
+  /**
+   * Photo evidence (T2-09): when the company's rules require it for this module, a create
+   * without `_evidence` is refused; the evidence is stored on the record, stamped.
+   */
+  evidence?: EvidenceModule;
 }
 
 const DATE_FIELDS = new Set([
@@ -342,8 +348,14 @@ export async function runCreate(
 
   if (!commit) return { data };
 
+  const evidence = opts.evidence ? evidenceFromBody(body) : [];
+  if (opts.evidence) await assertEvidence(req, opts.evidence, evidence);
+
   const delegate = (prisma as unknown as Record<string, Delegate>)[opts.model];
   const record = await delegate.create({ data });
+  if (opts.evidence && evidence.length) {
+    await saveEvidence(orgId, req.user!.id, opts.evidence, String(record.id), (record.projectId as string) ?? null, evidence);
+  }
   await recordAudit({
     organizationId: orgId,
     userId: req.user!.id,

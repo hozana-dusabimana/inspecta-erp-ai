@@ -7,7 +7,9 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { assertProjectInOrg } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 import { labourCost } from '../../lib/formulas';
-import { resolveDailyRate } from '../fieldops/labour';
+import { resolveDailyRate, workingDaysPerMonth, employeeDayRate } from '../fieldops/labour';
+import { evidenceFromBody, assertEvidence, saveEvidence } from '../../lib/evidence';
+import { stampReport, daySummary } from './report-checks';
 import { postProductionCosts } from '../finance/finance.routes';
 import { syncProjectProgress } from '../../lib/project-metrics';
 
@@ -34,6 +36,9 @@ export const fieldReportSchema = z.object({
     actualQty: z.number().nonnegative(),
     remarks: z.string().max(2000).optional(),
     labour: z.array(labourLine).max(30).default([]),
+    /** Named employees who worked on this activity today (T2-04): costed at their own wage. */
+    workers: z.array(z.object({ employeeId: z.string(), hours: z.number().positive().max(24) })).max(200).default([]),
+    crewId: z.string().optional(),
   })).min(1, 'Add at least one activity').max(60),
   materials: z.array(z.object({
     materialId: z.string(),
@@ -95,12 +100,23 @@ fieldReportRouter.get('/field-report/today', requirePermission('production:read'
   }));
 }));
 
+// What the day already holds, from the people who own each record (Foreman, Store, QC, HSE).
+fieldReportRouter.get('/field-report/day', requirePermission('production:read'), asyncHandler(async (req, res) => {
+  const projectId = String(req.query.projectId ?? '');
+  if (!projectId) throw BadRequest('projectId is required');
+  await assertProjectInOrg(req.user!.orgId, projectId);
+  return ok(res, await daySummary(req.user!.orgId, projectId, String(req.query.date ?? new Date().toISOString())));
+}));
+
 // One submit writes the whole day: report header, entries, headcount, materials, equipment.
 fieldReportRouter.post('/field-report', requirePermission('production:write'), asyncHandler(async (req, res) => {
   const orgId = req.user!.orgId;
   const userId = req.user!.id;
   const body = fieldReportSchema.parse(req.body);
   await assertProjectInOrg(orgId, body.projectId);
+  // Evidence (T2-09): a report is refused without at least one site photo, and the message says so.
+  const evidence = evidenceFromBody(req.body);
+  await assertEvidence(req, 'daily_report', evidence, (body.photos ?? []).length + (body.signedSheetUrl ? 1 : 0));
 
   if (body.clientRef) {
     const dup = await prisma.dailyReport.findFirst({ where: { organizationId: orgId, clientRef: body.clientRef } });
@@ -117,6 +133,21 @@ fieldReportRouter.post('/field-report', requirePermission('production:write'), a
   const eqIds = [...new Set(body.equipment.map((e) => e.equipmentId))];
   if (eqIds.length && (await prisma.equipment.count({ where: { id: { in: eqIds }, organizationId: orgId } })) !== eqIds.length) throw BadRequest('A piece of equipment was not found');
   body.materials.forEach((m) => { if ((m.activityIndex ?? 0) >= body.activities.length) throw BadRequest('A material points at an activity that is not in the report'); });
+
+  // Named employees: must belong to the company, and one attendance per person per day.
+  const workerIds = [...new Set(body.activities.flatMap((a) => a.workers.map((w) => w.employeeId)))];
+  const employees = workerIds.length ? await prisma.employee.findMany({ where: { id: { in: workerIds }, organizationId: orgId } }) : [];
+  if (employees.length !== workerIds.length) throw BadRequest('An employee in the report was not found');
+  const dup = body.activities.flatMap((a) => a.workers.map((w) => w.employeeId)).find((id, i, all) => all.indexOf(id) !== i);
+  if (dup) throw BadRequest(`${employees.find((e) => e.id === dup)?.fullName ?? 'An employee'} is listed twice: record one attendance per person per day.`);
+  const dayStart = day(body.date);
+  const already = workerIds.length ? await prisma.attendance.findMany({ where: { employeeId: { in: workerIds }, date: dayStart }, select: { employeeId: true } }) : [];
+  if (already.length) throw BadRequest(`${employees.find((e) => e.id === already[0].employeeId)?.fullName} already has attendance on ${body.date.slice(0, 10)}.`);
+  const daysPerMonth = await workingDaysPerMonth(orgId);
+  const empRate = new Map(employees.map((e) => [e.id, employeeDayRate(e, daysPerMonth)]));
+  const empName = new Map(employees.map((e) => [e.id, e.fullName]));
+  const crewIds = [...new Set(body.activities.map((a) => a.crewId).filter(Boolean) as string[])];
+  if (crewIds.length && (await prisma.crew.count({ where: { id: { in: crewIds }, organizationId: orgId } })) !== crewIds.length) throw BadRequest('A crew was not found');
 
   // Casual labour is costed from the company wage rate for the trade.
   const rates = new Map<string, number | null>();
@@ -136,19 +167,30 @@ fieldReportRouter.post('/field-report', requirePermission('production:write'), a
     });
     const entryIds: string[] = [];
     for (const a of body.activities) {
-      const laborHours = a.labour.reduce((s, l) => s + l.headcount * l.hours, 0);
+      // Labour hours are the sum of the attendance written below, never typed (T1-05 c).
+      const laborHours = a.labour.reduce((s, l) => s + l.headcount * l.hours, 0) + a.workers.reduce((s, w) => s + w.hours, 0);
       const code = a.wbsItemId ? wbsCode.get(a.wbsItemId) : undefined;
       const equipmentHours = body.equipment.filter((e) => a.wbsItemId && e.wbsItemId === a.wbsItemId).reduce((s, e) => s + e.hours, 0);
       const entry = await tx.productionEntry.create({
         data: {
           organizationId: orgId, projectId: body.projectId, dailyReportId: report.id, date,
-          wbsActivity: code ? `${code} - ${a.name}` : a.name, wbsItemId: a.wbsItemId, unit: a.unit || 'unit',
+          wbsActivity: code ? `${code} - ${a.name}` : a.name, wbsItemId: a.wbsItemId, unit: a.unit || 'unit', crewId: a.crewId,
           plannedQty: a.plannedQty ?? 0, actualQty: a.actualQty, laborHours, equipmentHours,
           weatherCondition: body.weather, remarks: a.remarks ?? body.note, photos: body.photos ?? [],
           createdById: userId, createdBy: userId, updatedBy: userId,
         },
       });
       entryIds.push(entry.id);
+      for (const w of a.workers) {
+        const rate = empRate.get(w.employeeId) ?? null;
+        await tx.attendance.create({
+          data: {
+            organizationId: orgId, projectId: body.projectId, employeeId: w.employeeId, wbsItemId: a.wbsItemId, productionEntryId: entry.id, date,
+            workerName: empName.get(w.employeeId) ?? 'Employee', headcount: 1, hoursWorked: w.hours,
+            status: 'present', present: true, ratePerDay: rate, cost: rate ? labourCost(1, w.hours, rate) : 0, evidenceUrl: body.signedSheetUrl,
+          },
+        });
+      }
       for (const l of a.labour) {
         const rate = rates.get(l.trade.toLowerCase()) ?? null;
         await tx.attendance.create({
@@ -174,12 +216,19 @@ fieldReportRouter.post('/field-report', requirePermission('production:write'), a
     return report.id;
   }, { timeout: 30000 });
 
+  if (evidence.length || body.photos?.length) {
+    // Stamped evidence (with location) wins; plain photo URLs are stored when no stamp came with them.
+    const items = evidence.length ? evidence : (body.photos ?? []).filter((u) => /^https?:\/\//i.test(u)).map((url) => ({ url, sourceType: 'LINK' as const }));
+    await saveEvidence(orgId, userId, 'daily_report', reportId, body.projectId, items).catch(() => undefined);
+  }
+  // Cross-checks + lateness are stamped on the report; the approver must answer any flag in writing.
+  const stamped = await stampReport(orgId, reportId);
   await syncProjectProgress(orgId, body.projectId).catch(() => undefined);
   // Labour and equipment cost flow to the ledger (cost by WBS, CPI); a failure here must not lose the report.
   let costPosted: number | null = null;
   try { costPosted = (await postProductionCosts(orgId, body.projectId, userId)).posted; } catch { /* retried by the next post-production run */ }
-  await notify({ organizationId: orgId, type: 'APPROVAL', severity: 'MEDIUM', title: 'Daily report submitted', message: `A daily report for ${body.date.slice(0, 10)} awaits approval.`, link: '/production' }).catch(() => undefined);
+  await notify({ organizationId: orgId, type: 'APPROVAL', severity: 'MEDIUM', title: 'Daily report submitted', message: `A daily report for ${body.date.slice(0, 10)} awaits approval.`, link: '/production', refKey: `daily-report:${reportId}` }).catch(() => undefined);
 
   // Report what is really in the database, not what we meant to write.
-  return ok(res, { duplicate: false, costPosted, ...(await readBack(reportId)) }, 201);
+  return ok(res, { duplicate: false, costPosted, flags: stamped.flags, late: stamped.late, ...(await readBack(reportId)) }, 201);
 }));

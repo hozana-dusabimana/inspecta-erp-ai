@@ -37,6 +37,7 @@ const incidentCreate = z.object({
 });
 router.use('/incidents', createCrudRouter({
   model: 'incident', entity: 'incident', readPerm: 'hse:read', writePerm: 'hse:write',
+  evidence: 'incident',
   createSchema: incidentCreate, updateSchema: incidentCreate.partial(),
   autoCode: { field: 'number', prefix: 'INC' },
   searchField: 'description', dateField: 'date', filterFields: ['type', 'severity'],
@@ -95,6 +96,7 @@ const safetyCreate = z.object({
 });
 router.use('/safety-inspections', createCrudRouter({
   model: 'safetyInspection', entity: 'safety-inspection', readPerm: 'hse:read', writePerm: 'hse:write',
+  evidence: 'safety_inspection',
   createSchema: safetyCreate, updateSchema: safetyCreate.partial(),
   searchField: 'title', dateField: 'date', filterFields: ['result'],
   requireProject: true, orderBy: { date: 'desc' }, transform: stamp,

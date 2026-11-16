@@ -5,6 +5,7 @@ import { api, errorMessage } from '../lib/api';
 import { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
 import EntityForm from './EntityForm';
 import RecordDetail from './RecordDetail';
+import { useEvidenceRules } from '../lib/evidence';
 
 // Re-exported so existing imports (`from './ResourceManager'`) keep working.
 export type { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
@@ -128,6 +129,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
     enabled: Boolean(attachModule),
   });
   const covered = useMemo(() => new Set(coverageData?.data.recordIds ?? []), [coverageData]);
+  const evidenceRules = useEvidenceRules().data;
   const total = meta?.total ?? rows.length;
   const sums = (meta as any)?.sums as Record<string, number> | undefined;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -309,8 +311,8 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       <td className="px-5 py-2.5">
                         {covered.has(row.id)
                           ? <span className="text-emerald-600 font-bold" title="Documents attached">✓</span>
-                          : EVIDENCE_REQUIRED[attachModule]
-                            ? <span className="text-amber-600 font-bold" title={`No evidence yet. Required ${EVIDENCE_REQUIRED[attachModule]}.`}>⚠ Required</span>
+                          : (EVIDENCE_REQUIRED[attachModule] || evidenceRules?.rules?.[attachModule])
+                            ? <span className="text-amber-600 font-bold" title={`No evidence yet. Required ${EVIDENCE_REQUIRED[attachModule] ?? 'by your company evidence settings'}.`}>⚠ Required</span>
                             : <span className="text-brand-on-surface-variant font-semibold text-[11px]" title="Optional: attach a photo, file or link as proof.">Optional</span>}
                       </td>
                     )}

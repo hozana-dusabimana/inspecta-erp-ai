@@ -8,6 +8,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
 import FileOrUrlInput from './FileOrUrlInput';
+import EvidenceSettings from './EvidenceSettings';
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -740,7 +741,7 @@ export default function AdminPage({ onNavigate, onLogout }: Props) {
 
           {tab === 'users' && <UsersTab />}
           {tab === 'roles' && <RolesTab />}
-          {tab === 'company' && <CompanyTab />}
+          {tab === 'company' && <><CompanyTab /><div className="mt-6"><EvidenceSettings /></div></>}
         </>
       )}
     </ErpLayout>

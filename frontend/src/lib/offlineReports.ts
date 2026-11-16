@@ -61,7 +61,14 @@ export interface SubmitResult {
 export async function sendReport(r: QueuedReport): Promise<SubmitResult> {
   const photos = await Promise.all(r.photos.map(uploadPhoto));
   const signedSheetUrl = r.sheet ? await uploadPhoto(r.sheet) : undefined;
-  const res = await api.post<SubmitResult>('/production/field-report', { ...r.payload, photos, signedSheetUrl });
+  const geo = (r.payload.geo ?? {}) as { lat?: number; lng?: number; at?: string };
+  // Stamped evidence: who (the server adds the uploader), when and where each photo was taken.
+  const _evidence = [...photos, ...(signedSheetUrl ? [signedSheetUrl] : [])].map((url, i) => ({
+    url, sourceType: 'LINK' as const, fileType: 'photo', mimeType: 'image/jpeg', fileName: i < photos.length ? (r.photos[i]?.name ?? 'site-photo.jpg') : 'signed-sheet.jpg',
+    capturedAt: geo.at ?? new Date(r.createdAt).toISOString(), ...(geo.lat != null ? { capturedLat: geo.lat, capturedLng: geo.lng } : {}),
+  }));
+  const { geo: _g, ...payload } = r.payload;
+  const res = await api.post<SubmitResult>('/production/field-report', { ...payload, photos, signedSheetUrl, _evidence });
   return res.data;
 }
 

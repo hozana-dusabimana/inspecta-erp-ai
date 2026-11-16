@@ -34,6 +34,7 @@ const inspectionCreate = z.object({
 });
 router.use('/inspections', createCrudRouter({
   model: 'inspection', entity: 'inspection', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
+  evidence: 'inspection',
   createSchema: inspectionCreate, updateSchema: inspectionCreate.partial(),
   searchField: 'title', dateField: 'date', filterFields: ['result'],
   requireProject: true, orderBy: { date: 'desc' },
@@ -66,6 +67,7 @@ const testCreate = z.object({
 });
 router.use('/material-tests', createCrudRouter({
   model: 'materialTest', entity: 'material-test', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
+  evidence: 'material_test',
   createSchema: testCreate, updateSchema: testCreate.partial(),
   searchField: 'batchNumber', dateField: 'sampleDate', filterFields: ['result', 'testType'],
   requireProject: true, orderBy: { sampleDate: 'desc' },

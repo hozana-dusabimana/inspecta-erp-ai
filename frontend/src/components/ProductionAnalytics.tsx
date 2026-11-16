@@ -68,10 +68,22 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
   const { data: aiData } = useQuery({ queryKey: ['/production/ai-summary', projectId], queryFn: () => api.get<any>(`/production/ai-summary?projectId=${projectId}`), enabled });
   const { data: rData } = useQuery({ queryKey: ['/production/daily-reports', projectId], queryFn: () => api.get<any>(`/production/daily-reports?projectId=${projectId}`), enabled });
 
+  const [actError, setActError] = useState<string | null>(null);
   const act = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => api.post(`/production/daily-reports/${id}/${action}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['/production/daily-reports', projectId] }),
+    mutationFn: ({ id, action, reason }: { id: string; action: string; reason?: string }) => api.post(`/production/daily-reports/${id}/${action}`, reason ? { reason } : {}),
+    onSuccess: () => { setActError(null); qc.invalidateQueries(); },
+    onError: (e) => setActError(e instanceof Error ? e.message : 'Failed'),
   });
+  // A flagged report needs a written reason to approve; a rejection always needs one.
+  const decideReport = (r: any, action: string) => {
+    if (action === 'reject' || (action === 'approve' && (r.flags ?? []).length)) {
+      const why = window.prompt(action === 'reject' ? 'Reason for rejecting this report:' : `This report has ${r.flags.length} flagged check(s):\n\n${r.flags.map((f: string) => '• ' + f.split(': ').slice(1).join(': ')).join('\n')}\n\nWrite why it is still correct:`);
+      if (!why || why.trim().length < 5) { setActError('A written reason of at least 5 characters is required.'); return; }
+      act.mutate({ id: r.id, action, reason: why.trim() });
+      return;
+    }
+    act.mutate({ id: r.id, action });
+  };
 
   if (!projectId) return <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm p-6 text-sm text-brand-on-surface-variant mb-6">Select a project to view production analytics & profitability impact.</div>;
 
@@ -100,17 +112,22 @@ export default function ProductionAnalytics({ projectId }: { projectId?: string 
       {/* Daily report approvals */}
       {reports.length > 0 && (
         <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-brand-outline-variant/15 font-bold text-brand-primary text-sm">Daily Reports</div>
+          <div className="px-5 py-3 border-b border-brand-outline-variant/15 font-bold text-brand-primary text-sm flex items-center justify-between gap-2">Daily Reports {actError && <span role="alert" className="text-[11px] font-semibold text-red-700">{actError}</span>}</div>
           <table className="w-full text-xs"><tbody>
             {reports.map((r: any) => (
               <tr key={r.id} className="border-b border-brand-outline-variant/10 last:border-0">
                 <td className="px-4 py-2 font-bold text-brand-primary">{r.reportNumber}</td>
                 <td className="px-4 py-2 text-brand-on-surface-variant">{new Date(r.reportDate).toLocaleDateString()}</td>
                 <td className="px-4 py-2">{r._count?.entries ?? 0} entries</td>
-                <td className="px-4 py-2"><span className="px-2 py-0.5 rounded-full bg-brand-surface text-[10px] font-bold">{r.status}</span></td>
+                <td className="px-4 py-2">
+                  <span className="px-2 py-0.5 rounded-full bg-brand-surface text-[10px] font-bold">{r.status}</span>
+                  {r.late && <span className="ml-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-bold" title="Submitted after the daily cut-off">LATE</span>}
+                  {(r.flags ?? []).length > 0 && <span className="ml-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-bold" title={(r.flags ?? []).join('\n')}>⚠ {r.flags.length} check{r.flags.length > 1 ? 's' : ''}</span>}
+                  {r.correctionCount > 0 && <span className="ml-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold" title="Corrections logged after approval (see Audit Trail)">{r.correctionCount} correction{r.correctionCount > 1 ? 's' : ''}</span>}
+                </td>
                 <td className="px-4 py-2"><div className="flex justify-end gap-1.5">
                   {(REPORT_ACTIONS[r.status] ?? []).filter(([, , ap]) => !ap || hasPermission('approval:write')).map(([label, action]) => (
-                    <button key={action} disabled={act.isPending} onClick={() => act.mutate({ id: r.id, action })} className="px-2.5 py-1 rounded-md bg-brand-primary text-white text-[10px] font-bold hover:bg-brand-primary-container disabled:opacity-50">{label}</button>
+                    <button key={action} disabled={act.isPending} onClick={() => decideReport(r, action)} className="px-2.5 py-1 rounded-md bg-brand-primary text-white text-[10px] font-bold hover:bg-brand-primary-container disabled:opacity-50">{label}</button>
                   ))}
                 </div></td>
               </tr>

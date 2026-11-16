@@ -8,6 +8,7 @@ import { debugLog, secretsEnabled } from './lib/debug-log';
 import { isEmailConfigured } from './lib/email';
 import { ensureCostIntegrityIndex } from './lib/posting';
 import { syncProjectProgress } from './lib/project-metrics';
+import { checkMissingReports } from './modules/production/report-checks';
 
 async function main() {
   // Fail fast on insecure production configuration (weak secrets, etc.).
@@ -53,6 +54,10 @@ async function main() {
   server.listen(env.port, () => {
     // eslint-disable-next-line no-console
     console.log(`🏗️  INSPECTA BUILDOS backend on http://localhost:${env.port} (${env.nodeEnv}) — realtime enabled`);
+    // Daily report cut-off watch (T2-03 d): alert the PM and company admin when a report is missing.
+    const watch = () => void checkMissingReports().catch(() => undefined);
+    setTimeout(watch, 60_000).unref();
+    setInterval(watch, 30 * 60_000).unref();
     // Bring stored progress (WBS rows, activities, project row) in line with the one calculation.
     void (async () => {
       const projects = await prisma.project.findMany({ select: { id: true, organizationId: true } });

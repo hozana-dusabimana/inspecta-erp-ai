@@ -1,4 +1,4 @@
-import { call, provisionTenant, destroyTenant, addMember, disconnect, Tenant } from './harness';
+import { call, provisionTenant, destroyTenant, addMember, disconnect, Tenant, EVIDENCE } from './harness';
 
 /**
  * Acceptance tests for the T1 end-to-end feedback (document-feedback-1, 16 Nov 2026).
@@ -33,7 +33,7 @@ describe('Part 1 — cost integrity (T1-01, T1-02)', () => {
   let grn: any; let issue: any;
 
   it('GRN raises stock; an issue of 50 bags at RWF 14,000 raises spend by 700,000 and lowers stock by 50', async () => {
-    grn = ok(await call('post', '/inventory/grn', { materialId: cement.id, projectId: P.id, quantityReceived: 200, unitCost: 14_000 }, admin));
+    grn = ok(await call('post', '/inventory/grn', { ...EVIDENCE,  materialId: cement.id, projectId: P.id, quantityReceived: 200, unitCost: 14_000 }, admin));
     expect(await stockOf(cement.id)).toBe(200);
     const before = await summary(P.id);
     issue = ok(await call('post', '/inventory/material-issues', { materialId: cement.id, projectId: P.id, wbsItemId: w11.id, quantityIssued: 50 }, admin));
@@ -91,7 +91,7 @@ describe('Part 1 — cost integrity (T1-01, T1-02)', () => {
   });
 
   it('a GRN whose stock is already issued cannot be cancelled; once free it cancels and stock returns', async () => {
-    const small = ok(await call('post', '/inventory/grn', { materialId: cement.id, projectId: P.id, quantityReceived: 10, unitCost: 14_000 }, admin));
+    const small = ok(await call('post', '/inventory/grn', { ...EVIDENCE,  materialId: cement.id, projectId: P.id, quantityReceived: 10, unitCost: 14_000 }, admin));
     expect(await stockOf(cement.id)).toBe(160);
     // 150 + 10 on hand, of which 10 can go: cancelling the 200-bag GRN would leave −40.
     const blocked = await call('post', `/inventory/grn/${grn.id}/cancel`, { reason: 'Wrong supplier' }, admin);
@@ -355,5 +355,141 @@ describe('Part 4 — progress roll-up (T1-07)', () => {
     expect(evm.spi).toBe(0.4);
     const log = ok(await call('get', `/audit?entity=production-entry&recordId=${entry.id}&action=UPDATE`, undefined, admin));
     expect(log[0].changes.find((c: any) => c.field === 'actualQty')).toBeTruthy();
+  });
+});
+
+describe('Part 3 — labour and resource assignment (T1-05, T2-04)', () => {
+  let S: any; let w: any; let a10: any; let emp: any;
+  const today = new Date().toISOString().slice(0, 10);
+  beforeAll(async () => {
+    S = ok(await call('post', '/projects', { name: 'T1 Labour check' }, admin));
+    w = ok(await call('post', '/planning/wbs', { projectId: S.id, code: '1.1', name: 'Slab concrete', unit: 'm3', quantity: 100 }, admin));
+    ok(await call('post', '/planning/boq', { projectId: S.id, wbsItemId: w.id, code: 'B1', description: 'Slab', quantity: 100, rate: 100_000 }, admin));
+    a10 = ok(await call('post', '/scheduling', { projectId: S.id, code: 'A10', name: 'Slab concrete', durationDays: 10, wbsItemId: w.id }, admin));
+    emp = ok(await call('post', '/hr/employees', { fullName: 'T1 Mason One', dailyWage: 10_000 }, admin));
+  });
+
+  it('assign EMP to A10, record one day of attendance: RWF 10,000 posts to cost and shows in the wage bill', async () => {
+    ok(await call('post', '/scheduling/resources', { projectId: S.id, activityId: a10.id, resourceType: 'EMPLOYEE', employeeId: emp.id, plannedDays: 5 }, admin));
+    const before = await summary(S.id);
+    const hcBefore = ok(await call('get', '/hr/headcount', undefined, admin));
+    const att = ok(await call('post', '/fieldops/attendance', { ...EVIDENCE, projectId: S.id, employeeId: emp.id, wbsItemId: w.id, date: `${today}T00:00:00.000Z`, status: 'present', hoursWorked: 8 }, admin));
+    expect(Number(att.cost)).toBe(10_000);
+    expect((await summary(S.id)).actualCost - before.actualCost).toBe(10_000);
+    const hc = ok(await call('get', '/hr/headcount', undefined, admin));
+    expect(hc.labourCostThisMonth - hcBefore.labourCostThisMonth).toBe(10_000);
+    expect(hc.monthlyWageBillActive).toBeGreaterThanOrEqual(10_000 * hc.workingDaysPerMonth); // no longer 0
+    const pva = ok(await call('get', `/scheduling/resources/plan-vs-actual?activityId=${a10.id}`, undefined, admin));
+    const row = pva.planned.find((r: any) => r.type === 'EMPLOYEE');
+    expect(row.plannedDays).toBe(5);
+    expect(row.actualHours).toBe(8);
+    expect(row.actualCost).toBe(10_000);
+  });
+
+  it('attendance needs photo evidence (company rule) and the message says so', async () => {
+    const r = await call('post', '/fieldops/attendance', { projectId: S.id, workerName: 'No photo', trade: 'Mason', hoursWorked: 8 }, admin);
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Missing evidence: a attendance needs at least one photo|Missing evidence/);
+  });
+
+  it('typed labour hours with no named workers are flagged and never costed (no more 80 h = RWF 1,600)', async () => {
+    const before = await summary(S.id);
+    const pe = ok(await call('post', '/production', { projectId: S.id, wbsItemId: w.id, plannedQty: 100, actualQty: 30, laborHours: 80 }, admin));
+    expect(pe.flags).toContain('LABOUR_WITHOUT_ATTENDANCE');
+    ok(await call('post', `/finance/post-production?projectId=${S.id}`, {}, admin));
+    expect((await summary(S.id)).actualCost).toBe(before.actualCost);
+  });
+});
+
+describe('Part 6 — daily report workflow and evidence (T2-03, T2-09)', () => {
+  let D: any; let w: any; let emp: any; let se: { id: string; token: string }; let pm6: { id: string; token: string };
+  let report: any;
+  const yday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const payload = (extra: Record<string, unknown> = {}) => ({
+    projectId: D.id, date: yday,
+    activities: [{ wbsItemId: w.id, name: 'Slab concrete', unit: 'm3', plannedQty: 10, actualQty: 10, labour: [], workers: [{ employeeId: emp.id, hours: 8 }] }],
+    ...extra,
+  });
+  beforeAll(async () => {
+    D = ok(await call('post', '/projects', { name: 'T1 Report check' }, admin));
+    w = ok(await call('post', '/planning/wbs', { projectId: D.id, code: '1.1', name: 'Slab concrete', unit: 'm3', quantity: 100 }, admin));
+    ok(await call('post', '/planning/boq', { projectId: D.id, wbsItemId: w.id, code: 'B1', description: 'Slab', quantity: 100, rate: 100_000 }, admin));
+    emp = ok(await call('post', '/hr/employees', { fullName: 'T1 Steel Fixer', dailyWage: 10_000 }, admin));
+    se = await addMember(t, 'SITE_ENGINEER', 'se6');
+    pm6 = await addMember(t, 'PROJECT_MANAGER', 'pm6');
+  });
+
+  it('saving a report with no photo is refused with a message naming what is missing', async () => {
+    const r = await call('post', '/production/field-report', payload(), se.token);
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Missing evidence: a daily report needs at least one photo/);
+  });
+
+  it('a report is built from attendance, flags a pour with no cement and no test, and shows the named worker with hours and cost', async () => {
+    report = ok(await call('post', '/production/field-report', payload({ photos: ['https://example.com/e2e/pour.jpg'] }), se.token));
+    expect(report.flags.some((f: string) => f.startsWith('CONCRETE_WITHOUT_CEMENT'))).toBe(true);
+    expect(report.flags.some((f: string) => f.startsWith('POUR_WITHOUT_TEST'))).toBe(true);
+    expect(report.late).toBe(true); // yesterday's report, sent today
+    const detail = ok(await call('get', `/production/daily-reports/${report.reportId}/detail`, undefined, admin));
+    const worker = detail.entries[0].workers[0];
+    expect(worker.name).toMatch(/T1 Steel Fixer/);
+    expect(worker.hours).toBe(8);
+    expect(worker.cost).toBe(10_000);
+    expect(detail.entries[0].laborHours).toBe(8); // derived from attendance, not typed
+    const day = ok(await call('get', `/production/field-report/day?projectId=${D.id}&date=${yday}`, undefined, admin));
+    expect(day.attendance[0].cost).toBe(10_000);
+    const docs = ok(await call('get', `/project-documents?module=daily_report&recordId=${report.reportId}`, undefined, admin));
+    expect(docs.length).toBeGreaterThan(0);
+  });
+
+  it('nothing counts until approved: progress and cost come from approved reports only', async () => {
+    const evm = ok(await call('get', `/finance/evm?projectId=${D.id}`, undefined, admin));
+    expect(evm.actualProgressPct).toBe(0);
+    expect((await summary(D.id)).actualCost).toBe(0);
+  });
+
+  it('the PM cannot edit what others entered', async () => {
+    const entryId = ok(await call('get', `/production/daily-reports/${report.reportId}/detail`, undefined, admin)).entries[0].id;
+    const r = await call('put', `/production/${entryId}`, { actualQty: 12 }, pm6.token);
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatch(/Only the person who entered/);
+  });
+
+  it('a flagged report cannot be approved without a written reason; the preparer cannot approve', async () => {
+    expect((await call('post', `/production/daily-reports/${report.reportId}/approve`, { reason: 'all good here' }, se.token)).status).toBe(403);
+    const noReason = await call('post', `/production/daily-reports/${report.reportId}/approve`, {}, pm6.token);
+    expect(noReason.status).toBe(400);
+    expect(noReason.body.error).toMatch(/flagged cross-check/);
+    ok(await call('post', `/production/daily-reports/${report.reportId}/approve`, { reason: 'Cement came from the batching plant on site; cubes sampled on day 2' }, pm6.token));
+    const evm = ok(await call('get', `/finance/evm?projectId=${D.id}`, undefined, admin));
+    expect(evm.actualProgressPct).toBe(10);
+    expect((await summary(D.id)).actualCost).toBe(10_000);
+  });
+
+  it('after approval a change is only a correction, with who, when and why', async () => {
+    const entryId = ok(await call('get', `/production/daily-reports/${report.reportId}/detail`, undefined, admin)).entries[0].id;
+    const locked = await call('put', `/production/${entryId}`, { actualQty: 12 }, se.token);
+    expect(locked.status).toBe(409);
+    expect(locked.body.error).toMatch(/locked/);
+    expect((await call('post', `/production/${entryId}/correct`, { actualQty: 12 }, se.token)).status).toBe(400); // no reason
+    ok(await call('post', `/production/${entryId}/correct`, { actualQty: 12, reason: 'Surveyor re-measured the slab' }, se.token));
+    const log = ok(await call('get', `/audit?entity=production-entry&recordId=${entryId}`, undefined, admin));
+    const c = log.find((l: any) => /Correction/.test(l.reason ?? ''));
+    expect(c.user.email).toBeTruthy();
+    expect(c.changes.find((x: any) => x.field === 'actualQty')).toMatchObject({ to: expect.anything() });
+    const detail = ok(await call('get', `/production/daily-reports/${report.reportId}/detail`, undefined, admin));
+    expect(detail.correctionCount).toBe(1);
+    expect(ok(await call('get', `/finance/evm?projectId=${D.id}`, undefined, admin)).actualProgressPct).toBe(12);
+  });
+
+  it('a missing report after the cut-off alerts; only the System Admin sets the rules', async () => {
+    expect((await call('put', '/organization/evidence-rules', { dailyReportCutoff: '00:00' }, se.token)).status).toBe(403);
+    ok(await call('put', '/organization/evidence-rules', { dailyReportCutoff: '00:00' }, admin));
+    ok(await call('put', `/projects/${D.id}`, { status: 'ACTIVE' }, admin));
+    const { checkMissingReports } = await import('../../src/modules/production/report-checks');
+    await checkMissingReports();
+    const alerts = ok(await call('get', '/notifications?pageSize=100', undefined, admin));
+    expect(alerts.some((n: any) => String(n.refKey ?? '').startsWith(`missing-report:${D.id}:`))).toBe(true);
+    ok(await call('put', '/organization/evidence-rules', { dailyReportCutoff: '18:00' }, admin));
   });
 });

@@ -200,6 +200,7 @@ const grnCreate = z.object({
 });
 router.use('/grn', createCrudRouter({
   model: 'goodsReceipt', entity: 'goods-receipt',
+  evidence: 'grn',
   readPerm: 'inventory:read', writePerm: 'inventory:write',
   createSchema: grnCreate, updateSchema: grnCreate.partial(),
   autoCode: { field: 'grnNumber', prefix: 'GRN' },

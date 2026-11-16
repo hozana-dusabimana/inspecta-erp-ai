@@ -1,19 +1,26 @@
 import { prisma } from './prisma';
+import { loadWbsProgress, syncWbsAndActivities } from './progress';
 
 /**
  * SINGLE SOURCE OF TRUTH for project progress, earned value and forecast profit.
  * Every screen (Dashboard, Projects, Portfolio, Finance, Production, Profitability,
  * Executive, AI Copilot) must read these numbers from here so they always agree.
  *
- * Definitions
+ * Definitions (T1-03, T1-04, T1-06, T1-07)
  *  - contractValue : signed Contract.value, else the project's declared value; null if neither.
- *  - budget (BAC)  : Σ budget lines, else Σ BOQ budget; null when no cost budget exists ("No data").
- *  - progress      : production achievement (Σactual ÷ Σplanned qty, capped 100) when production
- *                    exists, else the average of schedule activities, else the project's own %.
- *  - EV = progress × BAC;  PV = plannedProgress × BAC
- *  - SPI = EV ÷ PV;  CPI = EV ÷ AC
- *  - EAC = BAC ÷ CPI (= AC ÷ progress); BAC while there is no cost/progress evidence yet
- *  - forecast profit = contractValue − EAC
+ *  - budget (BAC)  : Σ BOQ budget (qty × rate + markup + contingency). The BOQ is the ONE cost
+ *                    budget: budget lines are a breakdown shown beside it, never a second budget.
+ *                    null when the project has no BOQ lines ("No cost budget").
+ *  - progress      : lib/progress.ts — daily entries rolled up through the WBS by weight. Without
+ *                    WBS-linked entries: Σactual ÷ Σplanned of entries, else schedule average,
+ *                    else the project's own %.
+ *  - EV  = progress × BAC        (earned value: the budgeted cost of the work actually done)
+ *  - PV  = planned progress × BAC
+ *  - SPI = EV ÷ PV;  CPI = EV ÷ AC (shown whenever both EV and AC are above zero)
+ *  - ETC = BAC − EV, divided by CPI when CPI < 1 (an overrun so far is assumed to continue)
+ *  - EAC = AC + ETC
+ *  - forecast margin = contractValue − EAC = contractValue − (actual cost + cost to complete).
+ *    Every extra franc of actual cost lowers it by at least a franc.
  */
 
 const num = (v: unknown) => Number(v ?? 0);
@@ -61,7 +68,13 @@ export interface ProjectMetrics {
   billed: number;
   received: number;
   progressPct: number | null;
-  progressSource: 'PRODUCTION' | 'SCHEDULE' | 'MANUAL' | 'NONE';
+  progressSource: 'WBS' | 'PRODUCTION' | 'SCHEDULE' | 'MANUAL' | 'NONE';
+  /** 'BOQ' when the budget comes from the BOQ, 'NONE' when the project has no BOQ lines. */
+  budgetSource: 'BOQ' | 'NONE';
+  /** Σ budget lines: a breakdown of the BOQ budget, shown for reconciliation only. */
+  budgetLinesTotal: number;
+  /** Estimate to complete (BAC − EV, scaled by CPI when CPI < 1). */
+  etc: number | null;
   plannedProgressPct: number | null;
   earnedValue: number | null;
   plannedValue: number | null;
@@ -120,21 +133,25 @@ export function buildProjectMetrics(p: {
   contractValue: number; projectValue: number; budgetLines: number; boqBudget: number;
   actualCost: number; billed: number; received: number;
   prodPlanned: number; prodActual: number; scheduleAvg: number | null; scheduleCount: number; manualPct: number;
+  /** Result of lib/progress.ts when the project has WBS-linked daily entries. */
+  wbs?: { progress: number; planned: number | null } | null;
   startDate: Date | null; endDate: Date | null; openNcrs: number; plannedProfitMarginPct: number; now?: number;
 }): ProjectMetrics {
   const contractValue = p.contractValue > 0 ? p.contractValue : p.projectValue > 0 ? p.projectValue : null;
-  const budget = p.budgetLines > 0 ? p.budgetLines : p.boqBudget > 0 ? p.boqBudget : null;
+  const budget = p.boqBudget > 0 ? p.boqBudget : null;
 
   let progress: number | null = null;
   let source: ProjectMetrics['progressSource'] = 'NONE';
-  if (p.prodPlanned > 0) { progress = Math.min(100, (p.prodActual / p.prodPlanned) * 100); source = 'PRODUCTION'; }
+  if (p.wbs) { progress = p.wbs.progress; source = 'WBS'; }
+  else if (p.prodPlanned > 0) { progress = Math.min(100, (p.prodActual / p.prodPlanned) * 100); source = 'PRODUCTION'; }
   else if (p.scheduleCount > 0 && p.scheduleAvg != null) { progress = p.scheduleAvg; source = 'SCHEDULE'; }
   else if (p.manualPct > 0) { progress = p.manualPct; source = 'MANUAL'; }
 
   // Planned progress: logged production is planned-to-date (100% of what was due);
   // otherwise elapsed schedule time; otherwise unknown.
   let planned: number | null = null;
-  if (source === 'PRODUCTION') planned = 100;
+  if (source === 'WBS') planned = p.wbs!.planned;
+  else if (source === 'PRODUCTION') planned = 100;
   else if (p.startDate && p.endDate && p.endDate > p.startDate) {
     const now = p.now ?? Date.now();
     planned = Math.min(100, Math.max(0, ((now - p.startDate.getTime()) / (p.endDate.getTime() - p.startDate.getTime())) * 100));
@@ -143,14 +160,19 @@ export function buildProjectMetrics(p: {
   const ev = budget != null && progress != null ? (progress / 100) * budget : null;
   const pv = budget != null && planned != null ? (planned / 100) * budget : null;
   const spi = progress != null && planned != null && planned > 0 ? progress / planned : null;
-  // CPI is only credible when the cost recorded is a believable share of the value earned.
-  // Spending under 20% of earned value (CPI above 5) means cost entries are incomplete, not that the
-  // project is a miracle: show No data and keep the estimate at budget instead of a fantasy profit.
-  const costCredible = ev != null && ev > 0 && p.actualCost > 0 && p.actualCost / ev >= 0.2;
-  const cpi = costCredible ? (ev as number) / p.actualCost : null;
-  const costDataIncomplete = ev != null && ev > 0 && !costCredible;
+  // CPI = EV ÷ AC whenever both exist. Spending under 20% of earned value is still shown, but
+  // flagged: it usually means cost entries are missing, not that the job is a miracle.
+  const cpi = ev != null && ev > 0 && p.actualCost > 0 ? ev / p.actualCost : null;
+  const costDataIncomplete = ev != null && ev > 0 && (p.actualCost <= 0 || p.actualCost / ev < 0.2);
+  // Cost to complete: the budget of the work not yet earned; an overrun trend (CPI < 1) is
+  // assumed to continue. A good CPI is never used to shrink it (no fantasy profit).
+  let etcV: number | null = null;
   let eac: number | null = null;
-  if (budget != null) eac = cpi != null ? budget / cpi : budget;
+  if (budget != null) {
+    const remaining = Math.max(0, budget - (ev ?? 0));
+    etcV = cpi != null && cpi < 1 ? remaining / cpi : remaining;
+    eac = p.actualCost + etcV;
+  }
   const forecastProfit = contractValue != null && eac != null ? contractValue - eac : null;
   const forecastMarginPct = forecastProfit != null && contractValue ? (forecastProfit / contractValue) * 100 : null;
   const budgetedProfit = contractValue != null && budget != null ? contractValue - budget : null;
@@ -158,6 +180,7 @@ export function buildProjectMetrics(p: {
   const m: ProjectMetrics = {
     projectId: p.projectId, code: p.code, name: p.name, status: p.status, isDemo: p.isDemo,
     contractValue, budget, actualCost: r2(p.actualCost), billed: r2(p.billed), received: r2(p.received),
+    budgetSource: budget != null ? 'BOQ' : 'NONE', budgetLinesTotal: r2(p.budgetLines), etc: etcV == null ? null : r2(etcV),
     progressPct: progress == null ? null : Number(progress.toFixed(1)), progressSource: source,
     plannedProgressPct: planned == null ? null : Number(planned.toFixed(1)),
     earnedValue: ev == null ? null : r2(ev), plannedValue: pv == null ? null : r2(pv),
@@ -222,7 +245,10 @@ export function rollupPortfolio(projects: ProjectMetrics[]): PortfolioMetrics['t
  * Load metrics for the organisation's projects (or one). Demo/test projects are
  * excluded from client totals unless `includeDemo` is set or a single project is asked for.
  */
-export async function loadProjectMetrics(orgId: string, opts: { projectId?: string; includeDemo?: boolean; projectIds?: string[] | null } = {}): Promise<PortfolioMetrics> {
+/** Part 6 (T2-03): progress counts only daily entries whose report is approved (manual entries without a report still count). */
+export const APPROVED_ONLY = false;
+
+export async function loadProjectMetrics(orgId: string, opts: { projectId?: string; includeDemo?: boolean; projectIds?: string[] | null; approvedOnly?: boolean } = {}): Promise<PortfolioMetrics> {
   const only = opts.projectIds && !opts.projectId ? { in: opts.projectIds } : undefined;
   const scope = { organizationId: orgId, ...(opts.projectId ? { projectId: opts.projectId } : only ? { projectId: only } : {}) };
   const [projects, contracts, budgetLines, boq, costs, invoices, payments, prod, sched, ncrs] = await Promise.all([
@@ -236,10 +262,11 @@ export async function loadProjectMetrics(orgId: string, opts: { projectId?: stri
     prisma.costEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null }, _sum: { amount: true } }),
     prisma.invoice.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
     prisma.payment.groupBy({ by: ['projectId'], where: { ...scope, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
-    prisma.productionEntry.groupBy({ by: ['projectId'], where: scope, _sum: { plannedQty: true, actualQty: true } }),
+    prisma.productionEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null }, _sum: { plannedQty: true, actualQty: true } }),
     prisma.scheduleActivity.groupBy({ by: ['projectId'], where: { ...scope, milestone: false }, _avg: { progressPct: true }, _count: { _all: true } }),
     prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
   ]);
+  const wbsProgress = await loadWbsProgress(orgId, projects.map((p) => p.id), opts.approvedOnly ?? APPROVED_ONLY);
   const by = <T extends { projectId: string | null }>(rows: T[]) => new Map(rows.filter((r) => r.projectId).map((r) => [r.projectId as string, r]));
   const cMap = new Map(contracts.filter((c) => c.projectId).map((c) => [c.projectId as string, num(c.value)]));
   const bl = by(budgetLines), bq = by(boq), co = by(costs), iv = by(invoices), pm = by(payments), pr = by(prod), sc = by(sched), nc = by(ncrs);
@@ -252,6 +279,7 @@ export async function loadProjectMetrics(orgId: string, opts: { projectId?: stri
     prodPlanned: num(pr.get(p.id)?._sum.plannedQty), prodActual: num(pr.get(p.id)?._sum.actualQty),
     scheduleAvg: sc.get(p.id)?._avg.progressPct ?? null, scheduleCount: sc.get(p.id)?._count._all ?? 0,
     manualPct: p.progressPct, startDate: p.startDate, endDate: p.endDate,
+    wbs: (() => { const w = wbsProgress.get(p.id); return w && w.fromEntries && w.project ? { progress: w.project.progress, planned: w.project.planned } : null; })(),
     openNcrs: nc.get(p.id)?._count._all ?? 0, plannedProfitMarginPct: num(p.plannedProfitMargin),
   }));
   return { projects: list, totals: rollupPortfolio(list) };
@@ -259,6 +287,7 @@ export async function loadProjectMetrics(orgId: string, opts: { projectId?: stri
 
 /** Keep Project.progressPct/health columns in step with the computed truth (call after writes). */
 export async function syncProjectProgress(orgId: string, projectId: string): Promise<void> {
+  await syncWbsAndActivities(orgId, projectId).catch(() => undefined);
   const { projects } = await loadProjectMetrics(orgId, { projectId });
   const m = projects[0];
   if (!m || m.progressPct == null) return;

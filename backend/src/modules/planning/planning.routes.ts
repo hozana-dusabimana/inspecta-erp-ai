@@ -7,6 +7,8 @@ import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions, assertProjectInOrg } from '../../lib/crud';
+import { syncProjectProgress } from '../../lib/project-metrics';
+import { loadWbsProgress } from '../../lib/progress';
 import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 import {
   xlsxRaw, rowsFromXlsx, sendTemplate, str, numOrU, hasValue, ImportReport, auditImport,
@@ -70,6 +72,15 @@ export const wbsOpts: CrudOptions = {
   refs: [{ field: 'parentId', model: 'wbsItem' }],
   validate: async (data, req) => {
     await assertUniqueCode('wbsItem', data, req, 'WBS');
+    // Weights drive the project % (T1-07 c). The only top-level item carries the whole job:
+    // default it to 100 and refuse an explicit 0, which would make its progress count for nothing.
+    if (!data.parentId && data.projectId) {
+      const others = await prisma.wbsItem.count({ where: { organizationId: req.user!.orgId, projectId: String(data.projectId), parentId: null, ...(data.id ? { id: { not: String(data.id) } } : {}) } });
+      if (others === 0) {
+        if (data.weightPct === undefined || data.weightPct === null) data.weightPct = 100;
+        else if (Number(data.weightPct) === 0 && (!data.id || req.body?.weightPct !== undefined)) throw BadRequest('This is the only top-level WBS item, so its weight cannot be 0: it carries 100% of the project progress.');
+      }
+    }
     // New nested item: sit one level under its parent unless a level was given.
     if (!data.id && data.parentId && data.level === undefined) {
       const parent = await prisma.wbsItem.findFirst({ where: { id: String(data.parentId), organizationId: req.user!.orgId }, select: { level: true, projectId: true } });
@@ -79,6 +90,7 @@ export const wbsOpts: CrudOptions = {
   },
 };
 
+wbsOpts.afterChange = async (_a, record, req) => { await syncProjectProgress(req.user!.orgId, String(record.projectId)); };
 const wbsRouter = createCrudRouter(wbsOpts);
 
 // ── BOQ (Bill of Quantities) ──────────────────────────────────
@@ -466,7 +478,8 @@ const router = Router();
  *   100%) when production exists, else the manually-entered progressPct.
  * - Parent progress: weight-weighted average of children (falls back to a plain
  *   average when sibling weights are all zero).
- * - Budget: leaf = budgetAmount; parent = sum of children's computed budget.
+ * - Progress comes from lib/progress.ts (the same result every page shows).
+ * - Budget: leaf = Σ BOQ budget on the item (the one cost budget); parent = sum of children.
  * Registered before the /wbs CRUD mount so it isn't captured by /wbs/:id.
  */
 router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyncHandler(async (req, res) => {
@@ -474,7 +487,7 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
   if (!projectId) throw BadRequest('projectId is required');
   const orgId = req.user!.orgId;
 
-  const [items, prod, acts] = await Promise.all([
+  const [items, prod, acts, boqByWbs, engine] = await Promise.all([
     prisma.wbsItem.findMany({ where: { organizationId: orgId, projectId } }),
     prisma.productionEntry.groupBy({
       by: ['wbsItemId'],
@@ -486,7 +499,10 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
       where: { organizationId: orgId, projectId, wbsItemId: { not: null } },
       select: { wbsItemId: true, startDate: true, finishDate: true },
     }),
+    prisma.boqItem.groupBy({ by: ['wbsItemId'], where: { organizationId: orgId, projectId, wbsItemId: { not: null } }, _sum: { budget: true } }),
+    loadWbsProgress(orgId, [projectId]).then((m) => m.get(projectId)),
   ]);
+  const boqBudget = new Map(boqByWbs.map((b) => [b.wbsItemId as string, Number(b._sum.budget ?? 0)]));
 
   const prodById = new Map(prod.map((p) => [p.wbsItemId as string, p._sum]));
   const actsByWbs = new Map<string, { start: number | null; finish: number | null }[]>();
@@ -527,7 +543,7 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
         progress = Math.min(100, (Number(sums?.actualQty ?? 0) / planned) * 100);
         fromProduction = true;
       }
-      result = { progress, budget: Number(it.budgetAmount ?? 0), fromProduction, isLeaf: true, start: minOf(starts), finish: maxOf(finishes) };
+      result = { progress, budget: boqBudget.get(it.id) ?? 0, fromProduction, isLeaf: true, start: minOf(starts), finish: maxOf(finishes) };
     } else {
       let weightSum = 0;
       let weighted = 0;
@@ -561,7 +577,7 @@ router.get('/wbs/rollup', authenticate, requirePermission('planning:read'), asyn
       parentId: it.parentId,
       level: it.level,
       weightPct: it.weightPct,
-      progress: Math.round(r.progress * 10) / 10,
+      progress: Math.round((engine?.byId.get(it.id)?.progress ?? r.progress) * 10) / 10,
       budget: r.budget,
       fromProduction: r.fromProduction,
       isLeaf: r.isLeaf,
@@ -613,8 +629,13 @@ router.post('/setup-wizard', authenticate, requirePermission('planning:write'), 
         data: { organizationId: orgId, projectId: body.projectId, code: it.code, name: it.name, unit: it.unit ?? null, quantity: it.quantity ?? null, budgetAmount: it.budgetAmount ?? null, level: 1, sortOrder: order },
       });
       wbsCreated++;
+      // The budget goes in as a BOQ line on the item: the BOQ is the one cost budget (T1-03).
       if (it.budgetAmount && it.budgetAmount > 0) {
-        await tx.budgetLine.create({ data: { organizationId: orgId, projectId: body.projectId, wbsItemId: wbs.id, category: 'OTHER', description: `${it.code} ${it.name}`, amount: it.budgetAmount, createdBy: userId } });
+        const qty = it.quantity && it.quantity > 0 ? it.quantity : 1;
+        await tx.boqItem.create({ data: {
+          organizationId: orgId, projectId: body.projectId, wbsItemId: wbs.id, code: it.code, description: it.name, unit: it.unit ?? 'item',
+          quantity: qty, rate: Number((it.budgetAmount / qty).toFixed(2)), amount: it.budgetAmount, budget: it.budgetAmount,
+        } });
         budgetLines++;
       }
       if (!haveAct.has(it.code.toLowerCase())) {

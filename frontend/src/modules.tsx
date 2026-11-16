@@ -1043,7 +1043,7 @@ export const MODULES: Record<string, ModuleDef> = {
     summary: (pid) => <FinanceAnalytics projectId={pid} />,
     tabs: [
       {
-        key: 'budget', label: 'Budget', endpoint: '/finance/budget', entityLabel: 'Budget Line', attachModule: 'budget_line',
+        key: 'budget', label: 'Budget Breakdown', endpoint: '/finance/budget', entityLabel: 'Budget Line', attachModule: 'budget_line',
         filters: [{ field: 'category', label: 'Category', options: COST_CATEGORIES }],
         summaryCards: [{ key: 'amount', label: 'Total Budget', money: true }, { key: '__count', label: 'Lines' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1722,7 +1722,7 @@ export const MODULES: Record<string, ModuleDef> = {
         projectScoped: true, readPerm: 'scheduling:read', writePerm: 'scheduling:write',
         columns: [
           { key: 'code', label: 'Code' }, { key: 'name', label: 'Name', sortable: true },
-          { key: 'wbsItem', label: 'WBS', render: (r) => (r.wbsItem ? `${r.wbsItem.code}` : '—') },
+          { key: 'wbsItem', label: 'WBS', render: (r) => (r.wbsItem ? `${r.wbsItem.code}` : <span className="font-bold text-amber-700" title="Not linked to a WBS item: its progress cannot be measured. Edit it and pick the WBS item.">⚠ not linked</span>) },
           { key: 'milestone', label: 'Type', render: (r) => (r.milestone ? '◆ Milestone' : 'Task') },
           { key: 'durationDays', label: 'Duration', align: 'right' },
           { key: 'startDate', label: 'Start', render: (r) => date(r.startDate) },
@@ -1732,7 +1732,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
         fields: [
           { name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true },
-          { name: 'wbsItemId', label: 'WBS Activity', type: 'select', optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
+          { name: 'wbsItemId', label: 'WBS Item (required: progress comes from it)', type: 'select', required: true, optionsEndpoint: '/planning/wbs?pageSize=500', scopeToProject: true, optionLabel: (r) => `${r.code} — ${r.name}` },
           { name: 'durationDays', label: 'Duration (days)', type: 'number', required: true },
           { name: 'startDate', label: 'Start Date', type: 'date' },
           { name: 'milestone', label: 'Milestone?', type: 'select', options: [{ value: 'false', label: 'Task' }, { value: 'true', label: 'Milestone' }] },

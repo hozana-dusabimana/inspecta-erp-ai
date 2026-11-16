@@ -237,3 +237,123 @@ describe('Part 5 — audit log and maker-checker (T2-01, T2-02)', () => {
     expect(denied.some((d: any) => d.userId === se.id && d.newValues.path === '/api/audit')).toBe(true);
   });
 });
+
+describe('Part 2 — one budget, honest margin, CPI (T1-03, T1-04, T1-06)', () => {
+  let Q: any; let wq: any; let boq: any;
+  const pages = async (id: string) => {
+    const fin = (await call('get', `/finance/summary?projectId=${id}`, undefined, admin)).body.data;
+    const prof = (await call('get', `/profitability/analysis?projectId=${id}`, undefined, admin)).body.data.projects[0];
+    const evm = (await call('get', `/finance/evm?projectId=${id}`, undefined, admin)).body.data;
+    const bud = (await call('get', `/dashboards/budget?projectId=${id}`, undefined, admin)).body.data;
+    return { fin, prof, evm, bud };
+  };
+
+  beforeAll(async () => {
+    const client = ok(await call('post', '/clients', { name: 'Budget Client' }, admin));
+    Q = ok(await call('post', '/projects', { name: 'T1 Budget check' }, admin));
+    ok(await call('post', '/contracts', { clientId: client.id, projectId: Q.id, reference: 'T1-B-CONTRACT', value: 100_000_000 }, admin));
+    wq = ok(await call('post', '/planning/wbs', { projectId: Q.id, code: '1.1', name: 'Slab concrete', unit: 'm3', quantity: 100 }, admin));
+    // The old "second budget": budget lines of 40M must not compete with the BOQ.
+    ok(await call('post', '/finance/budget', { projectId: Q.id, description: 'Old estimate', amount: 40_000_000, category: 'OTHER' }, admin));
+  });
+
+  it('without a BOQ the project shows No cost budget and cannot go ACTIVE without confirming', async () => {
+    const { fin, prof, evm } = await pages(Q.id);
+    expect(fin.hasBudget).toBe(false);
+    expect(prof.hasBudget).toBe(false);
+    expect(evm.hasData).toBe(false);
+    const refused = await call('put', `/projects/${Q.id}`, { status: 'ACTIVE' }, admin);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toMatch(/no cost budget/i);
+    ok(await call('put', `/projects/${Q.id}`, { status: 'ACTIVE', confirmNoBudget: true }, admin));
+    const log = ok(await call('get', `/audit?entity=project&recordId=${Q.id}&action=UPDATE`, undefined, admin));
+    expect(log[0].reason).toMatch(/without a cost budget/);
+  });
+
+  it('with a BOQ of RWF 10,000,000 every page shows 10,000,000 as the budget', async () => {
+    boq = ok(await call('post', '/planning/boq', { projectId: Q.id, wbsItemId: wq.id, code: 'TEST-BOQ-01', description: 'Slab', unit: 'm3', quantity: 100, rate: 100_000 }, admin));
+    const { fin, prof, evm, bud } = await pages(Q.id);
+    expect(fin.budget).toBe(10_000_000);
+    expect(prof.budget).toBe(10_000_000);
+    expect(evm.bac).toBe(10_000_000);
+    expect(bud.plannedCost).toBe(10_000_000);
+    const byWbs = ok(await call('get', `/finance/cost-by-wbs?projectId=${Q.id}`, undefined, admin)).rows.find((r: any) => r.wbsItemId === wq.id);
+    expect(byWbs.budget).toBe(10_000_000);
+  });
+
+  it('adding or removing a BOQ line changes every page', async () => {
+    const extra = ok(await call('post', '/planning/boq', { projectId: Q.id, code: 'TEST-BOQ-02', description: 'Extra', quantity: 1, rate: 2_000_000 }, admin));
+    expect((await pages(Q.id)).fin.budget).toBe(12_000_000);
+    expect((await pages(Q.id)).prof.budget).toBe(12_000_000);
+    ok(await call('delete', `/planning/boq/${extra.id}`, undefined, admin));
+    const after = await pages(Q.id);
+    expect(after.fin.budget).toBe(10_000_000);
+    expect(after.evm.bac).toBe(10_000_000);
+  });
+
+  it('earned value is progress x budget; CPI = EV / AC; margin = contract - (AC + cost to complete)', async () => {
+    ok(await call('post', '/production', { projectId: Q.id, wbsItemId: wq.id, plannedQty: 100, actualQty: 30 }, admin));
+    ok(await call('post', '/finance/costs', { projectId: Q.id, description: 'Labour', amount: 959_600, category: 'LABOR' }, admin));
+    const { evm, prof, fin } = await pages(Q.id);
+    expect(evm.actualProgressPct).toBe(30);
+    expect(evm.earnedValue).toBe(3_000_000);
+    expect(evm.cpi).toBeCloseTo(3_000_000 / 959_600, 3);
+    expect(evm.eac).toBe(7_959_600);
+    expect(prof.forecastMargin).toBe(92_040_400);
+    expect(fin.forecastProfit).toBe(92_040_400);
+    ok(await call('post', '/finance/costs', { projectId: Q.id, description: 'Extra spend', amount: 1_000_000, category: 'OTHER' }, admin));
+    const later = await pages(Q.id);
+    expect(prof.forecastMargin - later.prof.forecastMargin).toBeGreaterThanOrEqual(1_000_000);
+    expect(later.evm.cpi).toBeCloseTo(3_000_000 / 1_959_600, 3);
+  });
+});
+
+describe('Part 4 — progress roll-up (T1-07)', () => {
+  let R: any; let w: any; let act: any; let entry: any;
+  beforeAll(async () => {
+    R = ok(await call('post', '/projects', { name: 'T1 Progress check' }, admin));
+    w = ok(await call('post', '/planning/wbs', { projectId: R.id, code: '1.1', name: 'Slab concrete', unit: 'm3', quantity: 100 }, admin));
+    ok(await call('post', '/planning/boq', { projectId: R.id, wbsItemId: w.id, code: 'B1', description: 'Slab', quantity: 100, rate: 100_000 }, admin));
+  });
+
+  it('the only WBS item defaults to weight 100 and refuses 0', async () => {
+    expect(w.weightPct).toBe(100);
+    const zero = await call('put', `/planning/wbs/${w.id}`, { weightPct: 0 }, admin);
+    expect(zero.status).toBe(400);
+    expect(zero.body.error).toMatch(/only top-level WBS item/);
+  });
+
+  it('every schedule activity must link to a WBS item', async () => {
+    const bad = await call('post', '/scheduling', { projectId: R.id, code: 'A10', name: 'Slab concrete', durationDays: 10 }, admin);
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/WBS item/);
+    act = ok(await call('post', '/scheduling', { projectId: R.id, code: 'A10', name: 'Slab concrete', durationDays: 10, wbsItemId: w.id }, admin));
+  });
+
+  it('a daily entry of 30 of 100 gives 30% on the WBS, the activity, the dashboard and the project row', async () => {
+    entry = ok(await call('post', '/production', { projectId: R.id, wbsItemId: w.id, plannedQty: 100, actualQty: 30 }, admin));
+    const wbs = ok(await call('get', `/planning/wbs/${w.id}`, undefined, admin));
+    const a = ok(await call('get', `/scheduling/${act.id}`, undefined, admin));
+    const row = ok(await call('get', '/projects?pageSize=100', undefined, admin)).find((p: any) => p.id === R.id);
+    const evm = ok(await call('get', `/finance/evm?projectId=${R.id}`, undefined, admin));
+    const rollup = ok(await call('get', `/planning/wbs/rollup?projectId=${R.id}`, undefined, admin)).items.find((x: any) => x.id === w.id);
+    expect(wbs.progressPct).toBe(30);
+    expect(a.progressPct).toBe(30);
+    expect(row.progressPct).toBe(30);
+    expect(evm.actualProgressPct).toBe(30);
+    expect(evm.spi).toBe(0.3);
+    expect(rollup.progress).toBe(30);
+  });
+
+  it('editing the actual quantity to 40 moves all of them to 40% and SPI to 0.40, and it is in the audit log', async () => {
+    ok(await call('put', `/production/${entry.id}`, { actualQty: 40, reason: 'Corrected quantity' }, admin));
+    expect(ok(await call('get', `/planning/wbs/${w.id}`, undefined, admin)).progressPct).toBe(40);
+    expect(ok(await call('get', `/scheduling/${act.id}`, undefined, admin)).progressPct).toBe(40);
+    expect(ok(await call('get', '/projects?pageSize=100', undefined, admin)).find((p: any) => p.id === R.id).progressPct).toBe(40);
+    const evm = ok(await call('get', `/finance/evm?projectId=${R.id}`, undefined, admin));
+    expect(evm.actualProgressPct).toBe(40);
+    expect(evm.spi).toBe(0.4);
+    const log = ok(await call('get', `/audit?entity=production-entry&recordId=${entry.id}&action=UPDATE`, undefined, admin));
+    expect(log[0].changes.find((c: any) => c.field === 'actualQty')).toBeTruthy();
+  });
+});

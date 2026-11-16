@@ -92,12 +92,10 @@ export const costEntryCrud: CrudOptions = {
     afterChange: async (action, record, req) => {
       if (action === 'DELETE') return;
       const projectId = String(record.projectId);
-      const [project, agg] = await Promise.all([
-        prisma.project.findUnique({ where: { id: projectId } }),
-        prisma.costEntry.aggregate({ where: { projectId }, _sum: { amount: true } }),
-      ]);
-      const spent = Number(agg._sum.amount ?? 0);
-      const budget = Number(project?.budget ?? 0);
+      const m = (await loadProjectMetrics(req.user!.orgId, { projectId })).projects[0];
+      const project = { name: m?.name };
+      const spent = m?.actualCost ?? 0;
+      const budget = m?.budget ?? 0;
       if (budget > 0 && spent > budget) {
         await notify({
           organizationId: req.user!.orgId,
@@ -382,8 +380,9 @@ router.get('/evm', authenticate, requirePermission('finance:read'), asyncHandler
     hasData: m.budget != null,
     bac: Number(bac.toFixed(2)), ac: Number(ac.toFixed(2)),
     plannedValue: m.plannedValue ?? 0, earnedValue: m.earnedValue ?? 0,
-    cpi: m.cpi, spi: m.spi, spiStatus: m.spiStatus, cpiStatus: m.cpiStatus,
-    eac: Number(eacV.toFixed(2)), etc: Number(etc(eacV, ac).toFixed(2)), vac: Number(vac(bac, eacV).toFixed(2)),
+    cpi: m.cpi, spi: m.spi, spiStatus: m.spiStatus, cpiStatus: m.cpiStatus, costDataIncomplete: m.costDataIncomplete,
+    budgetSource: m.budgetSource, budgetLinesTotal: m.budgetLinesTotal,
+    eac: Number(eacV.toFixed(2)), etc: m.etc ?? Number(etc(eacV, ac).toFixed(2)), vac: Number(vac(bac, eacV).toFixed(2)),
     forecastProfit: m.forecastProfit, contractValue: m.contractValue,
     actualProgressPct: m.progressPct ?? 0,
     plannedProgressPct: m.plannedProgressPct ?? 0,

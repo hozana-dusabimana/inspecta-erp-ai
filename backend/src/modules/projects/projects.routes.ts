@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ProjectStatus, ProjectHealth } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok, paginated } from '../../lib/http';
-import { NotFound, BadRequest } from '../../lib/errors';
+import { NotFound, BadRequest, Conflict } from '../../lib/errors';
 import { loadProjectMetrics } from '../../lib/project-metrics';
 import { assertProjectAccess } from '../../lib/project-access';
 import { authenticate, requirePermission } from '../../middleware/auth';
@@ -329,6 +329,11 @@ router.put(
     });
     if (!existing) throw NotFound('Project not found');
     await assertOrgRefs(req.user!.orgId, body.clientId, body.managerId);
+    const activatingWithoutBudget = body.status === 'ACTIVE' && existing.status !== 'ACTIVE'
+      && (await prisma.boqItem.count({ where: { organizationId: req.user!.orgId, projectId: existing.id } })) === 0;
+    if (activatingWithoutBudget && req.body?.confirmNoBudget !== true) {
+      throw Conflict('NO_COST_BUDGET: This project has no BOQ items, so it has no cost budget. Earned value, CPI and forecast margin cannot be measured. Add the BOQ first, or confirm to activate it anyway.');
+    }
 
     const project = await prisma.project.update({
       where: { id: existing.id },
@@ -341,7 +346,10 @@ router.put(
         actualEndDate: body.actualEndDate ? new Date(body.actualEndDate) : undefined,
       },
     });
-    await auditFromRequest(req, 'UPDATE', 'project', project.id, { oldValues: existing, newValues: project });
+    await auditFromRequest(req, 'UPDATE', 'project', project.id, {
+      oldValues: existing, newValues: project,
+      reason: activatingWithoutBudget ? 'Activated without a cost budget (no BOQ), confirmed by the user' : (typeof req.body?.reason === 'string' ? req.body.reason : null),
+    });
     return ok(res, project);
   }),
 );

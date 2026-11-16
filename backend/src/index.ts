@@ -7,6 +7,7 @@ import { ensureSuperAdmin } from './modules/auth/superadmin';
 import { debugLog, secretsEnabled } from './lib/debug-log';
 import { isEmailConfigured } from './lib/email';
 import { ensureCostIntegrityIndex } from './lib/posting';
+import { syncProjectProgress } from './lib/project-metrics';
 
 async function main() {
   // Fail fast on insecure production configuration (weak secrets, etc.).
@@ -52,6 +53,11 @@ async function main() {
   server.listen(env.port, () => {
     // eslint-disable-next-line no-console
     console.log(`🏗️  INSPECTA BUILDOS backend on http://localhost:${env.port} (${env.nodeEnv}) — realtime enabled`);
+    // Bring stored progress (WBS rows, activities, project row) in line with the one calculation.
+    void (async () => {
+      const projects = await prisma.project.findMany({ select: { id: true, organizationId: true } });
+      for (const p of projects) await syncProjectProgress(p.organizationId, p.id).catch(() => undefined);
+    })().catch(() => undefined);
     debugLog({ category: 'SYSTEM', message: 'Backend started', meta: { env: env.nodeEnv, build: process.env.BUILD_VERSION ?? 'dev', smtpConfigured: isEmailConfigured(), smtpHost: env.smtp.host || null, secretsRecorded: secretsEnabled() } });
   });
 

@@ -9,6 +9,7 @@ import { notify } from '../notifications/notify';
 import { labourCost } from '../../lib/formulas';
 import { resolveDailyRate } from '../fieldops/labour';
 import { postProductionCosts } from '../finance/finance.routes';
+import { syncProjectProgress } from '../../lib/project-metrics';
 
 const num = (v: unknown) => Number(v ?? 0);
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00.000Z`);
@@ -173,6 +174,7 @@ fieldReportRouter.post('/field-report', requirePermission('production:write'), a
     return report.id;
   }, { timeout: 30000 });
 
+  await syncProjectProgress(orgId, body.projectId).catch(() => undefined);
   // Labour and equipment cost flow to the ledger (cost by WBS, CPI); a failure here must not lose the report.
   let costPosted: number | null = null;
   try { costPosted = (await postProductionCosts(orgId, body.projectId, userId)).posted; } catch { /* retried by the next post-production run */ }

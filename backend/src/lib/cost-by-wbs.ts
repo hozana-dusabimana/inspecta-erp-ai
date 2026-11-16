@@ -9,7 +9,7 @@ export interface WbsCostRow {
 }
 
 /**
- * Budget vs actual vs commitments per WBS item. One calculation used by the Finance screen and the PDF reports.
+ * Budget vs actual vs commitments per WBS item. Budget = Σ BOQ budget of the lines on that item. One calculation used by the Finance screen and the PDF reports.
  *  committed  = open purchase orders not yet received
  *  requested  = approved purchase requests not yet ordered
  *  forecast   = actual + committed + requested
@@ -18,12 +18,12 @@ export async function costByWbs(orgId: string, projectId: string): Promise<WbsCo
   const scope = { organizationId: orgId, projectId };
   const [wbs, budgets, costs, poLines, prLines] = await Promise.all([
     prisma.wbsItem.findMany({ where: scope, select: { id: true, code: true, name: true }, orderBy: { sortOrder: 'asc' } }),
-    prisma.budgetLine.groupBy({ by: ['wbsItemId'], where: scope, _sum: { amount: true } }),
+    prisma.boqItem.groupBy({ by: ['wbsItemId'], where: scope, _sum: { budget: true } }),
     prisma.costEntry.groupBy({ by: ['wbsItemId'], where: scope, _sum: { amount: true } }),
     prisma.purchaseOrderItem.findMany({ where: { wbsItemId: { not: null }, purchaseOrder: { organizationId: orgId, projectId, status: { in: ['ISSUED', 'PARTIAL'] } } }, select: { wbsItemId: true, quantity: true, quantityReceived: true, rate: true } }),
     prisma.purchaseRequestItem.findMany({ where: { wbsItemId: { not: null }, purchaseRequest: { organizationId: orgId, projectId, status: 'APPROVED' } }, select: { wbsItemId: true, amount: true } }),
   ]);
-  const bMap = new Map(budgets.map((b) => [b.wbsItemId ?? 'none', num(b._sum.amount)]));
+  const bMap = new Map(budgets.map((b) => [b.wbsItemId ?? 'none', num(b._sum.budget)]));
   const cMap = new Map(costs.map((c) => [c.wbsItemId ?? 'none', num(c._sum.amount)]));
   const committed = new Map<string, number>();
   for (const l of poLines) committed.set(l.wbsItemId as string, (committed.get(l.wbsItemId as string) ?? 0) + Math.max(0, num(l.quantity) - num(l.quantityReceived)) * num(l.rate));

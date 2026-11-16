@@ -53,6 +53,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { NAV } from './ErpLayout';
 import ThemeToggle from './ThemeToggle';
+import { TIP, NO_COST_BUDGET } from '../lib/formulas';
 
 interface DashboardProps {
   onNavigate: (view: AppView) => void;
@@ -401,12 +402,12 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
                   <StatusBadge status={kpis?.budgetStatus ?? null} />
                 </div>
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.budgetUtilizationPct != null ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : 'No budget'}</span>
+                  <span className="font-mono text-2xl sm:text-3xl font-extrabold text-brand-primary leading-none">{kpis?.budgetUtilizationPct != null ? `${Number(kpis.budgetUtilizationPct).toFixed(1)}%` : NO_COST_BUDGET}</span>
                   <span className="text-brand-on-surface-variant text-xs font-semibold whitespace-nowrap">
                     {execFinance?.costVariance != null ? `RWF ${Number(execFinance.costVariance).toLocaleString(undefined, { maximumFractionDigits: 0 })} left` : ''}
                   </span>
                 </div>
-                <p className="text-[10px] text-brand-on-surface-variant mt-3 font-bold">Actual cost vs total budget across the portfolio.</p>
+                <p className="text-[10px] text-brand-on-surface-variant mt-3 font-bold" title={TIP.budgetUtil}>Actual cost ÷ BOQ budget across the portfolio.</p>
               </div>
             </div>
 
@@ -414,8 +415,8 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
             <div className="grid grid-cols-2 2xl:grid-cols-4 gap-4">
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Forecast Profit</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate">{execFinance?.forecastProfit != null ? compactMoney(execFinance.forecastProfit) : 'No data'}</p>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate" title={TIP.forecastMargin}>Forecast Margin ⓘ</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={TIP.forecastMargin}>{execFinance?.forecastProfit != null ? `${compactMoney(execFinance.forecastProfit)}${execFinance.forecastMarginPct != null ? ` (${execFinance.forecastMarginPct}%)` : ''}` : NO_COST_BUDGET}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-brand-primary shrink-0">
                   <TrendingUp className="w-4.5 h-4.5" />

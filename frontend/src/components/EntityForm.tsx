@@ -265,7 +265,17 @@ export default function EntityForm({ endpoint, entityLabel, fields, editing, pro
       }
       setJustCreated(saved);
     },
-    onError: (e) => setError(errorMessage(e)),
+    onError: (e, payload) => {
+      const msg = errorMessage(e);
+      // A project with no BOQ has no cost budget: activating it needs an explicit, logged confirmation.
+      if (msg.startsWith('NO_COST_BUDGET:')) {
+        const text = msg.replace('NO_COST_BUDGET:', '').trim();
+        if (window.confirm(`${text}\n\nActivate this project without a cost budget?`)) { save.mutate({ ...payload, confirmNoBudget: true }); return; }
+        setError(text);
+        return;
+      }
+      setError(msg);
+    },
   });
 
   const missingIn = (list: Field[]) =>

@@ -14,6 +14,7 @@ import { computeCpm } from '../scheduling/cpm';
 import { fieldReportRouter } from './field-report';
 import { dailyPlanRouter } from './daily-plans';
 import { loadProjectMetrics } from '../../lib/project-metrics';
+import { syncProjectProgress } from '../../lib/project-metrics';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -89,6 +90,7 @@ const entriesCrud = createCrudRouter({
     return stamp(data, req);
   },
   afterChange: async (action, record, req) => {
+    await syncProjectProgress(req.user!.orgId, String(record.projectId));
     if (action === 'DELETE') return;
     const planned = num(record.plannedQty);
     const actual = num(record.actualQty);

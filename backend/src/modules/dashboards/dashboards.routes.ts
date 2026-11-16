@@ -281,9 +281,11 @@ router.get(
 
     const boqCost = boq.reduce((s, b) => s + num(b.amount), 0);
     const boqBudget = boq.reduce((s, b) => s + num(b.budget), 0);
-    const plannedCost = boqBudget || Number(budgetAgg._sum.amount ?? 0);
-    const actualCost = Number(costAgg._sum.amount ?? 0);
-    const pmB = projectId ? (await loadProjectMetrics(orgId, { projectId })).projects[0] : null;
+    const pmAll = await loadProjectMetrics(orgId, { projectId, projectIds: req.user!.projectIds });
+    const pmB = projectId ? pmAll.projects[0] : null;
+    const plannedCost = pmB ? pmB.budget ?? 0 : pmAll.totals.budget;
+    const actualCost = pmB ? pmB.actualCost : pmAll.totals.actualCost;
+    void budgetAgg; void costAgg;
     const contractValue = pmB?.contractValue ?? 0;
     const utilizationPct = plannedCost > 0 ? (actualCost / plannedCost) * 100 : 0;
 

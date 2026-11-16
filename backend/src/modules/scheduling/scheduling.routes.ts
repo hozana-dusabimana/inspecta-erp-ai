@@ -6,6 +6,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions, assertProjectInOrg } from '../../lib/crud';
+import { syncProjectProgress } from '../../lib/project-metrics';
 import { computeCpm, DependencyKind } from './cpm';
 import { wouldCreateCycle, Edge } from './graph';
 import baselinesRouter from './baselines';
@@ -48,6 +49,8 @@ export function activityValidator(strictPredecessors: boolean): NonNullable<Crud
     const orgId = req.user!.orgId;
     const wbsItemId = data.wbsItemId as string | undefined;
     const projectId = data.projectId as string | undefined;
+    // Every activity must say which WBS item it delivers, or its progress can never be measured.
+    if (!wbsItemId) throw BadRequest('Link the activity to a WBS item: its progress is measured from the daily entries on that item.');
     if (wbsItemId) {
       const wbs = await prisma.wbsItem.findFirst({ where: { id: wbsItemId, organizationId: orgId }, select: { projectId: true } });
       if (!wbs) throw BadRequest('wbsItemId does not belong to your organization');
@@ -95,6 +98,7 @@ export const activityOpts: CrudOptions = {
   refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
   validate: activityValidator(false),
   transform: activityTransform,
+  afterChange: async (_a, record, req) => { await syncProjectProgress(req.user!.orgId, String(record.projectId)); },
 };
 
 const crud = createCrudRouter(activityOpts);
@@ -294,6 +298,7 @@ router.post('/import', authenticate, requirePermission('scheduling:write'), xlsx
     if (start === null) { report.fail(rowNo, 'startDate is not a valid date'); continue; }
     if (aStart === null || aFinish === null) { report.fail(rowNo, 'actualStart/actualFinish is not a valid date'); continue; }
     let wbsItemId: string | undefined;
+    if (!hasValue(r.wbscode)) { report.fail(rowNo, 'wbsCode is required: every activity must link to a WBS item'); continue; }
     if (hasValue(r.wbscode)) {
       wbsItemId = wbsByCode.get(str(r.wbscode).toLowerCase());
       if (!wbsItemId) { report.fail(rowNo, `no WBS item with code "${str(r.wbscode)}" in this project (import the WBS first)`); continue; }

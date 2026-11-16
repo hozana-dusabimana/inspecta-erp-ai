@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 import { AppView } from '../types';
 import { api } from '../lib/api';
 import ErpLayout from './ErpLayout';
+import { TIP, NO_COST_BUDGET } from '../lib/formulas';
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -24,7 +25,7 @@ export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate
             <p className="font-mono text-xl font-extrabold mt-1 text-brand-primary">{money(s.totals.actualCost)}</p>
           </div>
           <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
-            <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">Forecast Margin</p>
+            <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider" title={TIP.forecastMargin}>Forecast Margin <span className="cursor-help rounded-full border border-current px-1 text-[9px]" aria-label={TIP.forecastMargin}>i</span></p>
             <p className={`font-mono text-xl font-extrabold mt-1 ${s.totals.forecastMargin < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(s.totals.forecastMargin)} ({s.totals.forecastMarginPct}%)</p>
           </div>
           <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
@@ -44,17 +45,20 @@ export default function ProfitabilityPage({ onNavigate, onLogout }: { onNavigate
                 Margin {p.forecastMarginPct}%
               </span>
               ) : (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-brand-surface-container text-brand-on-surface-variant">No data — add a budget</span>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-brand-surface-container text-brand-on-surface-variant" title={TIP.noBudget}>No cost budget — add the BOQ</span>
               )}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 text-xs">
               {[
-                ['Revenue', money(p.revenue)], ['Actual Cost', money(p.actualCost)],
-                ['Est. Cost @ Completion', p.hasBudget ? money(p.estCostAtCompletion) : 'No data'],
-                ['Earned Value', p.hasBudget ? money(p.earnedValue) : 'No data'], ['Forecast Margin', p.hasBudget ? money(p.forecastMargin) : 'No data'],
-              ].map(([label, val]) => (
-                <div key={label}>
-                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase">{label}</p>
+                ['Contract Value', money(p.revenue), ''], ['Budget (BOQ)', p.hasBudget ? money(p.budget) : NO_COST_BUDGET, TIP.budget],
+                ['Actual Cost', money(p.actualCost), ''], ['Earned Value', p.hasBudget ? `${money(p.earnedValue)} (${p.progressPct}%)` : NO_COST_BUDGET, TIP.earnedValue],
+                ['CPI', p.cpi != null ? Number(p.cpi).toFixed(2) : 'No data', p.cpi != null ? `${TIP.cpi} Here: ${money(p.earnedValue)} ÷ ${money(p.actualCost)}.` : TIP.cpi],
+                ['Cost to Complete', p.hasBudget ? money(p.costToComplete) : NO_COST_BUDGET, TIP.etc],
+                ['Est. Cost @ Completion', p.hasBudget ? money(p.estCostAtCompletion) : NO_COST_BUDGET, TIP.eac],
+                ['Forecast Margin', p.hasBudget ? `${money(p.forecastMargin)} (${p.forecastMarginPct}%)` : NO_COST_BUDGET, TIP.forecastMargin],
+              ].map(([label, val, tip]) => (
+                <div key={label} title={tip || undefined}>
+                  <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase">{label}{tip ? <span className="ml-1 cursor-help rounded-full border border-current px-1 text-[9px]">i</span> : null}</p>
                   <p className="font-mono font-bold text-brand-primary">{val}</p>
                 </div>
               ))}

@@ -4,14 +4,15 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { Wallet, Banknote, Gauge, Layers, Download } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { TIP, NO_COST_BUDGET } from '../lib/formulas';
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
+function Kpi({ label, value, tone, hint }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad'; hint?: string }) {
   const color = tone === 'bad' ? 'text-red-600' : tone === 'warn' ? 'text-amber-600' : 'text-brand-primary';
   return (
-    <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm">
-      <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}</p>
+    <div className="bg-brand-surface-container-lowest p-4 rounded-xl border border-brand-outline-variant/20 shadow-sm" title={hint}>
+      <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider">{label}{hint && <span aria-label={hint} className="ml-1 cursor-help rounded-full border border-current px-1 text-[9px]">i</span>}</p>
       <p className={`font-mono text-xl font-extrabold mt-1 ${color}`}>{value}</p>
     </div>
   );
@@ -74,12 +75,12 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
       {tab === 'cost' && s && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Kpi label="Budget" value={s.hasBudget ? money(s.budget) : 'No budget'} />
-            <Kpi label="Actual Cost" value={money(s.actualCost)} tone={s.actualCost > s.budget ? 'bad' : 'good'} />
-            <Kpi label="Cost Variance" value={money(s.costVariance)} tone={s.costVariance < 0 ? 'bad' : 'good'} />
+            <Kpi label="Budget (BOQ)" value={s.hasBudget ? money(s.budget) : NO_COST_BUDGET} hint={s.hasBudget ? TIP.budget : TIP.noBudget} />
+            <Kpi label="Actual Cost" value={money(s.actualCost)} tone={s.hasBudget && s.actualCost > s.budget ? 'bad' : 'good'} />
+            <Kpi label="Cost Variance" value={s.hasBudget ? money(s.costVariance) : NO_COST_BUDGET} tone={!s.hasBudget ? undefined : s.costVariance < 0 ? 'bad' : 'good'} />
             <Kpi label="Contract Value" value={s.contractValue != null ? money(s.contractValue) : 'No data'} />
-            <Kpi label="Est. Cost at Completion" value={s.estCostAtCompletion != null ? money(s.estCostAtCompletion) : 'No data'} />
-            <Kpi label="Forecast Profit" value={s.forecastProfit != null ? money(s.forecastProfit) : 'No data'} tone={s.forecastProfit == null ? undefined : s.forecastProfit < 0 ? 'bad' : 'good'} />
+            <Kpi label="Est. Cost at Completion" value={s.estCostAtCompletion != null ? money(s.estCostAtCompletion) : NO_COST_BUDGET} hint={TIP.eac} />
+            <Kpi label="Forecast Margin" value={s.forecastProfit != null ? `${money(s.forecastProfit)}${s.forecastMarginPct != null ? ` (${s.forecastMarginPct}%)` : ''}` : NO_COST_BUDGET} tone={s.forecastProfit == null ? undefined : s.forecastProfit < 0 ? 'bad' : 'good'} hint={TIP.forecastMargin} />
           </div>
           <Card title="Cost by Category">
             {(s.costByCategory ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No costs yet.</p> : (
@@ -115,20 +116,22 @@ export default function FinanceAnalytics({ projectId }: { projectId?: string }) 
 
       {tab === 'evm' && e && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Kpi label="CPI" value={String(e.cpi)} tone={e.cpi < 1 ? 'bad' : 'good'} />
-          <Kpi label="SPI" value={String(e.spi)} tone={e.spi < 1 ? 'bad' : 'good'} />
-          <Kpi label="Earned Value" value={money(e.earnedValue)} />
+          {!e.hasData && <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">{TIP.noBudget}</div>}
+          {e.costDataIncomplete && <div className="col-span-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-800">Actual cost is under 20% of earned value: cost entries are probably missing, so CPI looks better than it is.</div>}
+          <Kpi label="CPI" value={e.cpi != null ? Number(e.cpi).toFixed(2) : 'No data'} tone={e.cpi == null ? undefined : e.cpi < 1 ? 'bad' : 'good'} hint={`${TIP.cpi} Here: ${money(e.earnedValue)} ÷ ${money(e.ac)}.`} />
+          <Kpi label="SPI" value={e.spi != null ? Number(e.spi).toFixed(2) : 'No data'} tone={e.spi == null ? undefined : e.spi < 1 ? 'bad' : 'good'} hint={TIP.spi} />
+          <Kpi label="Earned Value" value={money(e.earnedValue)} hint={`${TIP.earnedValue} Here: ${e.actualProgressPct}% × ${money(e.bac)}.`} />
           <Kpi label="Planned Value" value={money(e.plannedValue)} />
           <Kpi label="Actual Cost" value={money(e.ac)} />
-          <Kpi label="EAC" value={money(e.eac)} tone={e.eac > e.bac ? 'bad' : 'good'} />
-          <Kpi label="ETC" value={money(e.etc)} />
+          <Kpi label="EAC" value={money(e.eac)} tone={e.eac > e.bac ? 'bad' : 'good'} hint={TIP.eac} />
+          <Kpi label="Cost to complete" value={money(e.etc)} hint={TIP.etc} />
           <Kpi label="VAC" value={money(e.vac)} tone={e.vac < 0 ? 'bad' : 'good'} />
         </div>
       )}
 
       {tab === 'wbs' && w && (
         <Card title="Budget, actual and commitments by WBS task">
-          {(w.rows ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No WBS-linked budget, cost or purchase orders yet. Link budget lines, costs, material issues and purchase lines to WBS tasks to see them here.</p> : (
+          {(w.rows ?? []).length === 0 ? <p className="text-xs text-brand-on-surface-variant">No WBS-linked budget, cost or purchase orders yet. Link BOQ lines, costs, material issues and purchase lines to WBS tasks to see them here.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead><tr className="text-left text-brand-on-surface-variant font-bold border-b border-brand-outline-variant/20">

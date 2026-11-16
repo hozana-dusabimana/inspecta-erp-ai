@@ -45,9 +45,9 @@ describe('one calculation for progress, earned value and profit', () => {
     expect(prof.projects[0].hasBudget).toBe(false);
   });
 
-  it('a budget line makes forecast profit = contract - budget, the same on every page', async () => {
-    ok(await call('post', '/finance/budget', { projectId: A.id, wbsItemId: wA.id, description: 'Walls', amount: 3_000_000, category: 'MATERIAL' }, admin));
-    ok(await call('post', '/finance/budget', { projectId: A.id, description: 'Rest', amount: 2_000_000, category: 'OTHER' }, admin));
+  it('a BOQ makes forecast profit = contract - budget, the same on every page', async () => {
+    ok(await call('post', '/planning/boq', { projectId: A.id, wbsItemId: wA.id, code: 'B-WALLS', description: 'Walls', quantity: 1, rate: 3_000_000 }, admin));
+    ok(await call('post', '/planning/boq', { projectId: A.id, code: 'B-REST', description: 'Rest', quantity: 1, rate: 2_000_000 }, admin));
     const f1 = (await call('get', `/finance/summary?projectId=${A.id}`, undefined, admin)).body.data.forecastProfit;
     const f3 = (await call('get', `/profitability/analysis?projectId=${A.id}`, undefined, admin)).body.data.projects[0].forecastMargin;
     expect(f1).toBe(75_000_000);
@@ -69,11 +69,12 @@ describe('one calculation for progress, earned value and profit', () => {
     expect(an.profitabilityImpact.forecastProfit).toBe(evm.forecastProfit);
   });
 
-  it('implausibly low spend is treated as incomplete cost data, not a fantasy CPI', async () => {
+  it('implausibly low spend shows its CPI but is flagged, and never produces a fantasy profit', async () => {
     ok(await call('post', '/finance/costs', { projectId: A.id, description: 'tiny', amount: 21_250, category: 'OTHER' }, admin));
     const evm = (await call('get', `/finance/evm?projectId=${A.id}`, undefined, admin)).body.data;
-    expect(evm.cpi).toBeNull();
-    expect(evm.forecastProfit).toBe(75_000_000);
+    expect(evm.cpi).toBeCloseTo(2_500_000 / 21_250, 2); // EV = 50% of the 5M BOQ
+    expect(evm.costDataIncomplete).toBe(true);
+    expect(evm.forecastProfit).toBe(80_000_000 - (21_250 + 2_500_000)); // contract − (AC + BAC − EV)
   });
 
   it('demo projects are excluded from client totals', async () => {

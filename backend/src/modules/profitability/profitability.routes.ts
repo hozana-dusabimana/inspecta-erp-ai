@@ -29,7 +29,7 @@ interface ProjectProfit {
  * Forecast cost at completion extrapolates actual cost by progress, flagging
  * margin erosion, cost-burn-ahead-of-progress, and quality rework risk.
  */
-function toProfit(m: ProjectMetrics, openNcrs: number): ProjectProfit & { hasBudget: boolean; contractValue: number | null; isDemo: boolean; status: string } {
+function toProfit(m: ProjectMetrics, openNcrs: number): ProjectProfit & { cpi: number | null; costToComplete: number; budgetSource: string; budgetLinesTotal: number; costDataIncomplete: boolean; hasBudget: boolean; contractValue: number | null; isDemo: boolean; status: string } {
   const revenue = m.contractValue ?? 0;
   const leakage: string[] = [];
   if (m.budget != null && m.actualCost > m.budget) leakage.push('Actual cost has exceeded budget.');
@@ -42,6 +42,7 @@ function toProfit(m: ProjectMetrics, openNcrs: number): ProjectProfit & { hasBud
     progressPct: m.progressPct ?? 0, earnedValue: m.earnedValue ?? 0,
     // No budget => no forecast. Never echo actual cost back as the "estimate".
     estCostAtCompletion: m.eac ?? 0, forecastMargin: m.forecastProfit ?? 0, forecastMarginPct: m.forecastMarginPct ?? 0,
+    cpi: m.cpi, costToComplete: m.etc ?? 0, budgetSource: m.budgetSource, budgetLinesTotal: m.budgetLinesTotal, costDataIncomplete: m.costDataIncomplete,
     leakage, hasBudget: m.budget != null && m.forecastProfit != null, contractValue: m.contractValue, isDemo: m.isDemo, status: m.health,
   };
 }

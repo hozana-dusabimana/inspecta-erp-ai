@@ -7,8 +7,9 @@ import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
 import { Link } from 'react-router-dom';
 
+const EXTRA_TYPES: Record<string, string> = { PAYMENT: 'Payment', WAGE_RATE: 'Wage rate', WAGE_CHANGE: 'Wage change', BASELINE: 'Schedule baseline', BUDGET: 'Budget version' };
 const TYPES: [string, string][] = [['PURCHASE_ORDER', 'Purchase order'], ['INVOICE', 'Invoice'], ['VARIATION', 'Variation'], ['PURCHASE_REQUEST', 'Purchase request'], ['REQUISITION', 'Material requisition'], ['PAYROLL', 'Payroll'], ['OTHER', 'Other']];
-const typeLabel = (t: string) => ({ DAILY_REPORT: 'Daily report', ...Object.fromEntries(TYPES) } as Record<string, string>)[t] ?? t;
+const typeLabel = (t: string) => ({ DAILY_REPORT: 'Daily report', ...EXTRA_TYPES, ...Object.fromEntries(TYPES) } as Record<string, string>)[t] ?? t;
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -38,10 +39,16 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
     onSuccess: () => { invalidate(); setOpen(false); setForm({ title: '', amount: '', entityType: 'OTHER' }); setError(null); },
     onError: (e) => setError(e instanceof Error ? e.message : 'Failed'),
   });
+  const [decideError, setDecideError] = useState<string | null>(null);
   const decide = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) => api.post(`/approvals/${id}/${action}`, {}),
-    onSuccess: invalidate,
+    mutationFn: ({ url, action, note }: { url: string; action: 'approve' | 'reject'; note?: string }) => api.post(`${url}/${action}`, note ? { note } : {}),
+    onSuccess: () => { setDecideError(null); invalidate(); qc.invalidateQueries(); },
+    onError: (e) => setDecideError(e instanceof Error ? e.message : 'Failed'),
   });
+  const reject = (url: string) => {
+    const note = window.prompt('Reason for rejecting (required):');
+    if (note && note.trim()) decide.mutate({ url, action: 'reject', note: note.trim() });
+  };
 
   return (
     <ErpLayout
@@ -57,6 +64,7 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
         <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm">
           <div className="px-4 py-3 border-b border-brand-outline-variant/15 flex items-center justify-between">
             <h3 className="font-bold text-sm text-brand-primary">Awaiting approval ({inbox?.total ?? 0})</h3>
+            {decideError && <span role="alert" className="text-[11px] font-semibold text-red-700">{decideError}</span>}
             <span className="text-[10px] text-brand-on-surface-variant">{Object.entries(inbox?.byType ?? {}).map(([t, n]) => `${typeLabel(t)}: ${n}`).join(' · ')}</span>
           </div>
           {(inbox?.items ?? []).length === 0 ? (
@@ -69,12 +77,14 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
                   {typeLabel(i.type)}{i.project ? ` · ${i.project}` : ''}{i.requestedBy ? ` · raised by ${i.requestedBy}` : ''}{i.amount > 0 ? ` · ${money(i.amount)}` : ''} · Level {i.level}: {i.approverRole}
                 </p>
               </div>
-              {i.decideVia === 'approval' && canWrite
+              {i.decideUrl && i.canDecide
                 ? <div className="flex gap-2 shrink-0">
-                    <button onClick={() => decide.mutate({ id: i.id, action: 'approve' })} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold">Approve</button>
-                    <button onClick={() => decide.mutate({ id: i.id, action: 'reject' })} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold">Reject</button>
+                    <button disabled={decide.isPending} onClick={() => decide.mutate({ url: i.decideUrl, action: 'approve' })} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-50">Approve</button>
+                    <button disabled={decide.isPending} onClick={() => reject(i.decideUrl)} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold disabled:opacity-50">Reject</button>
                   </div>
-                : <Link to={i.link} className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold shrink-0">Review</Link>}
+                : i.decideUrl
+                  ? <span className="max-w-[16rem] text-right text-[11px] font-semibold text-brand-on-surface-variant" title={i.blockedReason ?? ''}>{i.blockedReason ?? 'You do not have approval rights.'}</span>
+                  : <Link to={i.link} className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold shrink-0">Review</Link>}
             </div>
           ))}
         </div>
@@ -92,12 +102,12 @@ export default function ApprovalsPage({ onNavigate, onLogout }: { onNavigate: (v
                 {r.decisionNote ? ` · "${r.decisionNote}"` : ''}
               </p>
             </div>
-            {canWrite && r.status === 'PENDING' && (
+            {canWrite && r.status === 'PENDING' && (inbox?.items ?? []).find((i: any) => i.id === r.id)?.canDecide && (
               <div className="flex gap-2 shrink-0">
-                <button onClick={() => decide.mutate({ id: r.id, action: 'approve' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">
+                <button onClick={() => decide.mutate({ url: `/approvals/${r.id}`, action: 'approve' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">
                   <Check className="w-3.5 h-3.5" /> Approve
                 </button>
-                <button onClick={() => decide.mutate({ id: r.id, action: 'reject' })} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700">
+                <button onClick={() => reject(`/approvals/${r.id}`)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700">
                   <X className="w-3.5 h-3.5" /> Reject
                 </button>
               </div>

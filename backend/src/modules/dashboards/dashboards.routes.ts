@@ -42,7 +42,7 @@ router.get(
       prisma.budgetLine.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
       prisma.costEntry.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
       prisma.invoice.aggregate({ where: { ...scope, ...pf, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
-      prisma.payment.aggregate({ where: { ...scope, ...pf }, _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: { ...scope, ...pf, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
       prisma.productionEntry.aggregate({ where: { ...scope, ...pf, project: { isDemo: false } }, _sum: { plannedQty: true, actualQty: true } }),
       prisma.productionEntry.aggregate({ where: { ...scope, ...pf, project: { isDemo: false } }, _sum: { laborHours: true } }),
       prisma.ncr.count({ where: { ...scope, status: { not: 'CLOSED' }, ...pf, project: { isDemo: false } } }),

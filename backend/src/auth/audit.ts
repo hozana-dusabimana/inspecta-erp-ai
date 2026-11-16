@@ -12,6 +12,10 @@ interface AuditInput {
   newValues?: unknown;
   ipAddress?: string | null;
   userAgent?: string | null;
+  /** Role the actor held at the time (name of the tenant role, else the built-in role). */
+  role?: string | null;
+  /** Why: required for cancellations/rejections, optional on edits. */
+  reason?: string | null;
 }
 
 /**
@@ -32,6 +36,8 @@ export async function recordAudit(input: AuditInput): Promise<void> {
         newValues: (input.newValues as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
+        role: input.role ?? null,
+        reason: input.reason ? String(input.reason).slice(0, 2000) : null,
       },
     });
   } catch (err) {
@@ -46,7 +52,7 @@ export async function auditFromRequest(
   action: AuditAction,
   entity: string,
   entityId?: string | null,
-  changes?: { oldValues?: unknown; newValues?: unknown },
+  changes?: { oldValues?: unknown; newValues?: unknown; reason?: string | null },
 ): Promise<void> {
   if (!req.user) return;
   await recordAudit({
@@ -57,6 +63,8 @@ export async function auditFromRequest(
     entityId,
     oldValues: changes?.oldValues,
     newValues: changes?.newValues,
+    reason: changes?.reason ?? null,
+    role: req.user.roleName ?? req.user.role,
     ipAddress: req.ip,
     userAgent: req.headers['user-agent'] ?? null,
   });

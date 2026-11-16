@@ -46,6 +46,7 @@ export enum AppView {
   EQUIPMENT = 'EQUIPMENT',
   PLANNING_DASH = 'PLANNING_DASH',
   EXEC_DASH = 'EXEC_DASH',
+  AUDIT = 'AUDIT',
 }
 
 export interface CopilotFieldOption { value: string; label: string }

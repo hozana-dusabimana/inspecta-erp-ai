@@ -674,6 +674,9 @@ model AuditLog {
   entityId       String?
   oldValues      Json?
   newValues      Json?
+  /// Role name the actor held when they acted (roles can change later).
+  role           String?
+  reason         String?
   ipAddress      String?
   userAgent      String?
   createdAt      DateTime    @default(now())
@@ -902,6 +905,7 @@ model CostEntry {
 
   @@index([organizationId])
   @@index([projectId, date])
+  @@index([organizationId, source, sourceRef], map: "cost_entries_source_ref_idx")
   @@map("cost_entries")
 }
 
@@ -961,6 +965,12 @@ model Payment {
   amount         Decimal  @default(0) @db.Decimal(18, 2)
   date           DateTime @default(now())
   // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  createdBy      String?
+  // Maker-checker: created PENDING, decided by a different person holding a different role.
+  approvalStatus String    @default("APPROVED") // PENDING | APPROVED | REJECTED (existing rows stay APPROVED)
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
   cancelledAt    DateTime?
   cancelledById  String?
   cancelReason   String?
@@ -1035,6 +1045,7 @@ model StockMovement {
   @@index([organizationId])
   @@index([materialId, date])
   @@index([organizationId, materialId, type])
+  @@index([referenceId], map: "stock_movements_referenceId_idx")
   @@map("stock_movements")
 }
 
@@ -1336,6 +1347,8 @@ model Notification {
   title          String
   message        String
   link           String?
+  /// What the alert is about (e.g. "payment:<id>"): a decision clears every alert with this key.
+  refKey         String?
   isRead         Boolean          @default(false)
   createdAt      DateTime         @default(now())
 
@@ -1344,6 +1357,7 @@ model Notification {
 
   @@index([organizationId, isRead])
   @@index([userId])
+  @@index([organizationId, refKey])
   @@map("notifications")
 }
 
@@ -1422,6 +1436,11 @@ model ScheduleBaseline {
   name           String
   note           String?
   source         String   @default("SNAPSHOT")
+  // Maker-checker: created PENDING, decided by a different person holding a different role.
+  approvalStatus String    @default("APPROVED") // PENDING | APPROVED | REJECTED (existing rows stay APPROVED)
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
   createdBy      String?
   updatedBy      String?
   createdAt      DateTime @default(now())
@@ -1568,6 +1587,8 @@ model ApprovalRequest {
   decidedById    String?
   decisionNote   String?
   decidedAt      DateTime?
+  /// Proposed change applied only on approval (e.g. a new wage for an employee).
+  payload        Json?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -1672,6 +1693,11 @@ model WageRate {
   amount         Decimal  @db.Decimal(18, 2)
   currency       String   @default("RWF")
   effectiveDate  DateTime?
+  // Maker-checker: created PENDING, decided by a different person holding a different role.
+  approvalStatus String    @default("APPROVED") // PENDING | APPROVED | REJECTED (existing rows stay APPROVED)
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -2002,6 +2028,11 @@ model BoqVersion {
   note           String?
   totalCost      Decimal  @default(0) @db.Decimal(18, 2)
   totalBudget    Decimal  @default(0) @db.Decimal(18, 2)
+  // Maker-checker: created PENDING, decided by a different person holding a different role.
+  approvalStatus String    @default("APPROVED") // PENDING | APPROVED | REJECTED (existing rows stay APPROVED)
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
   createdBy      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

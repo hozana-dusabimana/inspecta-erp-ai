@@ -6,6 +6,7 @@ import { sendTabularExport, exportFormat } from './export';
 import { NotFound, BadRequest, Conflict } from './errors';
 import { Prisma } from '@prisma/client';
 import { assertReason, CancelActor } from './posting';
+import { assertMakerChecker } from './maker-checker';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { auditFromRequest, recordAudit } from '../auth/audit';
 import { Permission } from '../auth/permissions';
@@ -43,6 +44,10 @@ export interface PostingOptions {
   ) => Promise<Record<string, unknown> | void>;
   /** Permission required to cancel (defaults to writePerm). */
   cancelPerm?: Permission;
+  /** Maker-checker on cancel: when true for a record, its creator (createdBy) cannot cancel it and the canceller needs a different role. */
+  checker?: (record: Record<string, unknown>) => boolean;
+  /** Set false for models without cancel columns (lock + no-delete only). Default true. */
+  cancellable?: boolean;
 }
 
 /** Loose equality between a stored value and an incoming form value. */
@@ -348,6 +353,7 @@ export async function runCreate(
     newValues: record,
     ipAddress: req.ip ?? null,
     userAgent: req.headers?.['user-agent'] ?? null,
+    role: req.user!.roleName ?? req.user!.role,
   });
   if (opts.afterChange) await opts.afterChange('CREATE', record, req);
   return { data, record };
@@ -475,6 +481,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
       await auditFromRequest(req, 'UPDATE', opts.entity, String(record.id), {
         oldValues: existing,
         newValues: record,
+        reason: typeof req.body?.reason === 'string' ? req.body.reason : null,
       });
       if (opts.afterChange) await opts.afterChange('UPDATE', record, req);
       return ok(res, record);
@@ -498,14 +505,14 @@ export function createCrudRouter(opts: CrudOptions): Router {
         await (tx as unknown as Record<string, Delegate>)[opts.model].delete({ where: { id: req.params.id } });
         if (opts.onDelete) await opts.onDelete(tx, existing as Record<string, unknown>, req);
       });
-      await auditFromRequest(req, 'DELETE', opts.entity, req.params.id, { oldValues: existing });
+      await auditFromRequest(req, 'DELETE', opts.entity, req.params.id, { oldValues: existing, reason: typeof req.body?.reason === 'string' ? req.body.reason : null });
       if (opts.afterChange) await opts.afterChange('DELETE', existing as Record<string, unknown>, req);
       return ok(res, { deleted: true });
     }),
   );
 
   // CANCEL (posted records): reason required, original kept, effects reversed atomically.
-  if (opts.posting) {
+  if (opts.posting && opts.posting.cancellable !== false) {
     const posting = opts.posting;
     router.post(
       '/:id/cancel',
@@ -519,6 +526,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
         assertProjectAccess(req, existing.projectId);
         if (existing.cancelledAt) throw Conflict('This record is already cancelled.');
         if (existing.reversalOfId) throw Conflict('A reversal entry cannot itself be cancelled.');
+        if (posting.checker?.(existing)) await assertMakerChecker(req, existing.createdBy as string | null, `${opts.entity.replace(/-/g, ' ')} cancellation`);
         const actor: CancelActor = { orgId: req.user!.orgId, userId: req.user!.id, reason };
         const record = await prisma.$transaction(async (tx) => {
           const extra = posting.onCancel ? (await posting.onCancel(tx, existing, actor, req)) ?? {} : {};
@@ -529,7 +537,8 @@ export function createCrudRouter(opts: CrudOptions): Router {
         }, { timeout: 30000 });
         await auditFromRequest(req, 'CANCEL', opts.entity, String(existing.id), {
           oldValues: existing,
-          newValues: { ...record, reason },
+          newValues: record,
+          reason,
         });
         if (opts.afterChange) await opts.afterChange('UPDATE', record, req);
         return ok(res, record);

@@ -12,6 +12,8 @@ export interface NotifyInput {
   title: string;
   message: string;
   link?: string | null;
+  /** What the alert is about ("payment:<id>"); deciding that record clears it (lib/maker-checker clearAlerts). */
+  refKey?: string | null;
 }
 
 /** Resolve who should receive the email for a notification. */
@@ -47,6 +49,7 @@ export async function notify(input: NotifyInput) {
       title: input.title,
       message: input.message,
       link: input.link ?? null,
+      refKey: input.refKey ?? null,
     },
   });
 

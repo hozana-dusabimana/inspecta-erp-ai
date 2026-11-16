@@ -185,7 +185,7 @@ export async function financeOverview() {
     prisma.organization.findMany({ select: { id: true, name: true, slug: true, currency: true, status: true } }),
     prisma.contract.groupBy({ by: ['organizationId'], _sum: { value: true }, _count: { _all: true } }),
     prisma.invoice.groupBy({ by: ['organizationId'], _sum: { amount: true }, _count: { _all: true } }),
-    prisma.payment.groupBy({ by: ['organizationId'], _sum: { amount: true } }),
+    prisma.payment.groupBy({ by: ['organizationId'], where: { approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
     prisma.invoice.findMany({
       where: { status: { notIn: ['PAID', 'REJECTED', 'DRAFT'] } },
       select: { organizationId: true, amount: true, dueDate: true, issueDate: true },

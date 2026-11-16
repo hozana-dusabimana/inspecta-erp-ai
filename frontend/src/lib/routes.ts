@@ -33,6 +33,7 @@ export const VIEW_TO_PATH: Record<AppView, string> = {
   [AppView.HSE]: '/hse',
   [AppView.RISK]: '/risk',
   [AppView.APPROVALS]: '/approvals',
+  [AppView.AUDIT]: '/audit',
   [AppView.DOCUMENTS]: '/documents',
   [AppView.REPORTS]: '/reports',
   [AppView.COPILOT]: '/copilot',

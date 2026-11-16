@@ -2,10 +2,11 @@ import { Router, Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest, NotFound } from '../../lib/errors';
+import { BadRequest, NotFound, Conflict } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { CrudOptions, runCreate, assertProjectInOrg } from '../../lib/crud';
 import { auditFromRequest } from '../../auth/audit';
+import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 import {
   xlsxRaw, rowsFromXlsx, sendTemplate, str, numOrU, dateOrU, hasValue, ImportReport, auditImport,
 } from '../../lib/xlsx-import';
@@ -43,6 +44,7 @@ export const baselineCrud: CrudOptions = {
     data.versionNo = versionNo;
     if (!data.name) data.name = `Baseline ${versionNo}`;
     data.source = 'SNAPSHOT';
+    data.approvalStatus = 'PENDING'; // maker-checker: a baseline counts only once someone else approves it
     data.createdBy = req.user!.id;
     data.updatedBy = req.user!.id;
   },
@@ -65,6 +67,8 @@ export const baselineCrud: CrudOptions = {
       await prisma.scheduleBaseline.delete({ where: { id: String(record.id) } }).catch(() => undefined);
       throw e;
     }
+    await alertAwaitingApproval(req.user!.orgId, 'baseline', String(record.id), 'Schedule baseline awaiting approval',
+      `Baseline v${record.versionNo} (${record.name}) is awaiting approval.`, '/approvals');
   },
 };
 
@@ -144,7 +148,7 @@ router.post('/import', requirePermission('scheduling:write'), xlsxRaw, asyncHand
   const versionNo = (last?.versionNo ?? 0) + 1;
   const baseline = await prisma.scheduleBaseline.create({
     data: {
-      organizationId: orgId, projectId, versionNo, source: 'IMPORT',
+      organizationId: orgId, projectId, versionNo, source: 'IMPORT', approvalStatus: 'PENDING',
       name: str(req.query.name) || `Baseline ${versionNo} (imported)`,
       note: str(req.query.note) || null,
       createdBy: req.user!.id, updatedBy: req.user!.id,
@@ -211,10 +215,14 @@ router.get('/:id', requirePermission('scheduling:read'), asyncHandler(async (req
   return ok(res, baseline);
 }));
 
-// DELETE
+// APPROVE / REJECT (maker-checker)
+addApprovalRoutes(router, { model: 'scheduleBaseline', entity: 'baseline', label: 'schedule baseline', makerField: 'createdBy' });
+
+// DELETE (only a baseline that was never approved; an approved one is history)
 router.delete('/:id', requirePermission('scheduling:write'), asyncHandler(async (req, res) => {
   const existing = await prisma.scheduleBaseline.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
   if (!existing) throw NotFound('Baseline not found');
+  if (existing.approvalStatus === 'APPROVED') throw Conflict('An approved baseline is a record of the agreed plan and cannot be deleted. Take a new baseline instead.');
   await prisma.scheduleBaseline.delete({ where: { id: existing.id } });
   await auditFromRequest(req, 'DELETE', 'schedule-baseline', existing.id, { oldValues: existing });
   return ok(res, { deleted: true });

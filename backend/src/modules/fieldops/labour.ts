@@ -24,7 +24,7 @@ export async function resolveDailyRate(orgId: string, trade?: string | null, cas
   if (!trade) return null;
   const t = await prisma.trade.findFirst({ where: { organizationId: orgId, name: { equals: trade, mode: 'insensitive' } }, select: { id: true } });
   if (!t) return null;
-  const wage = await prisma.wageRate.findFirst({ where: { organizationId: orgId, tradeId: t.id }, orderBy: [{ effectiveDate: 'desc' }, { createdAt: 'desc' }] });
+  const wage = await prisma.wageRate.findFirst({ where: { organizationId: orgId, tradeId: t.id, approvalStatus: 'APPROVED' }, orderBy: [{ effectiveDate: 'desc' }, { createdAt: 'desc' }] });
   if (!wage || num(wage.amount) <= 0) return null;
   return wage.rateType === 'HOURLY' ? num(wage.amount) * 8 : num(wage.amount);
 }

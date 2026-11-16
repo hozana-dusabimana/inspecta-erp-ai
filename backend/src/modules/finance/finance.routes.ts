@@ -12,6 +12,7 @@ import { loadProjectMetrics } from '../../lib/project-metrics';
 import { costByWbs } from '../../lib/cost-by-wbs';
 import { Conflict } from '../../lib/errors';
 import { reverseCostEntries, costSourceAlive, costIntegrityReport } from '../../lib/posting';
+import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -77,6 +78,8 @@ export const costEntryCrud: CrudOptions = {
     // Posted cost: only the description can change; cancel (reason required) writes a reversal.
     posting: {
       editable: ['description'],
+      // Maker-checker: a manually keyed cost is cancelled by someone else, holding a different role.
+      checker: (r) => (r.source ?? 'MANUAL') === 'MANUAL',
       onCancel: async (tx, record, actor) => {
         const source = String(record.source ?? 'MANUAL');
         if (source !== 'MANUAL' && (await costSourceAlive(actor.orgId, source, (record.sourceRef as string) ?? null))) {
@@ -224,6 +227,9 @@ const paymentCreate = z.object({
   amount: z.number().nonnegative(),
   date: z.string().datetime().optional(),
 });
+const paymentDecisions = Router();
+addApprovalRoutes(paymentDecisions, { model: 'payment', entity: 'payment', label: 'payment', makerField: 'createdBy' });
+router.use('/payments', authenticate, paymentDecisions);
 router.use(
   '/payments',
   createCrudRouter({
@@ -240,10 +246,23 @@ router.use(
     requireProject: true,
     orderBy: { date: 'desc' },
     refs: [{ field: 'invoiceId', model: 'invoice' }],
+    // Maker-checker: a payment is recorded PENDING and only counts as received once a different
+    // person, holding a different role, approves it (POST /payments/:id/approve).
+    transform: (data, req) => {
+      if (!('id' in data)) { data.createdBy = req.user!.id; data.approvalStatus = 'PENDING'; }
+      return data;
+    },
+    afterChange: async (action, record, req) => {
+      if (action !== 'CREATE') return;
+      await alertAwaitingApproval(req.user!.orgId, 'payment', String(record.id), 'Payment awaiting approval',
+        `Payment ${record.reference} (${Number(record.amount).toLocaleString()}) is awaiting approval.`, '/approvals');
+    },
     // A payment is posted money: cancel (reason required) writes an equal negative payment.
     posting: {
       editable: [],
       onCancel: async (tx, record, actor) => {
+        // A payment that was never approved never counted: nothing to reverse.
+        if (record.approvalStatus !== 'APPROVED') return { approvalStatus: 'REJECTED' };
         await tx.payment.create({
           data: {
             organizationId: actor.orgId, projectId: String(record.projectId), invoiceId: (record.invoiceId as string) ?? null,
@@ -316,7 +335,7 @@ router.get('/cash-flow', authenticate, requirePermission('finance:read'), asyncH
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
 
   const [payments, costs, manual] = await Promise.all([
-    prisma.payment.findMany({ where: scope, select: { amount: true, date: true } }),
+    prisma.payment.findMany({ where: { ...scope, approvalStatus: 'APPROVED' }, select: { amount: true, date: true } }),
     prisma.costEntry.findMany({ where: scope, select: { amount: true, date: true, category: true } }),
     prisma.cashFlowEntry.findMany({ where: scope, select: { amount: true, date: true, direction: true } }),
   ]);
@@ -389,7 +408,7 @@ export async function postProductionCosts(orgId: string, projectId: string, user
     prisma.productionEntry.findMany({ where: { organizationId: orgId, projectId } }),
     prisma.costEntry.findMany({ where: { organizationId: orgId, projectId, source: { in: ['PRODUCTION', 'ATTENDANCE'] } }, select: { sourceRef: true, category: true } }),
     prisma.equipment.findMany({ where: { organizationId: orgId } }),
-    prisma.wageRate.findMany({ where: { organizationId: orgId } }),
+    prisma.wageRate.findMany({ where: { organizationId: orgId, approvalStatus: 'APPROVED' } }),
     prisma.attendance.findMany({ where: { organizationId: orgId, projectId, employeeId: null, cost: { gt: 0 } } }),
   ]);
   const eqRate = new Map(equipment.map((e) => [e.id, num(e.hourlyRate) || num(e.dailyRate) / 8]));

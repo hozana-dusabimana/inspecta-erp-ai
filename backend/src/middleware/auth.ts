@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../lib/http';
 import { Unauthorized, Forbidden, BadRequest, PaymentRequired } from '../lib/errors';
 import { isPlatformRole, resolvePermissions, Permission } from '../auth/permissions';
+import { recordAudit } from '../auth/audit';
 import { billingStateOf } from '../modules/billing/billing.service';
 import { loadProjectIds } from '../lib/project-access';
 
@@ -185,7 +186,13 @@ export function requirePermission(permission: Permission) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) throw Unauthorized();
     if (!req.user.permissions.includes(permission)) {
-      throw Forbidden(`Missing permission: ${permission}`);
+      // A forbidden direct call is itself an event worth keeping (T2-07): who tried what.
+      void recordAudit({
+        organizationId: req.user.orgId, userId: req.user.id, action: 'DENIED', entity: 'permission',
+        entityId: null, newValues: { permission, method: req.method, path: req.originalUrl.split('?')[0] },
+        ipAddress: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, role: req.user.roleName ?? req.user.role,
+      });
+      throw Forbidden(`You do not have access to this action (${permission}).`);
     }
     next();
   };

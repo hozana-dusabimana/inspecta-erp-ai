@@ -8,6 +8,7 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
+import { assertMakerChecker, makerCheckerBlock, clearAlerts } from '../../lib/maker-checker';
 
 const createSchema = z.object({
   projectId: z.string().optional(),
@@ -41,6 +42,7 @@ const router = createCrudRouter({
         title: 'Approval requested',
         message: `${record.title} is awaiting approval${record.amount ? ` (${Number(record.amount).toLocaleString()})` : ''}.`,
         link: '/approvals',
+        refKey: `approval:${record.id}`,
       });
     }
   },
@@ -60,25 +62,32 @@ inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyn
   const orgId = req.user!.orgId;
   const projectId = req.query.projectId as string | undefined;
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
-  const [requests, reports, prs, reqs, invoices] = await Promise.all([
+  const [requests, reports, prs, reqs, invoices, payments, wageRates, baselines, boqVersions] = await Promise.all([
     prisma.approvalRequest.findMany({ where: { ...scope, status: 'PENDING' }, include: { project: { select: { code: true, name: true } } } }),
     prisma.dailyReport.findMany({ where: { ...scope, status: 'SUBMITTED' }, include: { project: { select: { code: true, name: true } } } }),
     prisma.purchaseRequest.findMany({ where: { ...scope, status: 'SUBMITTED' } }),
     prisma.materialRequisition.findMany({ where: { ...scope, status: 'SUBMITTED' } }),
     prisma.invoice.findMany({ where: { ...scope, status: 'SUBMITTED' } }),
+    prisma.payment.findMany({ where: { ...scope, approvalStatus: 'PENDING', cancelledAt: null } }),
+    projectId ? Promise.resolve([]) : prisma.wageRate.findMany({ where: { organizationId: orgId, approvalStatus: 'PENDING' }, include: { trade: { select: { name: true } } } }),
+    prisma.scheduleBaseline.findMany({ where: { ...scope, approvalStatus: 'PENDING' } }),
+    prisma.boqVersion.findMany({ where: { ...scope, approvalStatus: 'PENDING' } }),
   ]);
-  const projectIds = [...new Set([...prs, ...reqs, ...invoices].map((r) => r.projectId).filter(Boolean) as string[])];
+  const projectIds = [...new Set([...prs, ...reqs, ...invoices, ...payments, ...baselines, ...boqVersions].map((r) => r.projectId).filter(Boolean) as string[])];
   const projects = await prisma.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, code: true, name: true } });
   const pName = new Map(projects.map((p) => [p.id, `${p.code} — ${p.name}`]));
   const userIds = [...new Set([
     ...requests.map((r) => r.requestedById), ...reports.map((r) => r.preparedById),
     ...prs.map((r) => r.requestedById), ...reqs.map((r) => r.requestedById), ...invoices.map((r) => r.createdBy),
+    ...payments.map((r) => r.createdBy), ...(wageRates as Array<{ createdBy: string | null }>).map((r) => r.createdBy), ...baselines.map((r) => r.createdBy), ...boqVersions.map((r) => r.createdBy),
   ].filter(Boolean) as string[])];
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
   const uName = new Map(users.map((u) => [u.id, u.fullName]));
+  // decideUrl: where Approve/Reject post to (null = decide on the record's own page).
+  const DECIDE: Record<string, string> = { approval: '/approvals', payment: '/finance/payments', 'wage-rate': '/hr/wage-rates', baseline: '/scheduling/baselines', 'boq-version': '/planning/boq-versions' };
   const row = (type: string, id: string, ref: string, title: string, project: string | null, by: string | null | undefined, amount: number, date: Date, link: string, decideVia: string) => ({
-    type, id, reference: ref, title, project, requestedBy: by ? uName.get(by) ?? null : null, amount, date,
-    ...approvalLevel(amount), link, decideVia,
+    type, id, reference: ref, title, project, requestedBy: by ? uName.get(by) ?? null : null, requestedById: by ?? null, amount, date,
+    ...approvalLevel(amount), link, decideVia, decideUrl: DECIDE[decideVia] ? `${DECIDE[decideVia]}/${id}` : null,
   });
   const items = [
     ...requests.map((r) => row(r.entityType.toUpperCase(), r.id, r.entityId ?? '', r.title, r.project ? `${r.project.code} — ${r.project.name}` : null, r.requestedById, Number(r.amount), r.createdAt, '/approvals', 'approval')),
@@ -86,10 +95,19 @@ inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyn
     ...prs.map((r) => row('PURCHASE_REQUEST', r.id, r.number, r.title ?? r.number, r.projectId ? pName.get(r.projectId) ?? null : null, r.requestedById, Number(r.total), r.createdAt, '/procurement', 'purchase-request')),
     ...reqs.map((r) => row('REQUISITION', r.id, r.number, r.title ?? r.number, r.projectId ? pName.get(r.projectId) ?? null : null, r.requestedById, 0, r.createdAt, '/requisitions', 'requisition')),
     ...invoices.map((r) => row('INVOICE', r.id, r.number, r.description ?? `Invoice ${r.number}`, pName.get(r.projectId) ?? null, r.createdBy, Number(r.amount), r.createdAt, '/finance', 'invoice')),
+    ...payments.map((r) => row('PAYMENT', r.id, r.reference, `Payment ${r.reference}`, pName.get(r.projectId) ?? null, r.createdBy, Number(r.amount), r.createdAt, '/finance', 'payment')),
+    ...(wageRates as Array<{ id: string; amount: unknown; currency: string; rateType: string; createdBy: string | null; createdAt: Date; trade: { name: string } | null }>).map((r) => row('WAGE_RATE', r.id, r.trade?.name ?? '', `Wage rate ${r.trade?.name ?? ''}: ${Number(r.amount).toLocaleString()} ${r.currency} per ${r.rateType === 'HOURLY' ? 'hour' : 'day'}`, null, r.createdBy, 0, r.createdAt, '/hr', 'wage-rate')),
+    ...baselines.map((r) => row('BASELINE', r.id, `v${r.versionNo}`, `Schedule baseline v${r.versionNo}: ${r.name}`, pName.get(r.projectId) ?? null, r.createdBy, 0, r.createdAt, '/scheduling', 'baseline')),
+    ...boqVersions.map((r) => row('BUDGET', r.id, `v${r.versionNo}`, `BOQ budget v${r.versionNo}${r.label ? `: ${r.label}` : ''}`, pName.get(r.projectId) ?? null, r.createdBy, Number(r.totalBudget), r.createdAt, '/planning', 'boq-version')),
   ].sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  // Tell the screen up front whether THIS user may decide each item (no Approve button on your own request).
+  const withRights = await Promise.all(items.map(async (i) => {
+    const blockedReason = await makerCheckerBlock(req.user!, i.requestedById, 'request');
+    return { ...i, canDecide: !blockedReason && req.user!.permissions.includes('approval:write'), blockedReason };
+  }));
   const byType: Record<string, number> = {};
   for (const i of items) byType[i.type] = (byType[i.type] ?? 0) + 1;
-  return ok(res, { total: items.length, byType, items });
+  return ok(res, { total: items.length, byType, items: withRights });
 }));
 
 const decisionSchema = z.object({ note: z.string().optional() });
@@ -99,8 +117,24 @@ async function decide(req: Request, status: 'APPROVED' | 'REJECTED') {
     where: { id: req.params.id, organizationId: req.user!.orgId },
   });
   if (!existing) throw NotFound('Approval request not found');
+  if (existing.status !== 'PENDING') throw Forbidden(`This request is already ${existing.status.toLowerCase()}.`);
   if (existing.requestedById && existing.requestedById === req.user!.id) throw Forbidden('You cannot decide a request you raised yourself.');
+  await assertMakerChecker(req, existing.requestedById, 'request');
   const { note } = decisionSchema.parse(req.body ?? {});
+  // A proposed change (e.g. a new wage) is applied only now, by the approver, and audited old -> new.
+  if (status === 'APPROVED' && existing.entityType === 'WAGE_CHANGE' && existing.entityId && existing.payload) {
+    const emp = await prisma.employee.findFirst({ where: { id: existing.entityId, organizationId: req.user!.orgId } });
+    if (emp) {
+      const p = existing.payload as Record<string, number | null>;
+      const data: Record<string, unknown> = {};
+      if ('dailyWage' in p) data.dailyWage = p.dailyWage;
+      if ('grossMonthlySalary' in p) data.grossMonthlySalary = p.grossMonthlySalary;
+      await prisma.employee.update({ where: { id: emp.id }, data: { ...data, updatedBy: req.user!.id } });
+      await auditFromRequest(req, 'UPDATE', 'employee-wage', emp.id, {
+        oldValues: { dailyWage: emp.dailyWage, grossMonthlySalary: emp.grossMonthlySalary }, newValues: data, reason: note ?? existing.title,
+      });
+    }
+  }
 
   const updated = await prisma.approvalRequest.update({
     where: { id: existing.id },
@@ -109,7 +143,9 @@ async function decide(req: Request, status: 'APPROVED' | 'REJECTED') {
   await auditFromRequest(req, status === 'APPROVED' ? 'APPROVE' : 'REJECT', 'approval-request', existing.id, {
     oldValues: { status: existing.status },
     newValues: { status },
+    reason: note ?? null,
   });
+  await clearAlerts(req.user!.orgId, `approval:${existing.id}`);
   await notify({
     organizationId: req.user!.orgId,
     userId: existing.requestedById,

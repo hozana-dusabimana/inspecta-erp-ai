@@ -4,6 +4,8 @@ import { createCrudRouter } from '../../lib/crud';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
+import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
+import { auditFromRequest } from '../../auth/audit';
 
 // Accept boolean or the string the generic form sends.
 const boolish = z.preprocess(
@@ -50,7 +52,7 @@ const employeeSchema = z.object({
   skills: z.array(z.string()).optional(),
   certifications: z.array(z.string()).optional(),
 });
-const employees = createCrudRouter({
+const employeesCrud = createCrudRouter({
   model: 'employee', entity: 'employee', readPerm: 'hr:read', writePerm: 'hr:write',
   createSchema: employeeSchema, updateSchema: employeeSchema.partial(),
   autoCode: { field: 'employeeNo', prefix: 'EMP' },
@@ -73,12 +75,55 @@ const wageSchema = z.object({
   currency: z.string().length(3).optional(),
   effectiveDate: z.string().datetime().optional(),
 });
+// Maker-checker (T2-02): a new rate is PENDING and is not used for costing until a different
+// person, holding a different role, approves it. An approved rate is never edited: add a new
+// rate with an effective date instead, so history stays true.
 const wageRates = createCrudRouter({
   model: 'wageRate', entity: 'wage-rate', readPerm: 'hr:read', writePerm: 'hr:write',
   createSchema: wageSchema, updateSchema: wageSchema.partial(),
   include: { trade: { select: { id: true, name: true } } },
   refs: [{ field: 'tradeId', model: 'trade' }],
-  transform: stamp,
+  filterFields: ['approvalStatus'],
+  transform: (data, req) => {
+    if (!('id' in data)) data.approvalStatus = 'PENDING';
+    return stamp(data, req);
+  },
+  posting: { isPosted: (r) => r.approvalStatus === 'APPROVED', editable: ['currency'], cancellable: false },
+  afterChange: async (action, record, req) => {
+    if (action !== 'CREATE') return;
+    const trade = await prisma.trade.findUnique({ where: { id: String(record.tradeId) }, select: { name: true } });
+    await alertAwaitingApproval(req.user!.orgId, 'wage-rate', String(record.id), 'Wage rate awaiting approval',
+      `New ${trade?.name ?? ''} rate ${Number(record.amount).toLocaleString()} per ${record.rateType === 'HOURLY' ? 'hour' : 'day'} is awaiting approval.`, '/approvals');
+  },
+});
+const wageDecisions = Router();
+addApprovalRoutes(wageDecisions, { model: 'wageRate', entity: 'wage-rate', label: 'wage rate', makerField: 'createdBy' });
+
+// A change to an existing employee's wage is a proposal: it becomes an approval request that a
+// different person (different role) approves, and only then is it applied (approvals.routes.ts).
+const wageChangeGate = asyncHandler(async (req, _res, next) => {
+  const emp = await prisma.employee.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
+  if (!emp) return next();
+  const proposed: Record<string, number | null> = {};
+  for (const k of ['dailyWage', 'grossMonthlySalary'] as const) {
+    if (!(k in (req.body ?? {}))) continue;
+    const incoming = req.body[k] === '' || req.body[k] == null ? null : Number(req.body[k]);
+    const current = emp[k] == null ? null : Number(emp[k]);
+    if (incoming !== current && current != null) proposed[k] = incoming;
+    if (current != null) delete req.body[k]; // never applied directly once a wage is set
+  }
+  if (Object.keys(proposed).length) {
+    const reqRow = await prisma.approvalRequest.create({
+      data: {
+        organizationId: req.user!.orgId, projectId: emp.projectId, entityType: 'WAGE_CHANGE', entityId: emp.id,
+        title: `Wage change for ${emp.fullName}: ${Object.entries(proposed).map(([k, v]) => `${k === 'dailyWage' ? 'daily' : 'monthly'} ${Number(emp[k as 'dailyWage']).toLocaleString()} → ${v == null ? 'none' : v.toLocaleString()}`).join(', ')}`,
+        amount: proposed.grossMonthlySalary ?? proposed.dailyWage ?? 0, payload: proposed, requestedById: req.user!.id,
+      },
+    });
+    await auditFromRequest(req, 'CREATE', 'approval-request', reqRow.id, { newValues: reqRow, reason: typeof req.body?.reason === 'string' ? req.body.reason : null });
+    await alertAwaitingApproval(req.user!.orgId, 'approval', reqRow.id, 'Wage change awaiting approval', `${reqRow.title}.`, '/approvals');
+  }
+  next();
 });
 
 // ── Crews ─────────────────────────────────────────────────────
@@ -162,7 +207,9 @@ router.get('/headcount', authenticate, requirePermission('hr:read'), asyncHandle
 }));
 router.use('/trades', trades);
 router.use('/team-members', teamMembers);
-router.use('/employees', employees);
+router.put('/employees/:id', authenticate, requirePermission('hr:write'), wageChangeGate);
+router.use('/employees', employeesCrud);
+router.use('/wage-rates', authenticate, wageDecisions);
 router.use('/wage-rates', wageRates);
 router.use('/crews', crews);
 router.use('/crew-members', crewMembers);

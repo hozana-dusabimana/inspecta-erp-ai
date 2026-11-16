@@ -235,7 +235,7 @@ export async function loadProjectMetrics(orgId: string, opts: { projectId?: stri
     prisma.boqItem.groupBy({ by: ['projectId'], where: scope, _sum: { budget: true } }),
     prisma.costEntry.groupBy({ by: ['projectId'], where: { ...scope, deletedAt: null }, _sum: { amount: true } }),
     prisma.invoice.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
-    prisma.payment.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+    prisma.payment.groupBy({ by: ['projectId'], where: { ...scope, approvalStatus: 'APPROVED' }, _sum: { amount: true } }),
     prisma.productionEntry.groupBy({ by: ['projectId'], where: scope, _sum: { plannedQty: true, actualQty: true } }),
     prisma.scheduleActivity.groupBy({ by: ['projectId'], where: { ...scope, milestone: false }, _avg: { progressPct: true }, _count: { _all: true } }),
     prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),

@@ -1144,6 +1144,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
           { key: 'reference', label: 'Reference' },
           { key: 'amount', label: 'Amount', align: 'right', sortable: true, render: (r) => money(r.amount) },
+          { key: 'approvalStatus', label: 'Approval', render: (r) => (r.approvalStatus === 'PENDING' ? 'Awaiting approval (not counted yet)' : r.approvalStatus === 'REJECTED' ? 'Rejected' : 'Approved') },
         ],
         fields: [
           { name: 'reference', label: 'Reference (auto)', hideOnCreate: true, readOnly: true },

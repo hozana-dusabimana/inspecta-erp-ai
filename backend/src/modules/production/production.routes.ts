@@ -6,6 +6,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest, NotFound } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
+import { assertMakerChecker } from '../../lib/maker-checker';
 import { notify } from '../notifications/notify';
 import { productivity, variancePct, ratePerWorkerDay } from '../../lib/formulas';
 import { analyzeProduction, EngineEntry, EngineMaterial } from './engine';
@@ -145,6 +146,7 @@ function reportAction(action: string, to: ReportStatus, perm: 'production:write'
     const existing = await prisma.dailyReport.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
     if (!existing) throw NotFound('Daily report not found');
     if (!REPORT_TRANSITIONS[existing.status].includes(to)) throw BadRequest(`Cannot ${action} a report in status ${existing.status}`);
+    if (to === 'APPROVED' || to === 'REJECTED') await assertMakerChecker(req, existing.preparedById, 'daily report');
     const data: Record<string, unknown> = { status: to, updatedBy: req.user!.id };
     if (to === 'APPROVED' || to === 'REJECTED') { data.approvedById = req.user!.id; data.approvedAt = new Date(); }
     const report = await prisma.dailyReport.update({ where: { id: existing.id }, data });
@@ -153,7 +155,7 @@ function reportAction(action: string, to: ReportStatus, perm: 'production:write'
     }
     // A decided report no longer "awaits approval": clear its stale notification(s).
     if (to === 'APPROVED' || to === 'REJECTED') {
-      await prisma.notification.updateMany({ where: { organizationId: req.user!.orgId, type: 'APPROVAL', isRead: false, message: { contains: report.reportNumber } }, data: { isRead: true } });
+      await prisma.notification.deleteMany({ where: { organizationId: req.user!.orgId, type: 'APPROVAL', OR: [{ refKey: `daily-report:${report.id}` }, { message: { contains: report.reportNumber } }] } });
     }
     return ok(res, report);
   }));
@@ -190,7 +192,7 @@ const hourlyStd = (s: { productivityRate: unknown; standardCrewSize: number; rat
   ratePerWorkerDay({ productivityRate: num(s.productivityRate), standardCrewSize: s.standardCrewSize, ratePerWorkerDay: s.ratePerWorkerDay == null ? null : num(s.ratePerWorkerDay) }) / 8;
 
 async function resolveLaborRate(orgId: string): Promise<number> {
-  const wages = await prisma.wageRate.findMany({ where: { organizationId: orgId } });
+  const wages = await prisma.wageRate.findMany({ where: { organizationId: orgId, approvalStatus: 'APPROVED' } });
   const hourly = wages.map((w) => (w.rateType === 'HOURLY' ? num(w.amount) : num(w.amount) / 8)).filter((x) => x > 0);
   if (hourly.length) return hourly.reduce((s, x) => s + x, 0) / hourly.length;
   const emps = await prisma.employee.findMany({ where: { organizationId: orgId }, select: { dailyWage: true } });

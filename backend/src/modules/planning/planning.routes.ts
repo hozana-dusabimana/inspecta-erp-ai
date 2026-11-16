@@ -7,6 +7,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { BadRequest } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions, assertProjectInOrg } from '../../lib/crud';
+import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 import {
   xlsxRaw, rowsFromXlsx, sendTemplate, str, numOrU, hasValue, ImportReport, auditImport,
 } from '../../lib/xlsx-import';
@@ -388,7 +389,7 @@ verRouter.post('/', requirePermission('planning:write'), asyncHandler(async (req
   const version = await prisma.boqVersion.create({
     data: {
       organizationId: req.user!.orgId, projectId, versionNo, label, note, totalCost, totalBudget,
-      createdBy: req.user!.id,
+      createdBy: req.user!.id, approvalStatus: 'PENDING',
       items: { create: items.map((i) => ({
         code: i.code, category: i.category, description: i.description, unit: i.unit,
         quantity: i.quantity, rate: i.rate, amount: i.amount,
@@ -397,8 +398,12 @@ verRouter.post('/', requirePermission('planning:write'), asyncHandler(async (req
     },
     include: { _count: { select: { items: true } } },
   });
+  await alertAwaitingApproval(req.user!.orgId, 'boq-version', version.id, 'Budget version awaiting approval',
+    `BOQ budget v${versionNo} (${totalBudget.toLocaleString()}) is awaiting approval.`, '/approvals');
   return ok(res, version, 201);
 }));
+// Maker-checker on the budget baseline (T2-02).
+addApprovalRoutes(verRouter, { model: 'boqVersion', entity: 'boq-version', label: 'budget version', makerField: 'createdBy', perm: 'approval:write' });
 
 // COST COMPARISON between two versions (or a version vs current BOQ via to=current).
 verRouter.get('/compare', requirePermission('planning:read'), asyncHandler(async (req, res) => {

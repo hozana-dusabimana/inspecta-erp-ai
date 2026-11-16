@@ -82,6 +82,7 @@ export const NAV_TREE: NavEntry[] = [
   {
     id: 'navgrp-records', label: 'Workflow & Records', icon: Archive, children: [
       { id: 'nav-approvals', label: 'Approvals', icon: CheckCircle2, view: AppView.APPROVALS, perm: 'approval:read' },
+      { id: 'nav-audit', label: 'Audit Trail', icon: ScrollText, view: AppView.AUDIT, perm: 'audit:read' },
       { id: 'nav-documents', label: 'Documents', icon: FileText, view: AppView.DOCUMENTS, perm: 'document:read' },
       { id: 'nav-reports', label: 'Reports', icon: BarChart3, view: AppView.REPORTS, perm: 'report:read' },
     ],

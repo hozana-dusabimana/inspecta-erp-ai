@@ -100,6 +100,9 @@ enum AuditAction {
   LOGOUT
   APPROVE
   REJECT
+  CANCEL
+  REVERSE
+  DENIED
 }
 
 enum CostCategory {
@@ -118,6 +121,7 @@ enum InvoiceStatus {
   APPROVED
   PAID
   REJECTED
+  CANCELLED
 }
 
 enum MovementType {
@@ -885,6 +889,12 @@ model CostEntry {
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  // Set on the negative entry that reverses a cancelled one.
+  reversalOfId   String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -925,6 +935,10 @@ model Invoice {
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -946,6 +960,11 @@ model Payment {
   reference      String
   amount         Decimal  @default(0) @db.Decimal(18, 2)
   date           DateTime @default(now())
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  reversalOfId   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1003,6 +1022,11 @@ model StockMovement {
   approvedBy     String?
   note           String?
   date           DateTime     @default(now())
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
+  reversalOfId   String?
   createdAt      DateTime     @default(now())
 
   material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
@@ -2537,6 +2561,10 @@ model GoodsReceipt {
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2563,6 +2591,10 @@ model MaterialIssue {
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
+  // Posted records are never deleted: they are cancelled with a reason (and reversed).
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelReason   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

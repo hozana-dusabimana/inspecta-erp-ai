@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import { z } from 'zod';
 import { assertWbsInProject } from '../../lib/wbs-link';
 import { createCrudRouter } from '../../lib/crud';
+import { syncSourceCost } from '../../lib/posting';
 import { prisma } from '../../lib/prisma';
 
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -127,14 +128,18 @@ const fuelLogs = createCrudRouter({
     return stamp(data, req);
   },
   // Fuel burned on a project is project cost (equipment category), kept in step with the log.
+  // Never edits or deletes a posted amount: a change reverses and reposts (see lib/posting).
   afterChange: async (action, record, req) => {
-    const orgId = req.user!.orgId;
-    const existing = await prisma.costEntry.findFirst({ where: { organizationId: orgId, source: 'FUEL', sourceRef: String(record.id) } });
+    if (action === 'DELETE') return; // reversed inside the delete transaction (onDelete)
+    const a = { orgId: req.user!.orgId, userId: req.user!.id, reason: action === 'CREATE' ? 'posted' : 'Fuel log edited' };
     const amount = Number(record.totalCost ?? 0);
-    if (action === 'DELETE' || !record.projectId || amount <= 0) { if (existing) await prisma.costEntry.delete({ where: { id: existing.id } }); return; }
-    const data = { projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, amount, date: (record.date as Date) ?? new Date(), description: `Fuel - ${Number(record.liters)} L` };
-    if (existing) await prisma.costEntry.update({ where: { id: existing.id }, data });
-    else await prisma.costEntry.create({ data: { ...data, organizationId: orgId, category: 'EQUIPMENT', source: 'FUEL', sourceRef: String(record.id), createdBy: req.user!.id } });
+    await prisma.$transaction((tx) => syncSourceCost(tx, 'FUEL', String(record.id), 'EQUIPMENT', record.projectId ? {
+      projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, category: 'EQUIPMENT',
+      amount, date: (record.date as Date) ?? new Date(), description: `Fuel - ${Number(record.liters)} L`,
+    } : null, a));
+  },
+  onDelete: async (tx, record, req) => {
+    await syncSourceCost(tx, 'FUEL', String(record.id), 'EQUIPMENT', null, { orgId: req.user!.orgId, userId: req.user!.id, reason: 'Fuel log deleted' });
   },
 });
 
@@ -168,21 +173,17 @@ const usageLogs = createCrudRouter({
     return stamp(data, req);
   },
   afterChange: async (action, record, req) => {
-    const orgId = req.user!.orgId;
-    const existing = await prisma.costEntry.findFirst({ where: { organizationId: orgId, source: 'EQUIPMENT_USAGE', sourceRef: String(record.id) } });
-    if (action === 'DELETE') { if (existing) await prisma.costEntry.delete({ where: { id: existing.id } }); return; }
-    const amount = Number(record.cost ?? 0);
+    if (action === 'DELETE') return; // reversed inside the delete transaction (onDelete)
     const eq = await prisma.equipment.findUnique({ where: { id: String(record.equipmentId) }, select: { name: true } });
-    const data = {
-      projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, amount, date: (record.date as Date) ?? new Date(),
+    const a = { orgId: req.user!.orgId, userId: req.user!.id, reason: 'Equipment usage log edited' };
+    await prisma.$transaction((tx) => syncSourceCost(tx, 'EQUIPMENT_USAGE', String(record.id), 'EQUIPMENT', {
+      projectId: String(record.projectId), wbsItemId: (record.wbsItemId as string) ?? null, category: 'EQUIPMENT',
+      amount: Number(record.cost ?? 0), date: (record.date as Date) ?? new Date(),
       description: `Equipment - ${eq?.name ?? 'usage'} x ${Number(record.hoursUsed)} h`,
-    };
-    if (existing) {
-      if (amount > 0) await prisma.costEntry.update({ where: { id: existing.id }, data });
-      else await prisma.costEntry.delete({ where: { id: existing.id } });
-    } else if (amount > 0) {
-      await prisma.costEntry.create({ data: { ...data, organizationId: orgId, category: 'EQUIPMENT', source: 'EQUIPMENT_USAGE', sourceRef: String(record.id), createdBy: req.user!.id } });
-    }
+    }, a));
+  },
+  onDelete: async (tx, record, req) => {
+    await syncSourceCost(tx, 'EQUIPMENT_USAGE', String(record.id), 'EQUIPMENT', null, { orgId: req.user!.orgId, userId: req.user!.id, reason: 'Equipment usage log deleted' });
   },
 });
 

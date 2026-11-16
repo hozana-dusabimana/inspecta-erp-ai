@@ -59,6 +59,14 @@ export interface FilterDef {
 }
 
 /** Summation card driven by backend `meta.sums` (or record count via key '__count'). */
+/** Posted records: never deleted; cancelled with a reason (server: POST /:id/cancel). */
+export interface PostingDef {
+  /** Records for which this is false (e.g. a DRAFT invoice) keep normal edit/delete. Default: always posted. */
+  isPosted?: (row: Record<string, any>) => boolean;
+  /** Hide Edit entirely once posted (nothing on the record stays editable). */
+  lockEdit?: boolean;
+}
+
 export interface SummaryCardDef {
   key: string;
   label: string;

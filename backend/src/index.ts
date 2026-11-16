@@ -6,6 +6,7 @@ import { initRealtime } from './lib/realtime';
 import { ensureSuperAdmin } from './modules/auth/superadmin';
 import { debugLog, secretsEnabled } from './lib/debug-log';
 import { isEmailConfigured } from './lib/email';
+import { ensureCostIntegrityIndex } from './lib/posting';
 
 async function main() {
   // Fail fast on insecure production configuration (weak secrets, etc.).
@@ -29,6 +30,17 @@ async function main() {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[bootstrap] Could not ensure the super admin account:', err);
+  }
+
+  // One live cost entry per source record (T1-01). Created as soon as the data has no
+  // duplicates left; until then the integrity report in Finance lists them for review.
+  try {
+    const made = await ensureCostIntegrityIndex();
+    // eslint-disable-next-line no-console
+    if (!made) console.warn('[bootstrap] Duplicate cost postings exist: see GET /api/finance/cost-integrity. Unique index deferred.');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[bootstrap] Could not check the cost integrity index:', err);
   }
 
   const app = createApp();

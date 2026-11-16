@@ -21,7 +21,7 @@ router.get(
     const [projects, costByP, invByP, ncrByP, incByP, openRisks] = await Promise.all([
       prisma.project.findMany({ where: { ...scope, ...(req.user!.projectIds ? { id: { in: req.user!.projectIds } } : {}) }, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
       prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
-      prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+      prisma.invoice.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
       prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
       prisma.incident.groupBy({ by: ['projectId'], where: scope, _count: { _all: true } }),
       prisma.risk.findMany({ where: { ...scope, status: { not: 'CLOSED' } }, select: { projectId: true, score: true } }),

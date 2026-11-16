@@ -124,7 +124,7 @@ router.get('/executive.xlsx', requirePermission('report:read'), asyncHandler(asy
   const [projects, costByP, invByP, ncrByP, incByP] = await Promise.all([
     prisma.project.findMany({ where: scope, include: { client: { select: { name: true } } }, orderBy: { createdAt: 'desc' } }),
     prisma.costEntry.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
-    prisma.invoice.groupBy({ by: ['projectId'], where: scope, _sum: { amount: true } }),
+    prisma.invoice.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CANCELLED' } }, _sum: { amount: true } }),
     prisma.ncr.groupBy({ by: ['projectId'], where: { ...scope, status: { not: 'CLOSED' } }, _count: { _all: true } }),
     prisma.incident.groupBy({ by: ['projectId'], where: scope, _count: { _all: true } }),
   ]);

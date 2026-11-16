@@ -3,7 +3,9 @@ import { ZodSchema } from 'zod';
 import { prisma } from './prisma';
 import { asyncHandler, ok, paginated } from './http';
 import { sendTabularExport, exportFormat } from './export';
-import { NotFound, BadRequest } from './errors';
+import { NotFound, BadRequest, Conflict } from './errors';
+import { Prisma } from '@prisma/client';
+import { assertReason, CancelActor } from './posting';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { auditFromRequest, recordAudit } from '../auth/audit';
 import { Permission } from '../auth/permissions';
@@ -18,6 +20,43 @@ type Delegate = {
   update: (args: unknown) => Promise<Record<string, unknown>>;
   delete: (args: unknown) => Promise<Record<string, unknown>>;
 };
+
+/**
+ * Posted financial / stock records (rule 3): never hard-deleted, edits limited to
+ * non-financial fields, and cancelled with a reason through POST /:id/cancel,
+ * which reverses the record's effects in the same transaction.
+ */
+export interface PostingOptions {
+  /** Fields that may still change after posting (notes, confirmation flags, workflow status). */
+  editable?: string[];
+  /** When given, records for which this is false (e.g. a DRAFT invoice) keep normal edit/delete. */
+  isPosted?: (record: Record<string, unknown>) => boolean;
+  /**
+   * Checks + reversals run inside the cancel transaction. Return extra fields to
+   * set on the cancelled record (e.g. { status: 'CANCELLED' }).
+   */
+  onCancel?: (
+    tx: Prisma.TransactionClient,
+    record: Record<string, unknown>,
+    actor: CancelActor,
+    req: Request,
+  ) => Promise<Record<string, unknown> | void>;
+  /** Permission required to cancel (defaults to writePerm). */
+  cancelPerm?: Permission;
+}
+
+/** Loose equality between a stored value and an incoming form value. */
+function sameValue(key: string, stored: unknown, incoming: unknown): boolean {
+  const blank = (v: unknown) => v === null || v === undefined || v === '';
+  if (blank(stored) || blank(incoming)) return blank(stored) && blank(incoming);
+  if (stored instanceof Date || DATE_FIELDS.has(key)) {
+    const a = new Date(stored as string | Date), b = new Date(incoming as string | Date);
+    return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+  }
+  if (typeof incoming === 'number' || typeof incoming === 'boolean') return String(Number(stored)) === String(Number(incoming));
+  if (Array.isArray(incoming)) return JSON.stringify(stored) === JSON.stringify(incoming);
+  return String(stored) === String(incoming);
+}
 
 interface AutoCodeSpec {
   field: string;
@@ -52,6 +91,8 @@ export interface CrudOptions {
    * `meta.sums` — drives summation cards in the UI.
    */
   sumFields?: string[];
+  /** Extra filter for the sum cards only (e.g. leave cancelled invoices out of Billed). */
+  sumWhere?: Record<string, unknown>;
   /**
    * Scalar fields the client may sort by via `?sortBy=field&sortDir=asc|desc`.
    * Whitelisted to avoid ordering on relations/invalid columns.
@@ -92,6 +133,10 @@ export interface CrudOptions {
     record: Record<string, unknown>,
     req: Request,
   ) => Promise<void> | void;
+  /** Runs inside the DELETE transaction (reverse what the record posted, atomically). */
+  onDelete?: (tx: Prisma.TransactionClient, record: Record<string, unknown>, req: Request) => Promise<void>;
+  /** Marks the model as a posted record: see PostingOptions. */
+  posting?: PostingOptions;
 }
 
 const DATE_FIELDS = new Set([
@@ -353,7 +398,7 @@ export function createCrudRouter(opts: CrudOptions): Router {
         delegate().count({ where }),
         opts.sumFields && opts.sumFields.length
           ? (delegate() as unknown as { aggregate: (a: unknown) => Promise<{ _sum: Record<string, unknown> }> }).aggregate({
-              where,
+              where: { ...where, ...(opts.sumWhere ?? {}) },
               _sum: Object.fromEntries(opts.sumFields.map((f) => [f, true])),
             })
           : Promise.resolve(null),
@@ -404,6 +449,19 @@ export function createCrudRouter(opts: CrudOptions): Router {
       assertProjectAccess(req, (existing as Record<string, unknown>).projectId);
 
       const parsed = opts.updateSchema.parse(req.body) as Record<string, unknown>;
+      if (opts.posting) {
+        const ex = existing as Record<string, unknown>;
+        if (ex.cancelledAt) throw Conflict(`This ${opts.entity.replace(/-/g, ' ')} is cancelled and can no longer be changed.`);
+        if (ex.reversalOfId) throw Conflict('A reversal entry cannot be changed.');
+        if (!opts.posting.isPosted || opts.posting.isPosted(ex)) {
+          const allowed = new Set(opts.posting.editable ?? []);
+          const locked = Object.keys(parsed).filter((k) => !allowed.has(k) && !sameValue(k, ex[k], parsed[k]));
+          if (locked.length) {
+            throw Conflict(`Posted ${opts.entity.replace(/-/g, ' ')} cannot be edited (${locked.join(', ')}). Cancel it with a reason and enter it again.`);
+          }
+          for (const k of Object.keys(parsed)) if (!allowed.has(k)) delete parsed[k];
+        }
+      }
       if (parsed.projectId) await assertProjectInOrg(req.user!.orgId, parsed.projectId);
       assertProjectAccess(req, parsed.projectId);
       await assertRefsInOrg(req.user!.orgId, parsed, opts.refs);
@@ -433,12 +491,51 @@ export function createCrudRouter(opts: CrudOptions): Router {
       });
       if (!existing) throw NotFound(`${opts.entity} not found`);
       assertProjectAccess(req, (existing as Record<string, unknown>).projectId);
-      await delegate().delete({ where: { id: req.params.id } });
+      if (opts.posting && (!opts.posting.isPosted || opts.posting.isPosted(existing as Record<string, unknown>))) {
+        throw Conflict(`Posted ${opts.entity.replace(/-/g, ' ')} records cannot be deleted. Cancel it with a reason instead; the original stays visible.`);
+      }
+      await prisma.$transaction(async (tx) => {
+        await (tx as unknown as Record<string, Delegate>)[opts.model].delete({ where: { id: req.params.id } });
+        if (opts.onDelete) await opts.onDelete(tx, existing as Record<string, unknown>, req);
+      });
       await auditFromRequest(req, 'DELETE', opts.entity, req.params.id, { oldValues: existing });
       if (opts.afterChange) await opts.afterChange('DELETE', existing as Record<string, unknown>, req);
       return ok(res, { deleted: true });
     }),
   );
+
+  // CANCEL (posted records): reason required, original kept, effects reversed atomically.
+  if (opts.posting) {
+    const posting = opts.posting;
+    router.post(
+      '/:id/cancel',
+      requirePermission(posting.cancelPerm ?? opts.writePerm),
+      asyncHandler(async (req, res) => {
+        const reason = assertReason(req.body?.reason);
+        const existing = (await delegate().findFirst({
+          where: { id: req.params.id, organizationId: req.user!.orgId },
+        })) as Record<string, unknown> | null;
+        if (!existing) throw NotFound(`${opts.entity} not found`);
+        assertProjectAccess(req, existing.projectId);
+        if (existing.cancelledAt) throw Conflict('This record is already cancelled.');
+        if (existing.reversalOfId) throw Conflict('A reversal entry cannot itself be cancelled.');
+        const actor: CancelActor = { orgId: req.user!.orgId, userId: req.user!.id, reason };
+        const record = await prisma.$transaction(async (tx) => {
+          const extra = posting.onCancel ? (await posting.onCancel(tx, existing, actor, req)) ?? {} : {};
+          return (tx as unknown as Record<string, Delegate>)[opts.model].update({
+            where: { id: existing.id },
+            data: { cancelledAt: new Date(), cancelledById: actor.userId, cancelReason: reason, ...extra },
+          });
+        }, { timeout: 30000 });
+        await auditFromRequest(req, 'CANCEL', opts.entity, String(existing.id), {
+          oldValues: existing,
+          newValues: { ...record, reason },
+        });
+        if (opts.afterChange) await opts.afterChange('UPDATE', record, req);
+        return ok(res, record);
+      }),
+    );
+  }
 
   return router;
 }

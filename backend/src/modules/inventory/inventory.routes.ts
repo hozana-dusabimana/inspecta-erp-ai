@@ -8,6 +8,8 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 import { stockForMaterial, weightedAverageCost, postMaterialIssueCost, averageCostMap } from './stock';
+import { Conflict } from '../../lib/errors';
+import { reverseCostEntries, reverseStockMovements, assertStockAllowsReversal, movementSourceAlive, stockDelta } from '../../lib/posting';
 
 const router = Router();
 
@@ -104,6 +106,17 @@ export const movementCrud: CrudOptions = {
     refs: [{ field: 'materialId', model: 'material' }],
     orderBy: { date: 'desc' },
     include: { material: { select: { id: true, code: true, name: true, unit: true } } },
+    // A movement is a posted stock record: no delete, no quantity edits; cancel reverses it.
+    posting: {
+      editable: ['note', 'warehouse', 'requestedBy', 'approvedBy'],
+      onCancel: async (tx, record, actor) => {
+        const src = await movementSourceAlive(actor.orgId, (record.referenceId as string) ?? null);
+        if (src) throw Conflict(`This movement was posted by a ${src}. Cancel the ${src} instead so its cost is reversed too.`);
+        const delta = stockDelta(String(record.type), Number(record.quantity));
+        if (delta > 0) await assertStockAllowsReversal(tx, actor.orgId, String(record.materialId), delta, 'this movement');
+        await reverseStockMovements(tx, { id: String(record.id) }, actor);
+      },
+    },
     afterChange: async (action, record, req) => {
       if (action === 'DELETE') return;
       const materialId = String(record.materialId);
@@ -204,6 +217,7 @@ router.use('/grn', createCrudRouter({
     if (!hasNote) throw BadRequest('Cannot confirm this GRN without a signed delivery note or storekeeper receipt attached.');
   },
   sumFields: ['quantityReceived'],
+  sumWhere: { cancelledAt: null },
   orderBy: { dateReceived: 'desc' },
   refs: [{ field: 'materialId', model: 'material' }],
   // Receipts against a purchase order take the supplier from the PO and are checked against it.
@@ -217,6 +231,18 @@ router.use('/grn', createCrudRouter({
       if (!data.projectId && po.projectId) data.projectId = po.projectId;
     }
     return data;
+  },
+  // A GRN is posted stock: cancel (with a reason) reverses the RECEIPT and the PO received qty.
+  posting: {
+    editable: ['note', 'confirmed', 'receivedBy', 'supplierName'],
+    onCancel: async (tx, record, actor) => {
+      await assertStockAllowsReversal(tx, actor.orgId, String(record.materialId), Number(record.quantityReceived), `GRN ${record.grnNumber ?? ''}`.trim());
+      await reverseStockMovements(tx, { referenceId: String(record.id) }, actor);
+      if (record.purchaseOrderId) {
+        const line = await tx.purchaseOrderItem.findFirst({ where: { purchaseOrderId: String(record.purchaseOrderId), materialId: String(record.materialId) } });
+        if (line) await tx.purchaseOrderItem.update({ where: { id: line.id }, data: { quantityReceived: Math.max(0, Number(line.quantityReceived) - Number(record.quantityReceived)) } });
+      }
+    },
   },
   // Post the receipt into the stock ledger so balances/valuation stay consistent.
   afterChange: async (action, record, req) => {
@@ -270,6 +296,7 @@ router.use('/material-issues', createCrudRouter({
   searchField: 'issueNumber',
   dateField: 'dateIssued',
   sumFields: ['quantityIssued'],
+  sumWhere: { cancelledAt: null },
   requireProject: true, orderBy: { dateIssued: 'desc' },
   refs: [{ field: 'materialId', model: 'material' }, { field: 'wbsItemId', model: 'wbsItem' }],
   // Evidence gate: a material issue can't be confirmed without a signed issue slip.
@@ -294,6 +321,19 @@ router.use('/material-issues', createCrudRouter({
     if (!('id' in data)) data.createdBy = req.user!.id;
     data.updatedBy = req.user!.id;
     return data;
+  },
+  // An issue is posted stock + cost: cancel (with a reason) returns the stock and reverses
+  // the cost entry in one transaction. Recreating it later posts exactly one new entry.
+  posting: {
+    editable: ['note', 'confirmed', 'issuedTo'],
+    onCancel: async (tx, record, actor) => {
+      await reverseStockMovements(tx, { referenceId: String(record.id) }, actor);
+      await reverseCostEntries(tx, { source: 'MATERIAL_ISSUE', sourceRef: String(record.id) }, actor);
+      if (record.requisitionId) {
+        const item = await tx.materialRequisitionItem.findFirst({ where: { requisitionId: String(record.requisitionId), materialId: String(record.materialId) } });
+        if (item) await tx.materialRequisitionItem.update({ where: { id: item.id }, data: { quantityIssued: Math.max(0, Number(item.quantityIssued) - Number(record.quantityIssued)) } });
+      }
+    },
   },
   afterChange: async (action, record, req) => {
     if (action !== 'CREATE') return;
@@ -343,9 +383,11 @@ router.get(
       let qty = 0; let value = 0;
       const layers: { q: number; c: number }[] = []; // FIFO receipt layers
       for (const m of mv) {
-        const q = Number(m.quantity);
-        const isIn = m.type === 'OPENING' || m.type === 'RECEIPT' || m.type === 'ADJUSTMENT' || m.type === 'RETURN';
-        const isOut = m.type === 'ISSUE' || m.type === 'WASTE' || m.type === 'POS_SALE';
+        // Reversals carry a negative quantity of the same type: treat them as the opposite direction.
+        const signed = stockDelta(m.type, Number(m.quantity));
+        const q = Math.abs(signed);
+        const isIn = signed > 0;
+        const isOut = signed < 0;
         const cost = Number(m.unitCost) || Number(mat.unitCost);
         if (m.type === 'TRANSFER') continue;
         if (isIn) {

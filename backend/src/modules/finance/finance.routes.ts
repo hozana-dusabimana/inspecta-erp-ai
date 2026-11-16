@@ -10,6 +10,8 @@ import { notify } from '../notifications/notify';
 import { etc, vac } from '../../lib/formulas';
 import { loadProjectMetrics } from '../../lib/project-metrics';
 import { costByWbs } from '../../lib/cost-by-wbs';
+import { Conflict } from '../../lib/errors';
+import { reverseCostEntries, costSourceAlive, costIntegrityReport } from '../../lib/posting';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -72,6 +74,17 @@ export const costEntryCrud: CrudOptions = {
     orderBy: { date: 'desc' },
     refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
     transform: stamp,
+    // Posted cost: only the description can change; cancel (reason required) writes a reversal.
+    posting: {
+      editable: ['description'],
+      onCancel: async (tx, record, actor) => {
+        const source = String(record.source ?? 'MANUAL');
+        if (source !== 'MANUAL' && (await costSourceAlive(actor.orgId, source, (record.sourceRef as string) ?? null))) {
+          throw Conflict(`This cost was posted automatically by a ${source.toLowerCase().replace(/_/g, ' ')} record. Cancel that record instead, so stock and cost are reversed together.`);
+        }
+        await reverseCostEntries(tx, { id: String(record.id) }, actor);
+      },
+    },
     // Alert when cumulative actual cost exceeds the project budget.
     afterChange: async (action, record, req) => {
       if (action === 'DELETE') return;
@@ -137,9 +150,24 @@ router.use(
     dateField: 'issueDate',
     filterFields: ['status'],
     sumFields: ['amount', 'netAmount'],
+    sumWhere: { status: { not: 'CANCELLED' } },
     requireProject: true,
     include: { payments: true },
     refs: [{ field: 'wbsItemId', model: 'wbsItem' }],
+    // Once submitted an invoice is posted: amounts are locked, workflow fields may move on, and it is
+    // cancelled (not deleted) with a reason. A DRAFT can still be edited or deleted.
+    posting: {
+      isPosted: (r) => r.status !== 'DRAFT',
+      editable: ['status', 'description', 'dueDate', 'submittedDate', 'paidDate', 'certifiedAmount'],
+      onCancel: async (tx, record) => {
+        const live = await tx.payment.count({ where: { invoiceId: String(record.id), cancelledAt: null, reversalOfId: null } });
+        if (live) throw Conflict(`This invoice has ${live} payment(s). Cancel the payments first.`);
+        return { status: 'CANCELLED' };
+      },
+    },
+    validate: (data) => {
+      if (data.status === 'CANCELLED' && !data.cancelledAt) throw BadRequest('Use Cancel (with a reason) to cancel an invoice.');
+    },
     // IPC net = (gross − previous) − retention − advance + tax. Falls back to amount.
     transform: (data, req) => {
       const gross = num(data.grossValuation);
@@ -212,8 +240,25 @@ router.use(
     requireProject: true,
     orderBy: { date: 'desc' },
     refs: [{ field: 'invoiceId', model: 'invoice' }],
+    // A payment is posted money: cancel (reason required) writes an equal negative payment.
+    posting: {
+      editable: [],
+      onCancel: async (tx, record, actor) => {
+        await tx.payment.create({
+          data: {
+            organizationId: actor.orgId, projectId: String(record.projectId), invoiceId: (record.invoiceId as string) ?? null,
+            reference: `REV-${record.reference}`, amount: -Number(record.amount), date: new Date(), reversalOfId: String(record.id),
+          },
+        });
+      },
+    },
   }),
 );
+
+// ── Cost integrity check (T1-01 e): lists duplicate / orphan postings, never deletes ──
+router.get('/cost-integrity', authenticate, requirePermission('finance:read'), asyncHandler(async (req, res) => {
+  return ok(res, await costIntegrityReport(req.user!.orgId, (req.query.projectId as string) || undefined));
+}));
 
 // ── Financial summary (budget vs actual, billing, cash) ───────
 router.get(

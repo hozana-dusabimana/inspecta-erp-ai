@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, Eye, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Plus, Trash2, Pencil, Eye, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown, Ban } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
+import { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
 import EntityForm from './EntityForm';
 import RecordDetail from './RecordDetail';
 
 // Re-exported so existing imports (`from './ResourceManager'`) keep working.
-export type { Field, FilterDef, SummaryCardDef, Column } from './formTypes';
+export type { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
 
 interface Props {
   endpoint: string;
@@ -31,6 +31,8 @@ interface Props {
   summaryCards?: SummaryCardDef[];
   /** When set, show a document-attachments panel on the edit form (project_documents module key). */
   attachModule?: string;
+  /** Posted records (cost, stock, invoices, payments): no Delete, Cancel with a reason instead. */
+  posting?: PostingDef;
 }
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -48,12 +50,14 @@ export function plural(label: string): string {
 // Modules where the server refuses to confirm/close the record without evidence.
 const EVIDENCE_REQUIRED: Record<string, string> = { grn: 'to confirm the GRN', material_issue: 'to confirm the issue', ncr: 'to close the NCR' };
 
-export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, formProjectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule }: Props) {
+export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, formProjectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule, posting }: Props) {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
   const [viewingRow, setViewingRow] = useState<Record<string, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<Record<string, any> | null>(null);
+  const [reason, setReason] = useState('');
 
   // Toolbar state
   const [searchInput, setSearchInput] = useState('');
@@ -135,6 +139,13 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
     onSuccess: invalidate,
     onError: (e) => setError(errorMessage(e)),
   });
+
+  const cancel = useMutation({
+    mutationFn: ({ id, why }: { id: string; why: string }) => api.post(`${endpoint}/${id}/cancel`, { reason: why }),
+    onSuccess: () => { setCancelling(null); setReason(''); invalidate(); queryClient.invalidateQueries(); },
+    onError: (e) => setError(errorMessage(e)),
+  });
+  const isPosted = (row: Record<string, any>) => Boolean(posting) && (!posting!.isPosted || posting!.isPosted(row));
 
   const openCreate = () => { setEditingRow(null); setError(null); setFormOpen(true); };
   const openEdit = (row: Record<string, any>) => { setEditingRow(row); setError(null); setFormOpen(true); };
@@ -288,7 +299,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                   <tr><td colSpan={columns.length + (attachModule ? 1 : 0) + 1} className="px-5 py-8 text-center text-brand-on-surface-variant">No records found.</td></tr>
                 )}
                 {rows.map((row) => (
-                  <tr key={row.id} className="border-b border-brand-outline-variant/10 hover:bg-brand-surface/40">
+                  <tr key={row.id} className={`border-b border-brand-outline-variant/10 hover:bg-brand-surface/40 ${row.cancelledAt ? 'opacity-60' : ''}`}>
                     {columns.map((c) => (
                       <td key={c.key} className={`px-5 py-2.5 ${c.align === 'right' ? 'text-right font-mono' : ''}`}>
                         {c.render ? c.render(row) : String(row[c.key] ?? '—')}
@@ -304,10 +315,22 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       </td>
                     )}
                     <td className="px-5 py-2.5 text-right whitespace-nowrap">
+                      {row.cancelledAt && (
+                        <span className="mr-1 inline-block rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700" title={`Cancelled ${new Date(row.cancelledAt).toLocaleString()}: ${row.cancelReason ?? ''}`}>Cancelled</span>
+                      )}
+                      {row.reversalOfId && (
+                        <span className="mr-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800" title="Equal and opposite entry that reverses a cancelled record">Reversal</span>
+                      )}
                       <button onClick={() => setViewingRow(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-on-surface-variant" aria-label="View details" title="View all details"><Eye className="w-3.5 h-3.5" /></button>
-                      {canWrite && <>
-                        <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button disabled={remove.isPending} onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-40" aria-label="Delete" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                      {canWrite && !row.cancelledAt && !row.reversalOfId && <>
+                        {!(isPosted(row) && posting?.lockEdit) && (
+                          <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-primary" aria-label="Edit" title={isPosted(row) ? 'Edit notes (amounts are locked once posted)' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button>
+                        )}
+                        {isPosted(row) ? (
+                          <button onClick={() => { setCancelling(row); setReason(''); setError(null); }} className="p-1.5 rounded hover:bg-red-50 text-red-600" aria-label="Cancel record" title="Cancel with a reason (the record stays visible and its effect is reversed)"><Ban className="w-3.5 h-3.5" /></button>
+                        ) : (
+                          <button disabled={remove.isPending} onClick={() => { if (confirm('Delete this record?')) remove.mutate(row.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-600 disabled:opacity-40" aria-label="Delete" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        )}
                       </>}
                     </td>
                   </tr>
@@ -346,6 +369,29 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
         />
       )}
 
+      {/* Cancel a posted record: a reason is mandatory and recorded in the audit log. */}
+      {cancelling && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={`Cancel ${entityLabel}`}>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (reason.trim().length >= 5) cancel.mutate({ id: cancelling.id, why: reason.trim() }); }}
+            className="w-full max-w-md space-y-3 rounded-xl bg-brand-surface-container-lowest p-5 shadow-xl"
+          >
+            <h3 className="text-sm font-bold text-brand-primary">Cancel {entityLabel}</h3>
+            <p className="text-xs text-brand-on-surface-variant">
+              Posted records are never deleted. Cancelling keeps this record visible, marks it cancelled and posts an equal and opposite entry, so cost and stock return to what they were. This is recorded with your name and the reason.
+            </p>
+            <label className="block text-[11px] font-bold uppercase tracking-wide text-brand-on-surface-variant" htmlFor="cancel-reason">Reason (required)</label>
+            <textarea id="cancel-reason" autoFocus value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="w-full rounded-lg border border-brand-outline-variant bg-brand-surface p-2 text-xs outline-none focus:border-brand-primary" placeholder="e.g. Issued to the wrong slab, re-entered as ISS-0002" />
+            {reason.trim().length > 0 && reason.trim().length < 5 && <p className="text-[11px] text-red-600">Give a reason of at least 5 characters.</p>}
+            {error && <p className="text-[11px] font-semibold text-red-700">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setCancelling(null)} className="rounded-lg border border-brand-outline-variant px-3 py-1.5 text-xs font-bold">Keep it</button>
+              <button type="submit" disabled={reason.trim().length < 5 || cancel.isPending} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-40">{cancel.isPending ? 'Cancelling…' : 'Cancel record'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Read-only "view everything" for a single record */}
       {viewingRow && (
         <RecordDetail
@@ -356,7 +402,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           attachModule={attachModule}
           projectId={projectId}
           projectScoped={projectScoped}
-          canWrite={canWrite}
+          canWrite={canWrite && !viewingRow.cancelledAt && !viewingRow.reversalOfId && !(isPosted(viewingRow) && posting?.lockEdit)}
           onEdit={() => { const r = viewingRow; setViewingRow(null); openEdit(r); }}
           onClose={() => setViewingRow(null)}
         />

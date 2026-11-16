@@ -16,6 +16,7 @@ import ComplianceAnalytics from './components/ComplianceAnalytics';
 import PayrollWorkspace from './components/PayrollWorkspace';
 import PosWorkspace from './components/PosWorkspace';
 import RequisitionWorkspace from './components/RequisitionWorkspace';
+import CostIntegrity from './components/CostIntegrity';
 import {
   PROJECT_FIELDS, CLIENT_FIELDS, SUPPLIER_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
   SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
@@ -1061,7 +1062,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'costs', label: 'Actual Costs', endpoint: '/finance/costs', entityLabel: 'Cost Entry', attachModule: 'cost_entry',
+        key: 'costs', label: 'Actual Costs', endpoint: '/finance/costs', entityLabel: 'Cost Entry', attachModule: 'cost_entry', posting: {},
         dateFilter: true, filters: [{ field: 'category', label: 'Category', options: COST_CATEGORIES }],
         summaryCards: [{ key: 'amount', label: 'Total Cost', money: true }, { key: '__count', label: 'Entries' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1102,8 +1103,8 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'invoices', label: 'Invoices / IPC', endpoint: '/finance/invoices', entityLabel: 'Invoice', attachModule: 'ipc',
-        dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED']) }],
+        key: 'invoices', label: 'Invoices / IPC', endpoint: '/finance/invoices', entityLabel: 'Invoice', attachModule: 'ipc', posting: { isPosted: (r) => r.status !== 'DRAFT' },
+        dateFilter: true, filters: [{ field: 'status', label: 'Status', options: opt(['DRAFT', 'SUBMITTED', 'CERTIFIED', 'APPROVED', 'PAID', 'REJECTED', 'CANCELLED']) }],
         summaryCards: [{ key: 'amount', label: 'Billed', money: true }, { key: 'netAmount', label: 'Net (IPC)', money: true }, { key: '__count', label: 'Invoices' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
         columns: [
@@ -1135,7 +1136,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'payments', label: 'Payments', endpoint: '/finance/payments', entityLabel: 'Payment', attachModule: 'payment',
+        key: 'payments', label: 'Payments', endpoint: '/finance/payments', entityLabel: 'Payment', attachModule: 'payment', posting: { lockEdit: true },
         dateFilter: true,
         summaryCards: [{ key: 'amount', label: 'Total Received', money: true }, { key: '__count', label: 'Payments' }],
         projectScoped: true, readPerm: 'finance:read', writePerm: 'finance:write',
@@ -1149,6 +1150,11 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'amount', label: 'Amount', type: 'number', required: true },
           { name: 'date', label: 'Date', type: 'date' },
         ],
+      },
+      {
+        key: 'integrity', label: 'Cost Integrity', endpoint: '/finance/cost-integrity', entityLabel: 'Posting',
+        readPerm: 'finance:read', writePerm: 'finance:write',
+        component: CostIntegrity, columns: [], fields: [],
       },
     ],
   },
@@ -1193,7 +1199,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'movements', label: 'Stock Movements', endpoint: '/inventory/movements', entityLabel: 'Movement',
+        key: 'movements', label: 'Stock Movements', endpoint: '/inventory/movements', entityLabel: 'Movement', posting: {},
         dateFilter: true, filters: [{ field: 'type', label: 'Type', options: opt(['OPENING', 'RECEIPT', 'ISSUE', 'POS_SALE', 'ADJUSTMENT', 'TRANSFER', 'RETURN', 'WASTE']) }],
         summaryCards: [{ key: 'quantity', label: 'Total Qty Moved' }, { key: '__count', label: 'Movements' }],
         readPerm: 'inventory:read', writePerm: 'inventory:write',
@@ -1242,7 +1248,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'grn', label: 'Goods Received (GRN)', endpoint: '/inventory/grn', entityLabel: 'GRN', attachModule: 'grn',
+        key: 'grn', label: 'Goods Received (GRN)', endpoint: '/inventory/grn', entityLabel: 'GRN', attachModule: 'grn', posting: {},
         dateFilter: true,
         summaryCards: [{ key: 'quantityReceived', label: 'Total Received' }, { key: '__count', label: 'GRNs' }],
         readPerm: 'inventory:read', writePerm: 'inventory:write',
@@ -1267,7 +1273,7 @@ export const MODULES: Record<string, ModuleDef> = {
         ],
       },
       {
-        key: 'issues', label: 'Material Issues', endpoint: '/inventory/material-issues', entityLabel: 'Material Issue', attachModule: 'material_issue',
+        key: 'issues', label: 'Material Issues', endpoint: '/inventory/material-issues', entityLabel: 'Material Issue', attachModule: 'material_issue', posting: {},
         dateFilter: true,
         summaryCards: [{ key: 'quantityIssued', label: 'Total Issued' }, { key: '__count', label: 'Issues' }],
         projectScoped: true, readPerm: 'inventory:read', writePerm: 'inventory:write',

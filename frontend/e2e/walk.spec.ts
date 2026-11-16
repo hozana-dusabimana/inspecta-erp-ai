@@ -14,7 +14,7 @@ let P: any;
 
 const MODULES = [
   '/dashboard', '/executive', '/portfolio', '/planning', '/planning-dashboards', '/scheduling', '/production', '/field-ops', '/equipment',
-  '/hr', '/payroll', '/point-of-sale', '/finance', '/profitability', '/inventory', '/requisitions', '/procurement', '/qaqc', '/hse', '/risk',
+  '/human-resources', '/payroll', '/point-of-sale', '/finance', '/profitability', '/inventory', '/requisitions', '/procurement', '/qaqc', '/hse', '/risk',
   '/approvals', '/documents', '/reports', '/copilot', '/notifications', '/daily-entry', '/admin', '/billing',
 ];
 
@@ -83,3 +83,12 @@ for (const path of MODULES) {
     expect(problems, problems.join('\n')).toEqual([]);
   });
 }
+
+test('unknown addresses say "Page not found" instead of jumping to the dashboard', async ({ page }) => {
+  await login(page);
+  for (const path of ['/hr', '/administration']) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(path);
+  }
+});

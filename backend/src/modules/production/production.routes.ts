@@ -17,6 +17,7 @@ import { fieldReportRouter } from './field-report';
 import { dailyPlanRouter } from './daily-plans';
 import { loadProjectMetrics } from '../../lib/project-metrics';
 import { syncProjectProgress } from '../../lib/project-metrics';
+import { qualityHolds } from '../../lib/safety';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -105,6 +106,8 @@ const entriesCrud = createCrudRouter({
       const has = data.id ? await prisma.attendance.count({ where: { productionEntryId: String(data.id) } }) : 0;
       if (!has) flags.add('LABOUR_WITHOUT_ATTENDANCE');
     }
+    flags.delete('QUALITY_HOLD');
+    if (data.wbsItemId && data.projectId && (await qualityHolds(req.user!.orgId, String(data.projectId), String(data.wbsItemId))).length) flags.add('QUALITY_HOLD');
     data.flags = [...flags];
     if (data.plannedQty == null || Number(data.plannedQty) === 0) {
       let planned = 0;

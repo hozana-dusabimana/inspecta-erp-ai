@@ -62,7 +62,7 @@ inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyn
   const orgId = req.user!.orgId;
   const projectId = req.query.projectId as string | undefined;
   const scope = { organizationId: orgId, ...(projectId ? { projectId } : {}) };
-  const [requests, reports, prs, reqs, invoices, payments, wageRates, baselines, boqVersions] = await Promise.all([
+  const [requests, reports, prs, reqs, invoices, payments, wageRates, baselines, boqVersions, pendingPos, supplierPays] = await Promise.all([
     prisma.approvalRequest.findMany({ where: { ...scope, status: 'PENDING' }, include: { project: { select: { code: true, name: true } } } }),
     prisma.dailyReport.findMany({ where: { ...scope, status: 'SUBMITTED' }, include: { project: { select: { code: true, name: true } } } }),
     prisma.purchaseRequest.findMany({ where: { ...scope, status: 'SUBMITTED' } }),
@@ -72,19 +72,21 @@ inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyn
     projectId ? Promise.resolve([]) : prisma.wageRate.findMany({ where: { organizationId: orgId, approvalStatus: 'PENDING' }, include: { trade: { select: { name: true } } } }),
     prisma.scheduleBaseline.findMany({ where: { ...scope, approvalStatus: 'PENDING' } }),
     prisma.boqVersion.findMany({ where: { ...scope, approvalStatus: 'PENDING' } }),
+    prisma.purchaseOrder.findMany({ where: { ...scope, approvalStatus: 'PENDING', status: { not: 'CANCELLED' } }, include: { supplier: { select: { name: true } } } }),
+    prisma.supplierPayment.findMany({ where: { ...scope, approvalStatus: 'PENDING', cancelledAt: null }, include: { invoice: { select: { number: true } } } }),
   ]);
-  const projectIds = [...new Set([...prs, ...reqs, ...invoices, ...payments, ...baselines, ...boqVersions].map((r) => r.projectId).filter(Boolean) as string[])];
+  const projectIds = [...new Set([...prs, ...reqs, ...invoices, ...payments, ...baselines, ...boqVersions, ...pendingPos, ...supplierPays].map((r) => r.projectId).filter(Boolean) as string[])];
   const projects = await prisma.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, code: true, name: true } });
   const pName = new Map(projects.map((p) => [p.id, `${p.code} — ${p.name}`]));
   const userIds = [...new Set([
     ...requests.map((r) => r.requestedById), ...reports.map((r) => r.preparedById),
     ...prs.map((r) => r.requestedById), ...reqs.map((r) => r.requestedById), ...invoices.map((r) => r.createdBy),
-    ...payments.map((r) => r.createdBy), ...(wageRates as Array<{ createdBy: string | null }>).map((r) => r.createdBy), ...baselines.map((r) => r.createdBy), ...boqVersions.map((r) => r.createdBy),
+    ...payments.map((r) => r.createdBy), ...(wageRates as Array<{ createdBy: string | null }>).map((r) => r.createdBy), ...baselines.map((r) => r.createdBy), ...boqVersions.map((r) => r.createdBy), ...pendingPos.map((r) => r.createdBy), ...supplierPays.map((r) => r.createdBy),
   ].filter(Boolean) as string[])];
   const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } });
   const uName = new Map(users.map((u) => [u.id, u.fullName]));
   // decideUrl: where Approve/Reject post to (null = decide on the record's own page).
-  const DECIDE: Record<string, string> = { approval: '/approvals', payment: '/finance/payments', 'wage-rate': '/hr/wage-rates', baseline: '/scheduling/baselines', 'boq-version': '/planning/boq-versions' };
+  const DECIDE: Record<string, string> = { approval: '/approvals', payment: '/finance/payments', 'wage-rate': '/hr/wage-rates', baseline: '/scheduling/baselines', 'boq-version': '/planning/boq-versions', 'purchase-order': '/procurement/purchase-orders', 'supplier-payment': '/procurement/supplier-payments' };
   const row = (type: string, id: string, ref: string, title: string, project: string | null, by: string | null | undefined, amount: number, date: Date, link: string, decideVia: string) => ({
     type, id, reference: ref, title, project, requestedBy: by ? uName.get(by) ?? null : null, requestedById: by ?? null, amount, date,
     ...approvalLevel(amount), link, decideVia, decideUrl: DECIDE[decideVia] ? `${DECIDE[decideVia]}/${id}` : null,
@@ -99,11 +101,15 @@ inboxRouter.get('/inbox', authenticate, requirePermission('approval:read'), asyn
     ...(wageRates as Array<{ id: string; amount: unknown; currency: string; rateType: string; createdBy: string | null; createdAt: Date; trade: { name: string } | null }>).map((r) => row('WAGE_RATE', r.id, r.trade?.name ?? '', `Wage rate ${r.trade?.name ?? ''}: ${Number(r.amount).toLocaleString()} ${r.currency} per ${r.rateType === 'HOURLY' ? 'hour' : 'day'}`, null, r.createdBy, 0, r.createdAt, '/hr', 'wage-rate')),
     ...baselines.map((r) => row('BASELINE', r.id, `v${r.versionNo}`, `Schedule baseline v${r.versionNo}: ${r.name}`, pName.get(r.projectId) ?? null, r.createdBy, 0, r.createdAt, '/scheduling', 'baseline')),
     ...boqVersions.map((r) => row('BUDGET', r.id, `v${r.versionNo}`, `BOQ budget v${r.versionNo}${r.label ? `: ${r.label}` : ''}`, pName.get(r.projectId) ?? null, r.createdBy, Number(r.totalBudget), r.createdAt, '/planning', 'boq-version')),
+    ...pendingPos.map((r) => ({ ...row('PURCHASE_ORDER', r.id, r.number, `${r.number} to ${r.supplier.name} (above the order limit)`, r.projectId ? pName.get(r.projectId) ?? null : null, r.createdBy, Number(r.total), r.createdAt, '/procurement', 'purchase-order'), level: 3 as const, approverRole: 'CEO (company administrator)' })),
+    ...supplierPays.map((r) => row('SUPPLIER_PAYMENT', r.id, r.reference, `Supplier payment ${r.reference} for ${r.invoice.number}`, r.projectId ? pName.get(r.projectId) ?? null : null, r.createdBy, Number(r.amount), r.createdAt, '/procurement', 'supplier-payment')),
   ].sort((a, b) => +new Date(b.date) - +new Date(a.date));
   // Tell the screen up front whether THIS user may decide each item (no Approve button on your own request).
   const withRights = await Promise.all(items.map(async (i) => {
     const blockedReason = await makerCheckerBlock(req.user!, i.requestedById, 'request');
-    return { ...i, canDecide: !blockedReason && req.user!.permissions.includes('approval:write'), blockedReason };
+    const ceoOnly = i.decideVia === 'purchase-order' && req.user!.role !== 'SYSTEM_ADMIN' && !req.user!.isPlatformAdmin;
+    const why = blockedReason ?? (ceoOnly ? 'Above the order limit: the CEO (company administrator) approves it.' : null);
+    return { ...i, canDecide: !why && req.user!.permissions.includes('approval:write'), blockedReason: why };
   }));
   const byType: Record<string, number> = {};
   for (const i of items) byType[i.type] = (byType[i.type] ?? 0) + 1;

@@ -115,12 +115,13 @@ router.put(
 // Evidence rules and the daily report cut-off (T2-09, T2-03). Everyone may read them (forms need
 // to know what is required); only the System Admin changes them.
 router.get('/evidence-rules', asyncHandler(async (req, res) => {
-  const org = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { dailyReportCutoff: true } });
-  return ok(res, { rules: await evidenceRules(req.user!.orgId), labels: EVIDENCE_MODULES, dailyReportCutoff: org?.dailyReportCutoff ?? '18:00' });
+  const org = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { dailyReportCutoff: true, poApprovalLimit: true } });
+  return ok(res, { rules: await evidenceRules(req.user!.orgId), labels: EVIDENCE_MODULES, dailyReportCutoff: org?.dailyReportCutoff ?? '18:00', poApprovalLimit: Number(org?.poApprovalLimit ?? 10_000_000) });
 }));
 router.put('/evidence-rules', requirePermission('user:write'), asyncHandler(async (req, res) => {
   const body = z.object({
     rules: z.record(z.boolean()).optional(),
+    poApprovalLimit: z.number().positive().optional(),
     dailyReportCutoff: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Cut-off must be HH:MM').optional(),
   }).parse(req.body);
   const before = await prisma.organization.findUnique({ where: { id: req.user!.orgId }, select: { evidenceRules: true, dailyReportCutoff: true } });
@@ -128,11 +129,11 @@ router.put('/evidence-rules', requirePermission('user:write'), asyncHandler(asyn
   for (const [k, v] of Object.entries(body.rules ?? {})) if (k in EVIDENCE_MODULES) rules[k] = v;
   const org = await prisma.organization.update({
     where: { id: req.user!.orgId },
-    data: { evidenceRules: rules, ...(body.dailyReportCutoff ? { dailyReportCutoff: body.dailyReportCutoff } : {}) },
-    select: { evidenceRules: true, dailyReportCutoff: true },
+    data: { evidenceRules: rules, ...(body.dailyReportCutoff ? { dailyReportCutoff: body.dailyReportCutoff } : {}), ...(body.poApprovalLimit ? { poApprovalLimit: body.poApprovalLimit } : {}) },
+    select: { evidenceRules: true, dailyReportCutoff: true, poApprovalLimit: true },
   });
   await auditFromRequest(req, 'UPDATE', 'evidence-rules', req.user!.orgId, { oldValues: before, newValues: org });
-  return ok(res, { rules: org.evidenceRules, labels: EVIDENCE_MODULES, dailyReportCutoff: org.dailyReportCutoff });
+  return ok(res, { rules: org.evidenceRules, labels: EVIDENCE_MODULES, dailyReportCutoff: org.dailyReportCutoff, poApprovalLimit: Number(org.poApprovalLimit) });
 }));
 
 export default router;

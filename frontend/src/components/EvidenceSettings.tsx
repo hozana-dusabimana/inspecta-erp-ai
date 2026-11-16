@@ -12,10 +12,11 @@ export default function EvidenceSettings() {
   const { data, isLoading } = useEvidenceRules();
   const [rules, setRules] = useState<Record<string, boolean>>({});
   const [cutoff, setCutoff] = useState('18:00');
+  const [limit, setLimit] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { if (data) { setRules(data.rules); setCutoff(data.dailyReportCutoff); } }, [data]);
+  useEffect(() => { if (data) { setRules(data.rules); setCutoff(data.dailyReportCutoff); setLimit(String((data as any).poApprovalLimit ?? '')); } }, [data]);
   const save = useMutation({
-    mutationFn: () => api.put('/organization/evidence-rules', { rules, dailyReportCutoff: cutoff }),
+    mutationFn: () => api.put('/organization/evidence-rules', { rules, dailyReportCutoff: cutoff, ...(Number(limit) > 0 ? { poApprovalLimit: Number(limit) } : {}) }),
     onSuccess: () => { setMsg('Saved.'); qc.invalidateQueries({ queryKey: ['/organization/evidence-rules'] }); },
     onError: (e) => setMsg(errorMessage(e)),
   });
@@ -37,6 +38,11 @@ export default function EvidenceSettings() {
         Daily report cut-off
         <input type="time" value={cutoff} onChange={(e) => setCutoff(e.target.value)} className="h-9 rounded-lg border border-brand-outline-variant bg-brand-surface px-2 text-xs" />
         <span className="font-normal text-brand-on-surface-variant">After this time a report is late, and a project with none alerts the PM and admin.</span>
+      </label>
+      <label className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+        Purchase order approval limit (RWF)
+        <input type="number" min={1} value={limit} onChange={(e) => setLimit(e.target.value)} className="h-9 w-40 rounded-lg border border-brand-outline-variant bg-brand-surface px-2 text-xs" />
+        <span className="font-normal text-brand-on-surface-variant">Orders above it wait for the CEO; orders to one supplier in a day that together pass it are flagged.</span>
       </label>
       <div className="flex items-center gap-3">
         <button onClick={() => save.mutate()} disabled={save.isPending} className="rounded-lg bg-brand-primary px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{save.isPending ? 'Saving…' : 'Save'}</button>

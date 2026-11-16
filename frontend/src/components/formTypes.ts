@@ -1,3 +1,4 @@
+import type React from 'react';
 // Shared types for the config-driven CRUD forms (ResourceManager + EntityForm).
 
 export interface Field {
@@ -59,6 +60,13 @@ export interface FilterDef {
 }
 
 /** Summation card driven by backend `meta.sums` (or record count via key '__count'). */
+/** A per-row action with its own dialog (e.g. close an incident with evidence). */
+export interface RowAction {
+  label: string;
+  show?: (row: Record<string, any>) => boolean;
+  dialog: (row: Record<string, any>, close: () => void) => React.ReactNode;
+}
+
 /** Posted records: never deleted; cancelled with a reason (server: POST /:id/cancel). */
 export interface PostingDef {
   /** Records for which this is false (e.g. a DRAFT invoice) keep normal edit/delete. Default: always posted. */

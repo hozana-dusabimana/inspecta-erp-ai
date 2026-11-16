@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, Eye, X, Search, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown, ArrowUpDown, Ban } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
-import { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
+import { Field, FilterDef, SummaryCardDef, Column, PostingDef, RowAction } from './formTypes';
 import EntityForm from './EntityForm';
 import RecordDetail from './RecordDetail';
 import { useEvidenceRules } from '../lib/evidence';
 
 // Re-exported so existing imports (`from './ResourceManager'`) keep working.
-export type { Field, FilterDef, SummaryCardDef, Column, PostingDef } from './formTypes';
+export type { Field, FilterDef, SummaryCardDef, Column, PostingDef, RowAction } from './formTypes';
 
 interface Props {
   endpoint: string;
@@ -34,6 +34,8 @@ interface Props {
   attachModule?: string;
   /** Posted records (cost, stock, invoices, payments): no Delete, Cancel with a reason instead. */
   posting?: PostingDef;
+  /** Extra per-row actions with their own dialog. */
+  rowActions?: RowAction[];
 }
 
 const money = (n: unknown) => 'RWF ' + Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -51,7 +53,7 @@ export function plural(label: string): string {
 // Modules where the server refuses to confirm/close the record without evidence.
 const EVIDENCE_REQUIRED: Record<string, string> = { grn: 'to confirm the GRN', material_issue: 'to confirm the issue', ncr: 'to close the NCR' };
 
-export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, formProjectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule, posting }: Props) {
+export default function ResourceManager({ endpoint, entityLabel, columns, fields, canWrite: canWriteProp, projectId, formProjectId, projectScoped, searchable = true, dateFilter, filters, summaryCards, attachModule, posting, rowActions }: Props) {
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, any> | null>(null);
@@ -59,6 +61,7 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<Record<string, any> | null>(null);
   const [reason, setReason] = useState('');
+  const [actionDialog, setActionDialog] = useState<{ a: RowAction; row: Record<string, any> } | null>(null);
 
   // Toolbar state
   const [searchInput, setSearchInput] = useState('');
@@ -323,6 +326,9 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
                       {row.reversalOfId && (
                         <span className="mr-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-800" title="Equal and opposite entry that reverses a cancelled record">Reversal</span>
                       )}
+                      {canWrite && (rowActions ?? []).filter((a) => !a.show || a.show(row)).map((a) => (
+                        <button key={a.label} onClick={() => setActionDialog({ a, row })} className="mr-1 rounded border border-brand-primary/30 px-2 py-0.5 text-[10px] font-bold text-brand-primary hover:bg-brand-primary/5">{a.label}</button>
+                      ))}
                       <button onClick={() => setViewingRow(row)} className="p-1.5 rounded hover:bg-brand-surface text-brand-on-surface-variant" aria-label="View details" title="View all details"><Eye className="w-3.5 h-3.5" /></button>
                       {canWrite && !row.cancelledAt && !row.reversalOfId && <>
                         {!(isPosted(row) && posting?.lockEdit) && (
@@ -370,6 +376,8 @@ export default function ResourceManager({ endpoint, entityLabel, columns, fields
           onClose={() => setFormOpen(false)}
         />
       )}
+
+      {actionDialog && actionDialog.a.dialog(actionDialog.row, () => { setActionDialog(null); invalidate(); })}
 
       {/* Cancel a posted record: a reason is mandatory and recorded in the audit log. */}
       {cancelling && (

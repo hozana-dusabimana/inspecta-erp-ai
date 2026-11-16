@@ -8,6 +8,7 @@ import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
 import { notify } from '../notifications/notify';
 import { raiseNcrFromFailure } from './quality-chain';
+import { assertMakerChecker } from '../../lib/maker-checker';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -64,6 +65,8 @@ const testCreate = z.object({
   labName: z.string().optional(),
   certificateNumber: z.string().optional(),
   notes: z.string().optional(),
+  /** This test re-tests an earlier failed one (same batch, after correction). */
+  retestOfId: z.string().optional(),
 });
 router.use('/material-tests', createCrudRouter({
   model: 'materialTest', entity: 'material-test', readPerm: 'qaqc:read', writePerm: 'qaqc:write',
@@ -71,8 +74,12 @@ router.use('/material-tests', createCrudRouter({
   createSchema: testCreate, updateSchema: testCreate.partial(),
   searchField: 'batchNumber', dateField: 'sampleDate', filterFields: ['result', 'testType'],
   requireProject: true, orderBy: { sampleDate: 'desc' },
+  refs: [{ field: 'retestOfId', model: 'materialTest' }],
   transform: stamp,
   afterChange: async (action, record, req) => {
+    if (action !== 'DELETE' && record.result === 'PASS' && record.retestOfId) {
+      await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: 'MEDIUM', title: 'Passing re-test recorded', message: `${record.testType} re-test (batch ${record.batchNumber ?? '—'}) passed. Its NCR can now be closed by a second person.`, link: '/qaqc' });
+    }
     if (action !== 'DELETE' && record.result === 'FAIL') {
       await raiseNcrFromFailure(req.user!.orgId, req.user!.id, {
         projectId: String(record.projectId), sourceType: 'MATERIAL_TEST', sourceId: String(record.id),
@@ -114,6 +121,18 @@ export const ncrCrud: CrudOptions = {
   // test result/certificate and a rectification photo attached.
   validate: async (data, req) => {
     if (data.status !== 'CLOSED' || !data.id) return;
+    const existing = await prisma.ncr.findUnique({ where: { id: String(data.id) }, select: { status: true, createdBy: true, sourceType: true, sourceId: true } });
+    if (existing?.status === 'CLOSED') return;
+    // T2-05 b: a failed test is cleared only by a passing re-test that carries evidence.
+    if (existing?.sourceType === 'MATERIAL_TEST' && existing.sourceId) {
+      const retests = await prisma.materialTest.findMany({ where: { organizationId: req.user!.orgId, retestOfId: existing.sourceId, result: 'PASS', deletedAt: null }, select: { id: true } });
+      const withEvidence = retests.length ? await prisma.projectDocument.count({ where: { organizationId: req.user!.orgId, module: 'material_test', recordId: { in: retests.map((r) => r.id) }, deletedAt: null } }) : 0;
+      if (!retests.length) throw BadRequest('Cannot close this NCR: there is no passing re-test of the failed test. Record the re-test (linked to the failed test) first.');
+      if (!withEvidence) throw BadRequest('Cannot close this NCR: the passing re-test has no evidence (lab certificate or photo) attached.');
+    }
+    // Maker-checker: whoever raised the NCR cannot close it; the closer holds a different role.
+    await assertMakerChecker(req, existing?.createdBy ?? null, 'NCR closure');
+    if (existing?.sourceType === 'MATERIAL_TEST') return; // the re-test is the evidence
     const docs = await prisma.projectDocument.findMany({
       where: { organizationId: req.user!.orgId, module: 'ncr', recordId: String(data.id), deletedAt: null },
       select: { fileType: true, documentCategory: true },
@@ -127,6 +146,10 @@ export const ncrCrud: CrudOptions = {
   afterChange: async (action, record, req) => {
     if (action === 'CREATE' || (action === 'UPDATE' && record.severity === 'CRITICAL')) {
       await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: (record.severity as Severity) ?? 'MEDIUM', title: `NCR ${record.number}`, message: String(record.description), link: `/projects/${record.projectId}` });
+    }
+    if (action === 'UPDATE' && record.status === 'CLOSED' && !record.closedById) {
+      await prisma.ncr.update({ where: { id: String(record.id) }, data: { closedById: req.user!.id, closedAt: (record.closedAt as Date) ?? new Date() } });
+      await notify({ organizationId: req.user!.orgId, type: 'NCR', severity: 'LOW', title: `NCR ${record.number} closed`, message: 'Closed after a passing re-test; payment and progress holds on its WBS item are lifted.', link: '/qaqc' });
     }
   },
 };

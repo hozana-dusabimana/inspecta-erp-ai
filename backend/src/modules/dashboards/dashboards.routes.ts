@@ -4,6 +4,7 @@ import { asyncHandler, ok } from '../../lib/http';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { loadProjectMetrics, indexStatus } from '../../lib/project-metrics';
 import { averageCostMap } from '../inventory/stock';
+import { safetyScore } from '../../lib/safety';
 
 const router = Router();
 router.use(authenticate);
@@ -125,6 +126,7 @@ router.get(
         budgetStatus: t.burnStatus,
       },
       compliance: {
+        ...(await (async () => { const sc = await safetyScore(orgId, { projectIds: req.user!.projectIds }); return { safetyScore: sc.score, safetyDeductions: sc.deductions }; })()),
         openNcrs,
         incidents,
         openRisks,

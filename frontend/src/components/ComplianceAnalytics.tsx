@@ -105,7 +105,9 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Kpi label="Safety Score" value={String(k.safetyScore)} tone={k.safetyScore >= 80 ? 'good' : k.safetyScore >= 60 ? 'warn' : 'bad'} />
+            <div title={(k.safetyDeductions ?? []).map((d: any) => `−${d.points} ${d.reason}`).join('\n') || 'Nothing has lowered the score.'}>
+              <Kpi label="Safety Score" value={String(k.safetyScore)} tone={k.safetyScore >= 80 ? 'good' : k.safetyScore >= 60 ? 'warn' : 'bad'} />
+            </div>
             <Kpi label="Incidents" value={numf(k.incidents)} tone={k.incidents > 0 ? 'warn' : 'good'} />
             <Kpi label="Near Misses" value={numf(k.nearMiss)} />
             <Kpi label="Lost-Time Injuries" value={numf(k.lostTimeInjuries)} tone={k.lostTimeInjuries > 0 ? 'bad' : 'good'} />
@@ -113,6 +115,12 @@ export default function ComplianceAnalytics({ projectId, mode }: { projectId?: s
             <Kpi label="Toolbox Talks" value={numf(k.toolboxTalks)} />
             <Kpi label="Safety Inspections" value={numf(k.safetyInspections)} />
             <Kpi label="PPE Expiring (30d)" value={numf(k.ppeExpiringSoon)} tone={k.ppeExpiringSoon > 0 ? 'warn' : 'good'} />
+            {(k.safetyDeductions ?? []).length > 0 && (
+              <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                <p className="mb-1 font-bold text-amber-900">What lowered the safety score</p>
+                <ul className="space-y-0.5">{k.safetyDeductions.map((d: any, i: number) => <li key={i}><b className="font-mono">−{d.points}</b> {d.reason}</li>)}</ul>
+              </div>
+            )}
           </div>
           <div className="grid lg:grid-cols-2 gap-5">
             <Card title="Risk Matrix (open risks)"><RiskMatrix risks={k.riskMatrix ?? []} /></Card>

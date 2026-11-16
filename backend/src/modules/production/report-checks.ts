@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { notify } from '../notifications/notify';
+import { qualityHolds } from '../../lib/safety';
 
 /**
  * Daily report cross-checks, lateness and the missing-report watch (T2-03).
@@ -58,6 +59,11 @@ export async function computeReportFlags(orgId: string, reportId: string): Promi
     if (pour && !cementIssued) flags.push(`CONCRETE_WITHOUT_CEMENT: "${e.wbsActivity}" poured ${num(e.actualQty)} ${e.unit} but no cement was issued that day.`);
     if (pour && tests === 0) flags.push(`POUR_WITHOUT_TEST: "${e.wbsActivity}" was poured with no concrete test sampled that day.`);
     if (num(e.plannedQty) > 0 && num(e.actualQty) > num(e.plannedQty) * 1.5) flags.push(`PROGRESS_ABOVE_PLAN: "${e.wbsActivity}" reports ${num(e.actualQty)} against ${num(e.plannedQty)} planned (over 150%).`);
+  }
+  const wbsIds = [...new Set(entries.map((e) => e.wbsItemId).filter(Boolean) as string[])];
+  for (const w of wbsIds) {
+    const holds = await qualityHolds(orgId, report.projectId, w);
+    if (holds.length) flags.push(`QUALITY_HOLD: work reported on a WBS item with an open quality failure: ${holds[0]}.`);
   }
   for (const l of eqLogs) {
     const fuel = await prisma.fuelLog.count({ where: { organizationId: orgId, equipmentId: l.equipmentId, date: day } });

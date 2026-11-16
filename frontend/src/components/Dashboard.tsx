@@ -187,7 +187,9 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
   const execFinance = execResp?.data?.finance;
   const compliance = execResp?.data?.compliance;
   // Safety score derived from real incident count (100 minus a penalty per incident).
-  const safetyScore = compliance ? Math.max(0, 100 - Number(compliance.incidents) * 5).toFixed(1) : '—';
+  // One server-side score (incidents, missed inspections, failed tests, open NCRs) with its reasons.
+  const safetyScore = compliance?.safetyScore != null ? String(compliance.safetyScore) : '—';
+  const safetyWhy = (compliance?.safetyDeductions ?? []).map((d: any) => `−${d.points} ${d.reason}`).join('\n') || 'Nothing has lowered the score.';
 
   // Real notifications power the AI Insights panel (replaces mock alerts).
   const { data: notifResp } = useQuery({
@@ -436,7 +438,7 @@ export default function Dashboard({ onNavigate, onLogout }: DashboardProps) {
               <div className="bg-brand-surface-container-low px-4 py-3 rounded-xl border border-brand-outline-variant/10 flex justify-between items-center gap-2 shadow-sm min-w-0 overflow-hidden">
                 <div className="min-w-0">
                   <p className="text-brand-on-surface-variant text-[10px] font-bold uppercase tracking-wider truncate">Safety Score</p>
-                  <p className="font-mono font-bold text-base text-brand-primary truncate">{safetyScore}</p>
+                  <p className="font-mono font-bold text-base text-brand-primary truncate" title={safetyWhy}>{safetyScore}</p>
                 </div>
                 <div className="w-8 h-8 rounded-lg bg-brand-primary/5 flex items-center justify-center text-emerald-600 shrink-0">
                   <HeartPulse className="w-4.5 h-4.5" />

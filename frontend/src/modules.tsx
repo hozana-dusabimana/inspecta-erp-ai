@@ -18,6 +18,17 @@ import PosWorkspace from './components/PosWorkspace';
 import RequisitionWorkspace from './components/RequisitionWorkspace';
 import CostIntegrity from './components/CostIntegrity';
 import ActivityResources from './components/ActivityResources';
+import CloseIncident from './components/CloseIncident';
+
+/** Three-way match status for a supplier invoice (PO ↔ goods received ↔ invoice). */
+function MatchBadge({ id }: { id: string }) {
+  const { data } = useQuery({ queryKey: ['/procurement/supplier-invoices/match-status'], queryFn: () => api.get<Record<string, any>>('/procurement/supplier-invoices/match-status').then((r) => r.data), staleTime: 10_000 });
+  const m = data?.[id];
+  if (!m) return <span className="text-brand-on-surface-variant">…</span>;
+  const tone = m.status === 'MATCHED' ? 'text-emerald-700' : 'text-red-700';
+  const label = { MATCHED: '✓ Matched', NO_PO: '✕ No PO', NO_GRN: '✕ No goods received', MISMATCH: '✕ Mismatch' }[m.status as string] ?? m.status;
+  return <span className={`font-bold ${tone}`} title={m.detail}>{label}</span>;
+}
 import {
   PROJECT_FIELDS, CLIENT_FIELDS, SUPPLIER_FIELDS, UNIT_OPTIONS, BOQ_CATEGORY_OPTIONS, MATERIAL_CATEGORY_OPTIONS,
   SUPPLIER_CATEGORY_OPTIONS, PPE_TYPE_OPTIONS, INSPECTION_TYPE_OPTIONS, RISK_CATEGORY_OPTIONS, DOCUMENT_CATEGORY_OPTIONS,
@@ -1338,6 +1349,8 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'supplier', label: 'Supplier', render: (r) => r.supplier?.name ?? '—' },
           { key: 'status', label: 'Status' },
           { key: 'total', label: 'Total', align: 'right', sortable: true, render: (r) => money(r.total) },
+          { key: 'approvalStatus', label: 'CEO approval', render: (r) => (r.approvalStatus === 'PENDING' ? 'Awaiting CEO (above limit)' : r.approvalStatus === 'REJECTED' ? 'Rejected' : 'OK') },
+          { key: 'flags', label: 'Flags', render: (r) => ((r.flags ?? []).length ? <span className="font-bold text-amber-700" title={(r.flags ?? []).join('\n')}>⚠ {(r.flags ?? []).map((f: string) => f.split(':')[0].replace('_', ' ').toLowerCase()).join(', ')}</span> : '—') },
         ],
         fields: [
           { name: 'number', label: 'PO Number (auto)', hideOnCreate: true, readOnly: true, section: 'Order' },
@@ -1432,6 +1445,45 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'notes', label: 'Notes', type: 'textarea' },
         ],
       },
+      {
+        key: 'supplier-invoices', label: 'Supplier Invoices', endpoint: '/procurement/supplier-invoices', entityLabel: 'Supplier Invoice', attachModule: 'supplier_invoice',
+        posting: {}, dateFilter: true,
+        summaryCards: [{ key: 'amount', label: 'Invoiced', money: true }, { key: '__count', label: 'Invoices' }],
+        readPerm: 'procurement:read', writePerm: 'procurement:write',
+        columns: [
+          { key: 'number', label: 'Number', sortable: true }, { key: 'supplierRef', label: 'Supplier ref' },
+          { key: 'invoiceDate', label: 'Date', render: (r) => date(r.invoiceDate) },
+          { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
+          { key: 'status', label: 'Status' },
+          { key: 'match', label: 'PO / GRN / invoice match', render: (r) => <MatchBadge id={r.id} /> },
+        ],
+        fields: [
+          { name: 'number', label: 'Number (auto)', hideOnCreate: true, readOnly: true },
+          { name: 'supplierId', label: 'Supplier', type: 'select', required: true, optionsEndpoint: '/procurement/suppliers', optionLabel: (r) => r.name },
+          { name: 'purchaseOrderId', label: 'Purchase order (required to pay)', type: 'select', optionsEndpoint: '/procurement/purchase-orders?pageSize=200', optionLabel: (r) => `${r.number} — ${r.supplier?.name ?? ''} (${money(r.total)})` },
+          { name: 'supplierRef', label: "Supplier's invoice number" },
+          { name: 'invoiceDate', label: 'Invoice date', type: 'date' },
+          { name: 'amount', label: 'Amount', type: 'number', required: true },
+          { name: 'note', label: 'Note', type: 'textarea' },
+        ],
+      },
+      {
+        key: 'supplier-payments', label: 'Supplier Payments', endpoint: '/procurement/supplier-payments', entityLabel: 'Supplier Payment',
+        posting: { lockEdit: true }, dateFilter: true,
+        summaryCards: [{ key: 'amount', label: 'Paid (approved)', money: true }, { key: '__count', label: 'Payments' }],
+        readPerm: 'procurement:read', writePerm: 'finance:write',
+        columns: [
+          { key: 'reference', label: 'Reference' }, { key: 'invoice', label: 'Invoice', render: (r) => r.invoice?.number ?? '—' },
+          { key: 'date', label: 'Date', render: (r) => date(r.date) },
+          { key: 'amount', label: 'Amount', align: 'right', render: (r) => money(r.amount) },
+          { key: 'approvalStatus', label: 'Approval', render: (r) => (r.approvalStatus === 'PENDING' ? 'Awaiting approval' : r.approvalStatus) },
+        ],
+        fields: [
+          { name: 'supplierInvoiceId', label: 'Supplier invoice (must match its PO and goods received)', type: 'select', required: true, optionsEndpoint: '/procurement/supplier-invoices?pageSize=200', optionLabel: (r) => `${r.number} — ${money(r.amount)}` },
+          { name: 'amount', label: 'Amount', type: 'number', required: true },
+          { name: 'date', label: 'Date', type: 'date' },
+        ],
+      },
     ],
   },
 
@@ -1468,6 +1520,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'sampleDate', label: 'Sampled', render: (r) => date(r.sampleDate) },
           { key: 'testType', label: 'Type' }, { key: 'batchNumber', label: 'Batch' },
           { key: 'result', label: 'Result' }, { key: 'certificateNumber', label: 'Cert No.' },
+          { key: 'retestOfId', label: 'Re-test', render: (r) => (r.retestOfId ? 'Yes' : '—') },
         ],
         fields: [
           { name: 'testType', label: 'Test Type', type: 'select', options: opt(['CONCRETE', 'SOIL', 'ASPHALT', 'STEEL', 'OTHER']) },
@@ -1478,6 +1531,7 @@ export const MODULES: Record<string, ModuleDef> = {
           { name: 'sampleDate', label: 'Sample Date', type: 'date' },
           { name: 'resultDate', label: 'Result Date', type: 'date' },
           { name: 'result', label: 'Result', type: 'select', options: opt(['PASS', 'FAIL', 'PENDING']) },
+          { name: 'retestOfId', label: 'Re-test of (the failed test this repeats; a PASS with evidence lets its NCR close)', type: 'select', optionsEndpoint: '/qaqc/material-tests?result=FAIL&pageSize=200', scopeToProject: true, optionLabel: (r) => `${r.testType} batch ${r.batchNumber ?? '-'} (${date(r.sampleDate ?? r.createdAt)})` },
           { name: 'labName', label: 'Laboratory' },
           { name: 'certificateNumber', label: 'Certificate Number' },
           { name: 'notes', label: 'Notes', type: 'textarea' },
@@ -1579,7 +1633,9 @@ export const MODULES: Record<string, ModuleDef> = {
           { key: 'date', label: 'Date', sortable: true, render: (r) => date(r.date) },
           { key: 'type', label: 'Type' }, { key: 'severity', label: 'Severity' },
           { key: 'description', label: 'Description' }, { key: 'location', label: 'Location' },
+          { key: 'closedAt', label: 'Status', render: (r) => (r.closedAt ? `Closed ${date(r.closedAt)}` : 'Open (lowers safety score)') },
         ],
+        rowActions: [{ label: 'Close…', show: (r) => !r.closedAt, dialog: (row, close) => <CloseIncident row={row} onClose={close} /> }],
         fields: [
           { name: 'number', label: 'Incident Number (auto)', hideOnCreate: true, readOnly: true },
           { name: 'type', label: 'Type', type: 'select', options: opt(['NEAR_MISS', 'FIRST_AID', 'MEDICAL', 'LOST_TIME', 'FATALITY', 'PROPERTY_DAMAGE']) },

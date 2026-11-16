@@ -256,6 +256,8 @@ model Organization {
   evidenceRules     Json?
   /// Daily report cut-off, local "HH:MM"; a report after this is late, none by then raises an alert.
   dailyReportCutoff String   @default("18:00")
+  /// Purchase orders above this value need CEO approval; orders to one supplier in a day that together pass it are flagged.
+  poApprovalLimit   Decimal  @default(10000000) @db.Decimal(18, 2)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1098,6 +1100,14 @@ model PurchaseOrder {
   total          Decimal  @default(0) @db.Decimal(18, 2)
   orderDate      DateTime @default(now())
   expectedDate   DateTime?
+  createdBy      String?
+  /// Above the company's order limit a PO needs the CEO's (company admin's) approval before it is issued.
+  approvalStatus String    @default("APPROVED")
+  approvedById   String?
+  approvedAt     DateTime?
+  decisionNote   String?
+  /// SPLIT_ORDER / REPEAT_SUPPLIER flags raised when the order was placed.
+  flags          String[]  @default([])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1180,6 +1190,8 @@ model Ncr {
   attachments      String[]
   raisedBy         String?
   closedAt         DateTime?
+  /// Who closed it (must not be who raised it, and must hold a different role).
+  closedById       String?
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -1216,6 +1228,10 @@ model Incident {
   reportedBy     String?
   date           DateTime     @default(now())
   photos         String[]
+  /// Closed only with evidence of the corrective action; closing raises the safety score back.
+  closedAt       DateTime?
+  closedById     String?
+  closeNote      String?
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -2128,6 +2144,8 @@ model MaterialTest {
   labName           String?
   certificateNumber String?
   notes             String?
+  /// A re-test of an earlier (failed) test; a passing re-test with evidence is what lets its NCR close.
+  retestOfId        String?
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
@@ -2917,4 +2935,60 @@ model ActivityResource {
   @@index([organizationId])
   @@index([activityId])
   @@map("activity_resources")
+}
+
+// Supplier invoice (T2-08): paid only after a three-way match - purchase order, goods received, invoice.
+model SupplierInvoice {
+  id              String    @id @default(cuid())
+  organizationId  String
+  projectId       String?
+  supplierId      String
+  purchaseOrderId String?
+  number          String
+  supplierRef     String?
+  invoiceDate     DateTime  @default(now())
+  amount          Decimal   @default(0) @db.Decimal(18, 2)
+  status          String    @default("RECEIVED") // RECEIVED | PAID | CANCELLED
+  note            String?
+  createdBy       String?
+  updatedBy       String?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  cancelReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  payments SupplierPayment[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([purchaseOrderId])
+  @@map("supplier_invoices")
+}
+
+model SupplierPayment {
+  id                String    @id @default(cuid())
+  organizationId    String
+  projectId         String?
+  supplierInvoiceId String
+  reference         String
+  amount            Decimal   @default(0) @db.Decimal(18, 2)
+  date              DateTime  @default(now())
+  createdBy         String?
+  approvalStatus    String    @default("PENDING")
+  approvedById      String?
+  approvedAt        DateTime?
+  decisionNote      String?
+  cancelledAt       DateTime?
+  cancelledById     String?
+  cancelReason      String?
+  reversalOfId      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  invoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([supplierInvoiceId])
+  @@map("supplier_payments")
 }

@@ -493,3 +493,136 @@ describe('Part 6 — daily report workflow and evidence (T2-03, T2-09)', () => {
     ok(await call('put', '/organization/evidence-rules', { dailyReportCutoff: '18:00' }, admin));
   });
 });
+
+describe('Part 7 — quality and safety gates (T2-05, T2-06)', () => {
+  let Q7: any; let w: any; let failed: any; let ncr: any; let qc: { id: string; token: string }; let pm7: { id: string; token: string };
+  const score = async () => ok(await call('get', `/hse/safety-score?projectId=${Q7.id}`, undefined, admin));
+  beforeAll(async () => {
+    Q7 = ok(await call('post', '/projects', { name: 'T1 Quality check', startDate: new Date().toISOString() }, admin));
+    w = ok(await call('post', '/planning/wbs', { projectId: Q7.id, code: '1.1', name: 'Slab concrete', unit: 'm3', quantity: 100 }, admin));
+    ok(await call('post', '/planning/boq', { projectId: Q7.id, wbsItemId: w.id, code: 'B1', description: 'Slab', quantity: 100, rate: 100_000 }, admin));
+    qc = await addMember(t, 'SITE_ENGINEER', 'qc7');
+    pm7 = await addMember(t, 'PROJECT_MANAGER', 'pm7');
+  });
+
+  it('a failed concrete test and its open NCR lower the safety score, and the reasons are listed', async () => {
+    const before = await score();
+    failed = ok(await call('post', '/qaqc/material-tests', { ...EVIDENCE, projectId: Q7.id, wbsItemId: w.id, testType: 'CONCRETE', batchNumber: 'T1-B1', result: 'FAIL' }, qc.token));
+    ncr = ok(await call('get', `/qaqc/ncrs?projectId=${Q7.id}`, undefined, admin))[0];
+    expect(ncr).toBeTruthy();
+    const after = await score();
+    expect(after.score).toBeLessThan(before.score);
+    expect(after.deductions.some((d: any) => /NCR/.test(d.reason))).toBe(true);
+    expect(after.deductions.some((d: any) => /T1-B1/.test(d.reason))).toBe(true);
+  });
+
+  it('while the test is failed, payment and invoice certification on that work are held', async () => {
+    const inv = ok(await call('post', '/finance/invoices', { projectId: Q7.id, wbsItemId: w.id, amount: 1_000_000, status: 'SUBMITTED' }, admin));
+    const cert = await call('put', `/finance/invoices/${inv.id}`, { status: 'CERTIFIED' }, admin);
+    expect(cert.status).toBe(409);
+    expect(cert.body.error).toMatch(/on hold/);
+    const pay = ok(await call('post', '/finance/payments', { projectId: Q7.id, invoiceId: inv.id, amount: 500_000 }, admin));
+    const held = await call('post', `/finance/payments/${pay.id}/approve`, {}, pm7.token);
+    expect(held.status).toBe(409);
+    expect(held.body.error).toMatch(/Payment on hold/);
+    const pe = ok(await call('post', '/production', { projectId: Q7.id, wbsItemId: w.id, plannedQty: 10, actualQty: 10 }, admin));
+    expect(pe.flags).toContain('QUALITY_HOLD');
+  });
+
+  it('closing the NCR with no re-test is refused; after a passing re-test with evidence a second person closes it and the hold clears', async () => {
+    const early = await call('put', `/qaqc/ncrs/${ncr.id}`, { status: 'CLOSED' }, pm7.token);
+    expect(early.status).toBe(400);
+    expect(early.body.error).toMatch(/no passing re-test/);
+    ok(await call('post', '/qaqc/material-tests', { ...EVIDENCE, projectId: Q7.id, wbsItemId: w.id, testType: 'CONCRETE', batchNumber: 'T1-B1R', result: 'PASS', retestOfId: failed.id }, qc.token));
+    // The failure raised the NCR automatically (no human maker), so any authorised second person may close it;
+    // an NCR raised by a person cannot be closed by that same person.
+    const own = ok(await call('post', '/qaqc/ncrs', { projectId: Q7.id, description: 'Honeycombing on column C3' }, qc.token));
+    const self = await call('put', `/qaqc/ncrs/${own.id}`, { status: 'CLOSED' }, qc.token);
+    expect(self.status).toBe(403);
+    ok(await call('put', `/qaqc/ncrs/${ncr.id}`, { status: 'CLOSED' }, pm7.token));
+    const closed = ok(await call('get', `/qaqc/ncrs/${ncr.id}`, undefined, admin));
+    expect(closed.closedById).toBe(pm7.id);
+    // Hold lifted for the NCR's work (the second, manual NCR is project-wide, so close it too for the payment).
+  });
+
+  it('logging an incident lowers the score with a reason; closing it with evidence raises it again', async () => {
+    const s0 = (await score()).score;
+    const inc = ok(await call('post', '/hse/incidents', { ...EVIDENCE, projectId: Q7.id, type: 'FIRST_AID', severity: 'MEDIUM', description: 'Test incident: cut hand' }, qc.token));
+    const s1 = await score();
+    expect(s1.score).toBe(s0 - 10);
+    expect(s1.deductions.some((d: any) => /incident/i.test(d.reason))).toBe(true);
+    const alerts = ok(await call('get', '/notifications?pageSize=50', undefined, admin));
+    expect(alerts.some((n: any) => n.type === 'SAFETY_INCIDENT' && /safety score now/.test(n.message))).toBe(true);
+    expect((await call('post', `/hse/incidents/${inc.id}/close`, { correctiveAction: 'First aid kit restocked, gloves issued' }, pm7.token)).status).toBe(400); // no evidence
+    expect((await call('post', `/hse/incidents/${inc.id}/close`, { ...EVIDENCE, correctiveAction: 'First aid kit restocked, gloves issued' }, qc.token)).status).toBe(403); // reporter
+    ok(await call('post', `/hse/incidents/${inc.id}/close`, { ...EVIDENCE, correctiveAction: 'First aid kit restocked, gloves issued' }, pm7.token));
+    expect((await score()).score).toBe(s0);
+  });
+
+  it('a day without a safety inspection lowers the score and sends an alert', async () => {
+    const { prisma } = await import('../../src/lib/prisma');
+    await prisma.project.update({ where: { id: Q7.id }, data: { status: 'ACTIVE', startDate: new Date(Date.now() - 5 * 86400000) } });
+    const s = await score();
+    expect(s.deductions.some((d: any) => d.kind === 'MISSED_INSPECTION')).toBe(true);
+    ok(await call('put', '/organization/evidence-rules', { dailyReportCutoff: '00:00' }, admin));
+    const { checkMissedSafetyInspections } = await import('../../src/lib/safety');
+    await checkMissedSafetyInspections();
+    const alerts = ok(await call('get', '/notifications?pageSize=100', undefined, admin));
+    expect(alerts.some((n: any) => String(n.refKey ?? '').startsWith(`missed-safety:${Q7.id}:`))).toBe(true);
+    ok(await call('put', '/organization/evidence-rules', { dailyReportCutoff: '18:00' }, admin));
+  });
+});
+
+describe('Part 9 — procurement and payment match (T2-08)', () => {
+  let sup: any; let po: any; let mat9: any; let inv: any; let buyer: { id: string; token: string }; let pm9: { id: string; token: string };
+  beforeAll(async () => {
+    ok(await call('put', '/organization/evidence-rules', { poApprovalLimit: 10_000_000 }, admin));
+    sup = ok(await call('post', '/procurement/suppliers', { name: 'T1 Cement Supplier' }, admin));
+    mat9 = ok(await call('post', '/inventory/materials', { code: 'CEM-09', name: 'Cement 9', unit: 'bag', unitCost: 14_000 }, admin));
+    buyer = await addMember(t, 'QUANTITY_SURVEYOR', 'buyer9');
+    pm9 = await addMember(t, 'PROJECT_MANAGER', 'pm9');
+    po = ok(await call('post', '/procurement/purchase-orders', { supplierId: sup.id, projectId: P.id, status: 'ISSUED', items: [{ materialId: mat9.id, description: 'Cement', quantity: 100, rate: 14_000 }] }, admin));
+  });
+
+  it('paying an invoice with no goods receipt is refused, and the match status shows on the invoice', async () => {
+    inv = ok(await call('post', '/procurement/supplier-invoices', { supplierId: sup.id, purchaseOrderId: po.id, amount: 1_400_000 }, buyer.token));
+    const m0 = ok(await call('get', `/procurement/supplier-invoices/${inv.id}/match`, undefined, admin));
+    expect(m0.status).toBe('NO_GRN');
+    const r = await call('post', '/procurement/supplier-payments', { supplierInvoiceId: inv.id, amount: 1_400_000 }, buyer.token);
+    expect(r.status).toBe(409);
+    expect(r.body.error).toMatch(/No goods have been received/);
+    const noPo = ok(await call('post', '/procurement/supplier-invoices', { supplierId: sup.id, amount: 50_000 }, buyer.token));
+    expect((await call('post', '/procurement/supplier-payments', { supplierInvoiceId: noPo.id, amount: 50_000 }, buyer.token)).status).toBe(409);
+  });
+
+  it('after the goods are received the invoice matches and a payment goes to a second approver', async () => {
+    ok(await call('post', '/inventory/grn', { ...EVIDENCE, materialId: mat9.id, projectId: P.id, purchaseOrderId: po.id, quantityReceived: 100, unitCost: 14_000 }, admin));
+    const statuses = ok(await call('get', '/procurement/supplier-invoices/match-status', undefined, admin));
+    expect(statuses[inv.id].status).toBe('MATCHED');
+    const over = await call('post', '/procurement/supplier-payments', { supplierInvoiceId: inv.id, amount: 2_000_000 }, buyer.token);
+    expect(over.status).toBe(409);
+    const pay = ok(await call('post', '/procurement/supplier-payments', { supplierInvoiceId: inv.id, amount: 1_400_000 }, buyer.token));
+    expect(pay.approvalStatus).toBe('PENDING');
+    expect((await call('post', `/procurement/supplier-payments/${pay.id}/approve`, {}, buyer.token)).status).toBe(403);
+    ok(await call('post', `/procurement/supplier-payments/${pay.id}/approve`, {}, pm9.token));
+    expect(ok(await call('get', `/procurement/supplier-invoices/${inv.id}`, undefined, admin)).status).toBe('PAID');
+  });
+
+  it('an order above the limit waits for the CEO; two orders to one supplier within a day that pass the limit are flagged', async () => {
+    const big = ok(await call('post', '/procurement/purchase-orders', { supplierId: sup.id, projectId: P.id, status: 'ISSUED', items: [{ description: 'Steel', quantity: 1, rate: 12_000_000 }] }, buyer.token));
+    const bigNow = ok(await call('get', `/procurement/purchase-orders/${big.id}`, undefined, admin));
+    expect(bigNow.approvalStatus).toBe('PENDING');
+    expect(bigNow.status).toBe('DRAFT');
+    expect((await call('put', `/procurement/purchase-orders/${big.id}`, { status: 'ISSUED' }, buyer.token)).status).toBe(409);
+    expect((await call('post', `/procurement/purchase-orders/${big.id}/approve`, {}, pm9.token)).status).toBe(403); // not the CEO
+    ok(await call('post', `/procurement/purchase-orders/${big.id}/approve`, {}, admin));
+
+    const sup2 = ok(await call('post', '/procurement/suppliers', { name: 'T1 Split Supplier' }, admin));
+    ok(await call('post', '/procurement/purchase-orders', { supplierId: sup2.id, projectId: P.id, items: [{ description: 'Blocks lot 1', quantity: 1, rate: 6_000_000 }] }, buyer.token));
+    const second = ok(await call('post', '/procurement/purchase-orders', { supplierId: sup2.id, projectId: P.id, items: [{ description: 'Blocks lot 2', quantity: 1, rate: 6_000_000 }] }, buyer.token));
+    const flagged = ok(await call('get', `/procurement/purchase-orders/${second.id}`, undefined, admin));
+    expect(flagged.flags.some((x: string) => x.startsWith('SPLIT_ORDER'))).toBe(true);
+    const third = ok(await call('post', '/procurement/purchase-orders', { supplierId: sup2.id, projectId: P.id, items: [{ description: 'Blocks lot 3', quantity: 1, rate: 100_000 }] }, buyer.token));
+    expect(ok(await call('get', `/procurement/purchase-orders/${third.id}`, undefined, admin)).flags.some((x: string) => x.startsWith('REPEAT_SUPPLIER'))).toBe(true);
+  });
+});

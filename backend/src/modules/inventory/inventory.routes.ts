@@ -228,6 +228,7 @@ router.use('/grn', createCrudRouter({
     if (data.purchaseOrderId) {
       const po = await prisma.purchaseOrder.findFirst({ where: { id: String(data.purchaseOrderId), organizationId: req.user!.orgId }, include: { supplier: { select: { name: true } } } });
       if (!po) throw BadRequest('Purchase order not found');
+      if (!('id' in data) && po.approvalStatus !== 'APPROVED') throw Conflict(`${po.number} is awaiting CEO approval: goods cannot be received against it yet.`);
       if (!data.supplierName) data.supplierName = po.supplier.name;
       if (!data.projectId && po.projectId) data.projectId = po.projectId;
     }

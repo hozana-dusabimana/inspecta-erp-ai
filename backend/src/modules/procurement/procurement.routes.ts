@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { PoStatus, PrStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest, NotFound } from '../../lib/errors';
+import { BadRequest, NotFound, Conflict } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { auditFromRequest } from '../../auth/audit';
 import { notify } from '../notifications/notify';
 import { createCrudRouter, CrudOptions } from '../../lib/crud';
+import { supplierApRouter, poDecisions, afterPoCreate } from './supplier-ap';
 
 const router = Router();
 
@@ -80,6 +81,8 @@ const poUpdate = z.object({
   expectedDate: z.string().datetime().optional(),
 });
 
+router.use('/purchase-orders', poDecisions);
+router.use('/', supplierApRouter); // /supplier-invoices, /supplier-payments
 router.use(
   '/purchase-orders',
   createCrudRouter({
@@ -96,8 +99,18 @@ router.use(
     sumFields: ['total'],
     refs: [{ field: 'supplierId', model: 'supplier' }],
     include: { items: true, supplier: { select: { id: true, name: true } } },
-    validate: assertItemsWbsInProject,
-    transform: (data) => {
+    validate: async (data, req) => {
+      await assertItemsWbsInProject(data, req);
+      // An order above the limit is issued only after the CEO approves it.
+      if (data.id && ['ISSUED', 'PARTIAL', 'RECEIVED'].includes(String(data.status)) && data.approvalStatus !== 'APPROVED') {
+        throw Conflict(`This order is ${String(data.approvalStatus).toLowerCase()} CEO approval (above the order limit) and cannot be issued yet.`);
+      }
+    },
+    afterChange: async (action, record, req) => {
+      if (action === 'CREATE') await afterPoCreate(req.user!.orgId, record);
+    },
+    transform: (data, req) => {
+      if (!('id' in data)) data.createdBy = req.user!.id;
       const items = (data.items as Array<Record<string, number>> | undefined) ?? [];
       if (Array.isArray(items) && items.length) {
         const withAmounts = items.map((it) => ({
@@ -409,7 +422,7 @@ router.get('/supplier-balances', authenticate, requirePermission('procurement:re
   const [suppliers, pos, grns] = await Promise.all([
     prisma.supplier.findMany({ where: { organizationId: orgId }, select: { id: true, name: true } }),
     prisma.purchaseOrder.findMany({ where: { organizationId: orgId, status: { not: 'CANCELLED' } }, select: { id: true, supplierId: true, total: true } }),
-    prisma.goodsReceipt.findMany({ where: { organizationId: orgId, purchaseOrderId: { not: null }, deletedAt: null }, select: { purchaseOrderId: true, quantityReceived: true, unitCost: true } }),
+    prisma.goodsReceipt.findMany({ where: { organizationId: orgId, purchaseOrderId: { not: null }, deletedAt: null, cancelledAt: null }, select: { purchaseOrderId: true, quantityReceived: true, unitCost: true } }),
   ]);
   const poSupplier = new Map(pos.map((p) => [p.id, p.supplierId]));
   const rows = suppliers.map((sp) => {

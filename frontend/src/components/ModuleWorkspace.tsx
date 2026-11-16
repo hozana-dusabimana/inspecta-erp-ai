@@ -5,7 +5,7 @@ import { AppView } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import ErpLayout from './ErpLayout';
-import ResourceManager, { Column, Field, FilterDef, SummaryCardDef, PostingDef } from './ResourceManager';
+import ResourceManager, { Column, Field, FilterDef, SummaryCardDef, PostingDef, RowAction } from './ResourceManager';
 import PortfolioPanel from './PortfolioPanel';
 import { useCurrentProject } from '../lib/currentProject';
 import ExcelImportBar, { ImporterDef } from './ExcelImport';
@@ -29,6 +29,8 @@ export interface TabDef {
   attachModule?: string;
   /** Posted records: Cancel with a reason replaces Delete. */
   posting?: PostingDef;
+  /** Per-row actions with their own dialog. */
+  rowActions?: RowAction[];
   /** Excel import for this tab (template download + upload + row-level result). */
   importer?: ImporterDef;
   /** Optional custom renderer; when set it replaces the generic ResourceManager. */
@@ -166,6 +168,7 @@ export default function ModuleWorkspace({ def, onNavigate, onLogout }: Props) {
               summaryCards={current.summaryCards}
               attachModule={current.attachModule}
               posting={current.posting}
+              rowActions={current.rowActions}
             />
             </>
           )}

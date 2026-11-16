@@ -3,10 +3,14 @@ import { z } from 'zod';
 import { IncidentType, Severity, InspectionResult } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { asyncHandler, ok } from '../../lib/http';
-import { BadRequest } from '../../lib/errors';
+import { BadRequest, NotFound, Conflict } from '../../lib/errors';
 import { authenticate, requirePermission } from '../../middleware/auth';
 import { createCrudRouter } from '../../lib/crud';
 import { notify } from '../notifications/notify';
+import { safetyScore } from '../../lib/safety';
+import { assertMakerChecker } from '../../lib/maker-checker';
+import { evidenceFromBody, saveEvidence } from '../../lib/evidence';
+import { auditFromRequest } from '../../auth/audit';
 
 const num = (v: unknown) => Number(v ?? 0);
 const stamp = (data: Record<string, unknown>, req: Request) => {
@@ -44,9 +48,31 @@ router.use('/incidents', createCrudRouter({
   requireProject: true, orderBy: { date: 'desc' }, transform: stamp,
   afterChange: async (action, record, req) => {
     if (action === 'CREATE') {
-      await notify({ organizationId: req.user!.orgId, type: 'SAFETY_INCIDENT', severity: (record.severity as Severity) ?? 'MEDIUM', title: `Safety incident: ${record.type}`, message: String(record.description), link: `/projects/${record.projectId}` });
+      const s = await safetyScore(req.user!.orgId, { projectId: String(record.projectId) });
+      await notify({ organizationId: req.user!.orgId, type: 'SAFETY_INCIDENT', severity: (record.severity as Severity) ?? 'MEDIUM', title: `Safety incident: ${record.type}`, message: `${record.description} — safety score now ${s.score}.`, link: `/projects/${record.projectId}` });
     }
   },
+}));
+
+// Close an incident: corrective action + evidence, by someone other than the reporter (T2-06).
+router.post('/incidents/:id/close', authenticate, requirePermission('hse:write'), asyncHandler(async (req, res) => {
+  const body = z.object({ correctiveAction: z.string().trim().min(5, 'Describe the corrective action taken'), note: z.string().max(2000).optional() }).parse(req.body);
+  const inc = await prisma.incident.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId } });
+  if (!inc) throw NotFound('Incident not found');
+  if (inc.closedAt) throw Conflict('This incident is already closed.');
+  const evidence = evidenceFromBody(req.body);
+  // The photo taken when the incident was reported proves the incident, not the fix: closing carries its own.
+  if (!evidence.length) throw BadRequest('Cannot close the incident without evidence of the corrective action (a photo or document).');
+  await assertMakerChecker(req, inc.createdBy, 'incident closure');
+  if (evidence.length) await saveEvidence(req.user!.orgId, req.user!.id, 'incident', inc.id, inc.projectId, evidence);
+  const closed = await prisma.incident.update({ where: { id: inc.id }, data: { closedAt: new Date(), closedById: req.user!.id, closeNote: body.note ?? null, correctiveAction: body.correctiveAction, updatedBy: req.user!.id } });
+  await auditFromRequest(req, 'UPDATE', 'incident', inc.id, { oldValues: inc, newValues: closed, reason: `Closed: ${body.correctiveAction}` });
+  return ok(res, { ...closed, safety: await safetyScore(req.user!.orgId, { projectId: inc.projectId }) });
+}));
+
+// The safety score with every reason that lowered it.
+router.get('/safety-score', authenticate, requirePermission('hse:read'), asyncHandler(async (req, res) => {
+  return ok(res, await safetyScore(req.user!.orgId, { projectId: (req.query.projectId as string) || undefined, projectIds: req.user!.projectIds }));
 }));
 
 // ── Toolbox talks ─────────────────────────────────────────────
@@ -157,7 +183,8 @@ router.get('/kpis', authenticate, requirePermission('hse:read'), asyncHandler(as
   const ifr = laborHours > 0 ? (incidents.length / laborHours) * 200000 : 0;
   // Safety Score = 100 − weighted risk (open risk scores + injury penalties).
   const openRiskWeight = risks.filter((r) => r.status !== 'CLOSED').reduce((s, r) => s + r.score, 0);
-  const safetyScore = Math.max(0, 100 - Math.min(100, openRiskWeight + lostTime * 10 + incidents.length * 2));
+  void openRiskWeight;
+  const score = await safetyScore(orgId, { projectId });
   const now = Date.now();
   const ppeExpiring = ppe.filter((p) => p.expiryDate && p.expiryDate.getTime() < now + 30 * 86400000).length;
 
@@ -166,7 +193,8 @@ router.get('/kpis', authenticate, requirePermission('hse:read'), asyncHandler(as
     nearMiss,
     lostTimeInjuries: lostTime,
     incidentFrequencyRate: Number(ifr.toFixed(2)),
-    safetyScore: Number(safetyScore.toFixed(0)),
+    safetyScore: score.score,
+    safetyDeductions: score.deductions,
     toolboxTalks: talks._count,
     toolboxAttendance: num(talks._sum.attendees),
     safetyInspections: safety.length,

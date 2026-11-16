@@ -15,6 +15,7 @@ import { reverseCostEntries, costSourceAlive, costIntegrityReport } from '../../
 import { addApprovalRoutes, alertAwaitingApproval } from '../../lib/maker-checker';
 import { syncSourceCost } from '../../lib/posting';
 import { syncAttendanceCost } from '../fieldops/labour';
+import { qualityHolds } from '../../lib/safety';
 
 const router = Router();
 const num = (v: unknown) => Number(v ?? 0);
@@ -168,8 +169,12 @@ router.use(
         return { status: 'CANCELLED' };
       },
     },
-    validate: (data) => {
+    validate: async (data, req) => {
       if (data.status === 'CANCELLED' && !data.cancelledAt) throw BadRequest('Use Cancel (with a reason) to cancel an invoice.');
+      if (['CERTIFIED', 'APPROVED', 'PAID'].includes(String(data.status)) && data.projectId) {
+        const holds = await qualityHolds(req.user!.orgId, String(data.projectId), (data.wbsItemId as string) ?? null);
+        if (holds.length) throw Conflict(`Invoice on hold: ${holds.join('; ')}. It can be certified once the NCR is closed after a passing re-test.`);
+      }
     },
     // IPC net = (gross − previous) − retention − advance + tax. Falls back to amount.
     transform: (data, req) => {
@@ -228,6 +233,15 @@ const paymentCreate = z.object({
   date: z.string().datetime().optional(),
 });
 const paymentDecisions = Router();
+// Quality hold (T2-05 c): a payment is not approved while an NCR / failed test is open on the work it pays for.
+paymentDecisions.post('/:id/approve', asyncHandler(async (req, _res, next) => {
+  const pay = await prisma.payment.findFirst({ where: { id: req.params.id, organizationId: req.user!.orgId }, include: { invoice: { select: { wbsItemId: true, number: true } } } });
+  if (pay) {
+    const holds = await qualityHolds(req.user!.orgId, pay.projectId, pay.invoice?.wbsItemId ?? null);
+    if (holds.length) throw Conflict(`Payment on hold: ${holds.join('; ')}. Close the NCR with a passing re-test first.`);
+  }
+  next();
+}));
 addApprovalRoutes(paymentDecisions, { model: 'payment', entity: 'payment', label: 'payment', makerField: 'createdBy' });
 router.use('/payments', authenticate, paymentDecisions);
 router.use(

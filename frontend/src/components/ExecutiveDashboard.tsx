@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Wallet, Boxes, ShieldCheck, AlertTriangle, Bot, Download } from 'lucide-react';
 import { AppView } from '../types';
-import { api } from '../lib/api';
+import { api, ApiError, errorMessage } from '../lib/api';
 import ErpLayout from './ErpLayout';
 
 interface Props {
@@ -36,7 +36,12 @@ function Section({ title, icon: Icon, children }: { title: string; icon: any; ch
 }
 
 export default function ExecutiveDashboard({ onNavigate, onLogout }: Props) {
-  const { data: ex } = useQuery({ queryKey: ['/ai/executive'], queryFn: () => api.get<any>('/ai/executive') });
+  const { data: ex, error: exError } = useQuery({
+    queryKey: ['/ai/executive'], queryFn: () => api.get<any>('/ai/executive'),
+    // A refusal (e.g. out of AI credits) will not change on a retry.
+    retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1,
+  });
+  const outOfCredits = exError instanceof ApiError && exError.status === 402;
   const { data: al } = useQuery({ queryKey: ['/ai/alerts'], queryFn: () => api.get<any>('/ai/alerts'), refetchInterval: 60_000 });
   const d = ex?.data; const alerts = al?.data?.alerts ?? [];
 
@@ -46,7 +51,13 @@ export default function ExecutiveDashboard({ onNavigate, onLogout }: Props) {
         <button onClick={() => api.download('/reports/executive.xlsx', 'executive-report.xlsx')} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-surface-container text-brand-primary font-bold text-xs border border-brand-outline-variant/20 hover:bg-brand-surface-container-high"><Download className="w-4 h-4" /> Export</button>
         <button onClick={() => onNavigate(AppView.COPILOT)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-primary text-white font-bold text-xs hover:bg-brand-primary-container"><Bot className="w-4 h-4" /> Ask Copilot</button>
       </div>}>
-      {!d ? <p className="text-xs text-brand-on-surface-variant">Loading executive intelligence…</p> : (
+      {exError ? (
+        <div role="alert" className="bg-brand-surface-container-lowest p-5 rounded-xl border border-red-200 shadow-sm text-xs space-y-3">
+          <p className="font-bold text-red-700">{outOfCredits ? 'Executive intelligence needs AI credits' : 'Could not load executive intelligence'}</p>
+          <p className="text-brand-on-surface-variant">{errorMessage(exError)}</p>
+          {outOfCredits && <button onClick={() => onNavigate(AppView.BILLING)} className="px-4 py-2 rounded-lg bg-brand-primary text-white font-bold hover:bg-brand-primary-container">Go to Billing &amp; Plan</button>}
+        </div>
+      ) : !d ? <p className="text-xs text-brand-on-surface-variant">Loading executive intelligence…</p> : (
         <div className="space-y-7">
           {/* AI alert engine */}
           <div className="bg-brand-surface-container-lowest rounded-xl border border-brand-outline-variant/20 shadow-sm overflow-hidden">

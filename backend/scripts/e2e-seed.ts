@@ -6,6 +6,7 @@
 import { prisma } from '../src/lib/prisma';
 import { hashPassword } from '../src/lib/password';
 import { registerOrganization } from '../src/modules/auth/auth.service';
+import { grantCredits } from '../src/modules/billing/aiCredits.service';
 
 async function main() {
   const stamp = Date.now().toString(36);
@@ -15,6 +16,8 @@ async function main() {
   const found = await prisma.user.findFirstOrThrow({ where: { email } });
   await prisma.user.update({ where: { id: found.id }, data: { emailVerified: true, verificationTokenHash: null } });
   await prisma.organization.update({ where: { id: found.organizationId }, data: { billingExempt: true, maxUsers: 50, maxProjects: 50 } });
+  // The Trial plan carries no AI credits; Executive Intelligence and the Copilot tests spend them.
+  await grantCredits(found.organizationId, 1000, 'E2E test credits');
 
   // A platform administrator (cross-company role) for the Platform console tests, e.g. the Debug log.
   const platformEmail = `e2e-platform-${stamp}@e2e.test`;
